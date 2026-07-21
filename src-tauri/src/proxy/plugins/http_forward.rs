@@ -276,11 +276,20 @@ impl HttpForwardPlugin {
 
                 let body_bytes = upstream.bytes().await.unwrap_or_default();
 
+                // CGI/PHP 脚本 MIME 强制覆盖
+                let forward_url_lower = forward_url.to_lowercase();
+                let is_cgi_or_php = forward_url_lower.contains(".cgi") || forward_url_lower.contains(".php");
                 let content_type = upstream_headers
                     .get("content-type")
                     .and_then(|v| v.to_str().ok())
                     .unwrap_or("")
                     .to_lowercase();
+                if is_cgi_or_php && content_type.contains("text/html") {
+                    let looks_like_html = body_bytes.starts_with(b"<") || body_bytes.starts_with(b"<!");
+                    if !looks_like_html {
+                        builder = builder.header("content-type", "application/javascript; charset=utf-8");
+                    }
+                }
 
                 let target_url = forward_url.to_string();
 
