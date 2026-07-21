@@ -27,6 +27,15 @@ impl HttpForwardPlugin {
         format!("http://{}", host)
     }
 
+    fn resolve_relative_path(original_url: &str, request_path: &str) -> String {
+        let base_dir = match original_url.rfind('/') {
+            Some(pos) => original_url[..=pos].to_string(),
+            None => format!("{}/", original_url),
+        };
+        let clean_path = request_path.trim_start_matches('/');
+        format!("{}{}", base_dir, clean_path)
+    }
+
     fn resolve_url_from_referer(req: &Request<Incoming>) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let referer = req.headers()
             .get("referer")
@@ -46,17 +55,7 @@ impl HttpForwardPlugin {
             None => request_path.to_string(),
         };
 
-        // Extract base directory from the original URL (strip filename, keep trailing /)
-        let base_dir = match decoded.rfind('/') {
-            Some(pos) => decoded[..=pos].to_string(),
-            None => format!("{}/", decoded),
-        };
-
-        // Request path from proxy is always absolute (e.g. /noise-c.wasm).
-        // In the original page context, the JS was a relative reference (import('./noise-c.wasm')),
-        // so strip the leading / and append to the original base directory.
-        let clean_path = request_path.trim_start_matches('/');
-        let upstream = format!("{}{}", base_dir, clean_path);
+        let upstream = Self::resolve_relative_path(&decoded, &full_path);
 
         if upstream.starts_with("http://") || upstream.starts_with("https://") {
             Ok(upstream)
@@ -85,6 +84,12 @@ impl ProxyHandler for HttpForwardPlugin {
                         return true;
                     }
                 }
+            }
+            // Fallthrough: catch subresource requests (e.g. GET /noise-c.wasm)
+            // that arrive without ?url= or a useful Referer.
+            let path = req.uri().path();
+            if path != "/proxy" && path != "/" {
+                return true;
             }
         }
         false
