@@ -38,7 +38,17 @@ pub fn rewrite_urls<'a>(
     base_url: &str,
     proxy_prefix: &str,
 ) -> Cow<'a, str> {
-    let base_origin = base_url.trim_end_matches('/').to_string();
+    let base_origin = {
+        if let Some(pos) = base_url.find("://") {
+            let after_scheme = &base_url[pos + 3..];
+            match after_scheme.find('/') {
+                Some(path_start) => base_url[..pos + 3 + path_start].to_string(),
+                None => base_url.to_string(),
+            }
+        } else {
+            base_url.trim_end_matches('/').to_string()
+        }
+    };
 
     let encode_proxy = |url: &str| -> String {
         format!("{}/proxy?url={}", proxy_prefix, urlencoding::encode(url))
@@ -59,8 +69,7 @@ pub fn rewrite_urls<'a>(
             };
             format!("{}{}", scheme, url)
         } else if url.starts_with('/') {
-            let origin = base_origin.trim_end_matches('/');
-            format!("{}{}", origin, url)
+            format!("{}{}", base_origin, url)
         } else {
             let base_dir = if base_url.ends_with('/') {
                 base_url.to_string()
