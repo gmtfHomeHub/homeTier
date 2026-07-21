@@ -26,6 +26,40 @@ impl HttpForwardPlugin {
     fn build_proxy_prefix(host: &str) -> String {
         format!("http://{}", host)
     }
+
+    fn resolve_url_from_referer(req: &Request<Incoming>) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let referer = req.headers()
+            .get("referer")
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| "Missing Referer header".to_string())?;
+
+        let pos = referer.find("/proxy?url=")
+            .ok_or_else(|| "Referer does not contain proxy URL".to_string())?;
+
+        let encoded = &referer[pos + "/proxy?url=".len()..];
+        let decoded = urlencoding::decode(encoded)
+            .map_err(|e| format!("Failed to decode Referer URL: {}", e))?;
+
+        let request_path = req.uri().path();
+        let full_path = match req.uri().query() {
+            Some(query) => format!("{}?{}", request_path, query),
+            None => request_path.to_string(),
+        };
+
+        let origin = Self::extract_origin(&decoded)
+            .ok_or_else(|| "Cannot extract origin from Referer URL".to_string())?;
+
+        Ok(format!("{}{}", origin, full_path))
+    }
+
+    fn extract_origin(url: &str) -> Option<String> {
+        let pos = url.find("://")?;
+        let after_scheme = &url[pos + 3..];
+        match after_scheme.find('/') {
+            Some(path_start) => Some(url[..pos + 3 + path_start].to_string()),
+            None => Some(url.to_string()),
+        }
+    }
 }
 
 #[async_trait]
@@ -37,7 +71,19 @@ impl ProxyHandler for HttpForwardPlugin {
     fn can_handle(&self, req: &Request<Incoming>) -> bool {
         let query = req.uri().query().unwrap_or("");
         let params: HashMap<_, _> = url::form_urlencoded::parse(query.as_bytes()).collect();
-        params.contains_key("url")
+        if params.contains_key("url") {
+            return true;
+        }
+        if req.method() == Method::GET {
+            if let Some(referer) = req.headers().get("referer") {
+                if let Ok(referer_str) = referer.to_str() {
+                    if referer_str.contains("/proxy?url=") {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 
     async fn handle(
@@ -47,10 +93,10 @@ impl ProxyHandler for HttpForwardPlugin {
     ) -> Result<ProxyResponse, Box<dyn std::error::Error + Send + Sync>> {
         let query = req.uri().query().unwrap_or("");
         let params: HashMap<_, _> = url::form_urlencoded::parse(query.as_bytes()).collect();
-        let target_url = params
-            .get("url")
-            .ok_or_else(|| "Missing 'url' parameter".to_string())?
-            .to_string();
+        let target_url = match params.get("url") {
+            Some(url) => url.to_string(),
+            None => Self::resolve_url_from_referer(&req)?,
+        };
 
         // Extract all data from req before consuming it
         let method = req.method().clone();
@@ -147,7 +193,7 @@ impl ProxyHandler for HttpForwardPlugin {
 
                 let body: ResponseBody = if ctx.should_rewrite && !proxy_prefix_host.is_empty() {
                     match classify_content(&content_type) {
-                        RewriteTarget::Html | RewriteTarget::Css => {
+                        RewriteTarget::Html | RewriteTarget::Css | RewriteTarget::Js => {
                             let encoding = detect_charset(&content_type);
                             let (body_str, _, _) = encoding.decode(&body_bytes);
                             let rewritten = std::panic::catch_unwind(
