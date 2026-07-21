@@ -1,0 +1,69 @@
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: var(--gray-2);
+  --color-surface: var(--gray-1);
+  --color-border: var(--gray-6);
+  --color-text: var(--gray-12);
+  --color-text-secondary: var(--gray-11);
+  --color-primary: var(--accent-9);
+  --color-primary-hover: var(--accent-10);
+  --color-danger: var(--red-9);
+  --color-success: var(--green-9);
+}
+
+.dark {
+  --color-bg: var(--gray-2);
+  --color-surface: var(--gray-1);
+  --color-border: var(--gray-6);
+  --color-text: var(--gray-12);
+  --color-text-secondary: var(--gray-11);
+  --color-primary: var(--accent-9);
+  --color-primary-hover: var(--accent-10);
+  --color-danger: var(--red-9);
+  --color-success: var(--green-9);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+}
+
+#root {
+  height: 100vh;
+  width: 100vw;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-secondary);
+}
+
+/* Radix UI Button 悬浮手势 */
+.rt-Button,
+button:not([disabled]) {
+  cursor: pointer;
+}

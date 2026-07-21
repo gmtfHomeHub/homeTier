@@ -1,0 +1,47 @@
+{
+  "name": "homeTier",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@iconify/react": "^6.0.2",
+    "@radix-ui/themes": "^3.3.0",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-clipboard-manager": "^2",
+    "@tauri-apps/plugin-os": "^2",
+    "@tauri-apps/plugin-process": "^2",
+    "@tauri-apps/plugin-shell": "^2",
+    "clsx": "^2",
+    "framer-motion": "^11",
+    "i18next": "^23",
+    "lucide-react": "^0.400",
+    "qrcode.react": "^4",
+    "react": "^18.3",
+    "react-dom": "^18.3",
+    "react-i18next": "^14",
+    "react-router-dom": "^6",
+    "zustand": "^4.5.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^18.3",
+    "@types/react-dom": "^18.3",
+    "@vitejs/plugin-react": "^4",
+    "autoprefixer": "^10",
+    "postcss": "^8",
+    "tailwindcss": "^3",
+    "typescript": "^5.5",
+    "vite": "^5"
+  }
+}

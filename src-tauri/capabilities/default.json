@@ -1,0 +1,13 @@
+{
+  "identifier": "default",
+  "description": "Default capability set for homeTier",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "process:default",
+    "clipboard-manager:default",
+    "global-shortcut:default",
+    "os:default"
+  ]
+}
