@@ -97,7 +97,7 @@ impl ProxyHandler for HttpForwardPlugin {
         let query = req.uri().query().unwrap_or("").to_string();
         let params: HashMap<_, _> = url::form_urlencoded::parse(query.as_bytes()).collect();
         if let Some(target_url) = params.get("url") {
-            let target_url = target_url.into_owned();
+            let target_url = target_url.to_string();
             *self.active_origin.write().await = Some(target_url.clone());
             return self.forward(req, &target_url, &target_url, "", &ctx).await;
         }
