@@ -89,14 +89,15 @@ pub fn rewrite_urls<'a>(
     ).unwrap();
     result = re_attr
         .replace_all(&result, |caps: &regex::Captures| {
-            let (prefix, url) = if caps.get(2).is_some() {
-                (caps.get(1).unwrap().as_str().to_string(), caps.get(2).unwrap().as_str().to_string())
+            let double_quoted = caps.get(2).is_some();
+            let (prefix, url, quote) = if double_quoted {
+                (caps.get(1).unwrap().as_str().to_string(), caps.get(2).unwrap().as_str().to_string(), "\"")
             } else {
-                (caps.get(3).unwrap().as_str().to_string(), caps.get(4).unwrap().as_str().to_string())
+                (caps.get(3).unwrap().as_str().to_string(), caps.get(4).unwrap().as_str().to_string(), "'")
             };
 
             if skip_proxied(&url) {
-                return format!("{}{}", prefix, url);
+                return format!("{}{}{}{}", prefix, quote, url, quote);
             }
             if url.starts_with("http://")
                 || url.starts_with("https://")
@@ -106,10 +107,10 @@ pub fn rewrite_urls<'a>(
             {
                 let absolute = resolve_url(&url);
                 if is_absolute(&absolute) {
-                    return format!("{}{}", prefix, encode_proxy(&absolute));
+                    return format!("{}{}{}{}", prefix, quote, encode_proxy(&absolute), quote);
                 }
             }
-            format!("{}{}", prefix, url)
+            format!("{}{}{}{}", prefix, quote, url, quote)
         })
         .into_owned();
 
@@ -119,10 +120,11 @@ pub fn rewrite_urls<'a>(
     ).unwrap();
     result = re_srcset
         .replace_all(&result, |caps: &regex::Captures| {
-            let (prefix, value) = if caps.get(2).is_some() {
-                (caps.get(1).unwrap().as_str().to_string(), caps.get(2).unwrap().as_str().to_string())
+            let double_quoted = caps.get(2).is_some();
+            let (prefix, value, quote) = if double_quoted {
+                (caps.get(1).unwrap().as_str().to_string(), caps.get(2).unwrap().as_str().to_string(), "\"")
             } else {
-                (caps.get(3).unwrap().as_str().to_string(), caps.get(4).unwrap().as_str().to_string())
+                (caps.get(3).unwrap().as_str().to_string(), caps.get(4).unwrap().as_str().to_string(), "'")
             };
 
             let rewritten = value
@@ -155,7 +157,7 @@ pub fn rewrite_urls<'a>(
                 .collect::<Vec<_>>()
                 .join(", ");
 
-            format!("{}{}", prefix, rewritten)
+            format!("{}{}{}{}", prefix, quote, rewritten, quote)
         })
         .into_owned();
 
