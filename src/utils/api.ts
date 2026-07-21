@@ -275,3 +275,11 @@ export async function listApps(spaceId: string): Promise<SpaceApp[]> {
 export async function getProxyUrl(): Promise<string> {
   return invoke("get_proxy_url");
 }
+
+export async function getProxyStatus(): Promise<{
+  running: boolean;
+  port: number;
+  proxy_url: string;
+}> {
+  return invoke("get_proxy_status");
+}

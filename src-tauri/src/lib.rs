@@ -16,6 +16,9 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use tauri::Manager;
 
+use proxy::plugins::*;
+use proxy::ProxyHandler;
+
 /// 全局代理服务器，用于应用退出时关闭
 static PROXY_SERVER: OnceLock<Arc<proxy::ProxyServer>> = OnceLock::new();
 
@@ -79,9 +82,21 @@ pub fn run() -> std::process::ExitCode {
             app.manage(screen_share);
 
             // 启动 HTTP 代理服务器（用于绕过 iframe 安全限制）
-            // ProxyServer::start() 内部管理独立 tokio 运行时，确保 accept 循环持续运行
-            let proxy_server = Arc::new(proxy::ProxyServer::start()
-                .map_err(|e| format!("启动代理服务器失败: {}", e))?);
+            let http_forward = Arc::new(HttpForwardPlugin::new()
+                .map_err(|e| format!("创建 HttpForwardPlugin 失败: {}", e))?);
+            let handlers: Vec<Arc<dyn ProxyHandler>> = vec![
+                Arc::new(HttpsTunnelPlugin),
+                Arc::new(WebSocketPlugin),
+                http_forward,
+            ];
+
+            let proxy_server = Arc::new(proxy::ProxyServer::start(
+                vec![
+                    Arc::new(CorsPlugin::new()),
+                    Arc::new(IframeBypassPlugin),
+                ],
+                handlers,
+            ).map_err(|e| format!("启动代理服务器失败: {}", e))?);
             log_info!(format!("代理服务器已启动: port={}", proxy_server.port));
             let _ = PROXY_SERVER.set(proxy_server.clone());
             app.manage(proxy_server);
@@ -148,6 +163,7 @@ pub fn run() -> std::process::ExitCode {
             commands::app::list_apps,
             // 代理服务
             commands::proxy::get_proxy_url,
+            commands::proxy::get_proxy_status,
         ])
         .on_window_event(|_win, event| {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
