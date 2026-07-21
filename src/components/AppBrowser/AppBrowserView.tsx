@@ -17,6 +17,7 @@ export function AppBrowserView() {
   const [iframeKey, setIframeKey] = useState(0);
   const [loadError, setLoadError] = useState(false);
   const [proxyUrl, setProxyUrl] = useState<string | null>(null);
+  const [proxyKey, setProxyKey] = useState<string | null>(null);
   const [proxyLoading, setProxyLoading] = useState(true);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -33,7 +34,7 @@ export function AppBrowserView() {
     }
   }, [id, appId]);
 
-  // 获取代理地址
+  // 获取代理地址并注册 key
   useEffect(() => {
     api.getProxyUrl()
       .then((url) => {
@@ -46,6 +47,21 @@ export function AppBrowserView() {
         setProxyLoading(false);
       });
   }, []);
+
+  // 注册 proxy key
+  useEffect(() => {
+    const appUrl = app ? buildAppUrl(app) : null;
+    if (appUrl) {
+      api.registerProxyKey(appUrl)
+        .then((key) => {
+          setProxyKey(key);
+          api.setProxySource(appUrl);
+        })
+        .catch((e) => {
+          console.error("[AppBrowser] registerProxyKey failed:", e);
+        });
+    }
+  }, [app]);
 
   const handleRefresh = useCallback(() => {
     setLoadError(false);
@@ -84,8 +100,9 @@ export function AppBrowserView() {
   }
 
   const appUrl = buildAppUrl(app);
-  const proxyAppUrl = proxyUrl
-    ? `${proxyUrl}/proxy?url=${encodeURIComponent(appUrl)}`
+  const appPath = appUrl.replace(/^https?:\/\/[^\/]+/, "");
+  const proxyAppUrl = proxyUrl && proxyKey
+    ? `${proxyUrl}/__proxy__${proxyKey}${appPath || "/"}`
     : null;
 
   return (

@@ -12,12 +12,14 @@ pub mod space;
 pub mod types;
 pub mod voice;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::OnceLock;
+use tokio::sync::RwLock;
 use tauri::Manager;
 
 use proxy::plugins::*;
-use proxy::ProxyHandler;
+use proxy::{ActiveOrigin, ProxyHandler, ProxyKeyMap};
 
 /// 全局代理服务器，用于应用退出时关闭
 static PROXY_SERVER: OnceLock<Arc<proxy::ProxyServer>> = OnceLock::new();
@@ -82,8 +84,12 @@ pub fn run() -> std::process::ExitCode {
             app.manage(screen_share);
 
             // 启动 HTTP 代理服务器（用于绕过 iframe 安全限制）
-            let http_forward = Arc::new(HttpForwardPlugin::new()
-                .map_err(|e| format!("创建 HttpForwardPlugin 失败: {}", e))?);
+            let active_origin: ActiveOrigin = Arc::new(RwLock::new(None));
+            let key_map: ProxyKeyMap = Arc::new(RwLock::new(HashMap::new()));
+            let http_forward = Arc::new(HttpForwardPlugin::new(
+                key_map.clone(),
+                active_origin.clone(),
+            ).map_err(|e| format!("创建 HttpForwardPlugin 失败: {}", e))?);
             let handlers: Vec<Arc<dyn ProxyHandler>> = vec![
                 Arc::new(HttpsTunnelPlugin),
                 Arc::new(WebSocketPlugin),
@@ -100,6 +106,8 @@ pub fn run() -> std::process::ExitCode {
             log_info!(format!("代理服务器已启动: port={}", proxy_server.port));
             let _ = PROXY_SERVER.set(proxy_server.clone());
             app.manage(proxy_server);
+            app.manage(key_map);
+            app.manage(active_origin);
 
             Ok(())
         })
@@ -164,6 +172,8 @@ pub fn run() -> std::process::ExitCode {
             // 代理服务
             commands::proxy::get_proxy_url,
             commands::proxy::get_proxy_status,
+            commands::proxy::register_proxy_key,
+            commands::proxy::set_proxy_source,
         ])
         .on_window_event(|_win, event| {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]

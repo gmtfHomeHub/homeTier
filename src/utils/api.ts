@@ -283,3 +283,11 @@ export async function getProxyStatus(): Promise<{
 }> {
   return invoke("get_proxy_status");
 }
+
+export async function registerProxyKey(url: string): Promise<string> {
+  return invoke("register_proxy_key", { url });
+}
+
+export async function setProxySource(url: string): Promise<void> {
+  return invoke("set_proxy_source", { url });
+}

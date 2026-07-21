@@ -38,10 +38,14 @@ pub fn detect_charset(content_type: &str) -> &'static Encoding {
 /// - `Css`: CSS rules only (url(), @import)
 /// - `Js`: JS rules only (import/export/require, fetch, Worker, XHR)
 /// - `None`: no rewriting
+///
+/// When `proxy_key` is non-empty, URLs are rewritten using `__proxy__{key}` path format;
+/// when empty, falls back to the legacy `/proxy?url=` format.
 pub fn rewrite_urls<'a>(
     content: &'a str,
     base_url: &str,
     proxy_prefix: &str,
+    proxy_key: &str,
     target: RewriteTarget,
 ) -> Cow<'a, str> {
     let base_origin = {
@@ -57,7 +61,19 @@ pub fn rewrite_urls<'a>(
     };
 
     let encode_proxy = |url: &str| -> String {
-        format!("{}/proxy?url={}", proxy_prefix, urlencoding::encode(url))
+        if proxy_key.is_empty() {
+            // 向后兼容：无 key 时用 /proxy?url= 格式
+            return format!("{}/proxy?url={}", proxy_prefix, urlencoding::encode(url));
+        }
+        let url_origin = extract_origin(url);
+        if url_origin == base_origin {
+            // 同域 → __proxy__{key}/path
+            let path = &url[base_origin.len()..];
+            format!("{}/__proxy__{}{}", proxy_prefix, proxy_key, path)
+        } else {
+            // 跨域 → __proxy__{key}?url=<encoded>
+            format!("{}/__proxy__{}?url={}", proxy_prefix, proxy_key, urlencoding::encode(url))
+        }
     };
 
     let is_absolute = |url: &str| -> bool {
@@ -92,7 +108,7 @@ pub fn rewrite_urls<'a>(
     };
 
     let skip_proxied = |url: &str| -> bool {
-        url.starts_with(proxy_prefix) || url.contains("/proxy?url=")
+        url.starts_with(proxy_prefix) || url.contains("/proxy?url=") || url.contains("/__proxy__")
     };
 
     let mut result = content.to_string();
@@ -393,5 +409,24 @@ pub fn rewrite_urls<'a>(
         })
         .into_owned();
 
+    // 12. Inject <base> tag with __proxy__ prefix for relative dynamic URLs
+    if matches!(target, RewriteTarget::Html) && !proxy_key.is_empty() {
+        let base_tag = format!("<base href=\"{}/__proxy__{}/\">", proxy_prefix, proxy_key);
+        result = result.replacen("<head>", &format!("<head>{}", base_tag), 1);
+    }
+
     Cow::Owned(result)
+}
+
+/// Extract the origin (scheme + host + port) from a URL string.
+fn extract_origin(url: &str) -> String {
+    if let Some(pos) = url.find("://") {
+        let after = &url[pos + 3..];
+        match after.find('/') {
+            Some(slash) => url[..pos + 3 + slash].to_string(),
+            None => url.to_string(),
+        }
+    } else {
+        url.to_string()
+    }
 }

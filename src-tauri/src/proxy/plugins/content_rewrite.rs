@@ -66,7 +66,7 @@ impl ProxyPlugin for ContentRewriterPlugin {
 
         let rewritten =
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                rewrite_urls(&body_str, &target_url, &proxy_prefix, target)
+                rewrite_urls(&body_str, &target_url, &proxy_prefix, "", target)
             }));
 
         match rewritten {
