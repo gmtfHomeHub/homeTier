@@ -60,7 +60,7 @@ impl HttpForwardPlugin {
         if upstream.starts_with("http://") || upstream.starts_with("https://") {
             Ok(upstream)
         } else {
-            Err("Resolved URL is not absolute".to_string())
+            Err("Resolved URL is not absolute".to_string().into())
         }
     }
 }
