@@ -97,8 +97,9 @@ impl ProxyHandler for HttpForwardPlugin {
         let query = req.uri().query().unwrap_or("").to_string();
         let params: HashMap<_, _> = url::form_urlencoded::parse(query.as_bytes()).collect();
         if let Some(target_url) = params.get("url") {
+            let target_url = target_url.into_owned();
             *self.active_origin.write().await = Some(target_url.clone());
-            return self.forward(req, target_url, target_url, "", &ctx).await;
+            return self.forward(req, &target_url, &target_url, "", &ctx).await;
         }
 
         // 路由 ③：fallthrough → Referer → active_origin
@@ -127,11 +128,11 @@ impl HttpForwardPlugin {
 
         // 4. 构造转发目标 URL
         // 注：必须用 starts_with('?') 而非 find('?')，因为同域路径也可能含 ?（如 key/path?query）
-        let forward_url = if rest[key_end..].starts_with('?') {
+        let forward_url: String = if rest[key_end..].starts_with('?') {
             // 跨域：__proxy__{key}?url=xxx
             let qs = &rest[key_end + 1..];
             let params: HashMap<_, _> = url::form_urlencoded::parse(qs.as_bytes()).collect();
-            params.get("url").cloned().unwrap_or(source_url.clone())
+            params.get("url").map(|v| v.to_string()).unwrap_or(source_url.clone())
         } else if let Some(spos) = rest[key_end..].find('/') {
             // 同域：__proxy__{key}/path
             let remaining = &rest[key_end + spos..];
