@@ -5,6 +5,7 @@ use std::borrow::Cow;
 pub enum RewriteTarget {
     Html,
     Css,
+    Js,
     None,
 }
 
@@ -15,12 +16,8 @@ pub fn classify_content(content_type: &str) -> RewriteTarget {
         RewriteTarget::Html
     } else if ct.contains("text/css") {
         RewriteTarget::Css
-    } else if ct.contains("text/javascript")
-        || ct.contains("application/javascript")
-        || ct.contains("application/x-javascript")
-    {
-        // JavaScript rewriting is conservative (only if explicitly configured)
-        RewriteTarget::None
+    } else if ct.contains("javascript") {
+        RewriteTarget::Js
     } else {
         RewriteTarget::None
     }
@@ -191,14 +188,15 @@ pub fn rewrite_urls<'a>(
     .unwrap();
     result = re_import
         .replace_all(&result, |caps: &regex::Captures| {
-            let (prefix, url) = if caps.get(2).is_some() {
-                (caps.get(1).unwrap().as_str().to_string(), caps.get(2).unwrap().as_str().to_string())
+            let double_quoted = caps.get(2).is_some();
+            let (prefix, url, quote) = if double_quoted {
+                (caps.get(1).unwrap().as_str().to_string(), caps.get(2).unwrap().as_str().to_string(), "\"")
             } else {
-                (caps.get(3).unwrap().as_str().to_string(), caps.get(4).unwrap().as_str().to_string())
+                (caps.get(3).unwrap().as_str().to_string(), caps.get(4).unwrap().as_str().to_string(), "'")
             };
 
             if skip_proxied(&url) {
-                return format!("{}{}", prefix, url);
+                return format!("{}{}{}{}", prefix, quote, url, quote);
             }
             if url.starts_with("http://")
                 || url.starts_with("https://")
@@ -208,10 +206,10 @@ pub fn rewrite_urls<'a>(
             {
                 let absolute = resolve_url(&url);
                 if is_absolute(&absolute) {
-                    return format!("{}{}", prefix, encode_proxy(&absolute));
+                    return format!("{}{}{}{}", prefix, quote, encode_proxy(&absolute), quote);
                 }
             }
-            format!("{}{}", prefix, url)
+            format!("{}{}{}{}", prefix, quote, url, quote)
         })
         .into_owned();
 
@@ -228,6 +226,98 @@ pub fn rewrite_urls<'a>(
     ).unwrap();
     result = re_meta_hc
         .replace_all(&result, "${1}UTF-8")
+        .into_owned();
+
+    // 7. Rewrite JavaScript import/export/require module paths
+    let re_js_module = Regex::new(
+        r#"(?i)((?:import|export)\s+(?:\{[^}]*\}\s*from\s*|[\w_$*{}\s,]+\s+from\s*)?['"]|require\s*\(\s*['"])([^'"]+)(['"])"#
+    ).unwrap();
+    result = re_js_module
+        .replace_all(&result, |caps: &regex::Captures| {
+            let prefix = caps.get(1).unwrap().as_str();
+            let url = caps.get(2).unwrap().as_str();
+            let suffix = caps.get(3).unwrap().as_str();
+
+            if skip_proxied(url) {
+                return format!("{}{}{}", prefix, url, suffix);
+            }
+            if url.starts_with('/') || url.starts_with("http://") || url.starts_with("https://") || url.starts_with("//") || url.starts_with("./") || url.starts_with("../") {
+                let absolute = resolve_url(url);
+                if is_absolute(&absolute) {
+                    return format!("{}{}{}", prefix, encode_proxy(&absolute), suffix);
+                }
+            }
+            format!("{}{}{}", prefix, url, suffix)
+        })
+        .into_owned();
+
+    // 8. Rewrite fetch('...') / importScripts('...')
+    let re_js_func = Regex::new(
+        r#"(?i)((?:fetch|importScripts)\s*\(\s*['""])([^'""]+)(['""])"#
+    ).unwrap();
+    result = re_js_func
+        .replace_all(&result, |caps: &regex::Captures| {
+            let prefix = caps.get(1).unwrap().as_str();
+            let url = caps.get(2).unwrap().as_str();
+            let suffix = caps.get(3).unwrap().as_str();
+
+            if skip_proxied(url) {
+                return format!("{}{}{}", prefix, url, suffix);
+            }
+            if url.starts_with('/') || url.starts_with("http://") || url.starts_with("https://") || url.starts_with("//") || url.starts_with("./") || url.starts_with("../") {
+                let absolute = resolve_url(url);
+                if is_absolute(&absolute) {
+                    return format!("{}{}{}", prefix, encode_proxy(&absolute), suffix);
+                }
+            }
+            format!("{}{}{}", prefix, url, suffix)
+        })
+        .into_owned();
+
+    // 9. Rewrite new Worker('...') / new SharedWorker('...')
+    let re_js_worker = Regex::new(
+        r#"(?i)(new\s+(?:Worker|SharedWorker)\s*\(\s*['""])([^'""]+)(['""])"#
+    ).unwrap();
+    result = re_js_worker
+        .replace_all(&result, |caps: &regex::Captures| {
+            let prefix = caps.get(1).unwrap().as_str();
+            let url = caps.get(2).unwrap().as_str();
+            let suffix = caps.get(3).unwrap().as_str();
+
+            if skip_proxied(url) {
+                return format!("{}{}{}", prefix, url, suffix);
+            }
+            if url.starts_with('/') || url.starts_with("http://") || url.starts_with("https://") || url.starts_with("//") || url.starts_with("./") || url.starts_with("../") {
+                let absolute = resolve_url(url);
+                if is_absolute(&absolute) {
+                    return format!("{}{}{}", prefix, encode_proxy(&absolute), suffix);
+                }
+            }
+            format!("{}{}{}", prefix, url, suffix)
+        })
+        .into_owned();
+
+    // 10. Rewrite XHR .open('METHOD', '...')
+    let re_js_xhr = Regex::new(
+        r#"(?i)(\.open\s*\(\s*['""](?:GET|POST|PUT|DELETE|PATCH)['""]\s*,\s*['""])([^'""]+)(['""])"#
+    ).unwrap();
+    result = re_js_xhr
+        .replace_all(&result, |caps: &regex::Captures| {
+            let prefix = caps.get(1).unwrap().as_str();
+            let url = caps.get(2).unwrap().as_str();
+            let suffix = caps.get(3).unwrap().as_str();
+
+            if skip_proxied(url) {
+                return format!("{}{}{}", prefix, url, suffix);
+            }
+            if url.starts_with('/') || url.starts_with("http://") || url.starts_with("https://") || url.starts_with("//") || url.starts_with("./") || url.starts_with("../") {
+                let absolute = resolve_url(url);
+                if is_absolute(&absolute) {
+                    return format!("{}{}{}", prefix, encode_proxy(&absolute), suffix);
+                }
+            }
+            format!("{}{}{}", prefix, url, suffix)
+        })
         .into_owned();
 
     Cow::Owned(result)

@@ -147,7 +147,7 @@ impl ProxyHandler for HttpForwardPlugin {
 
                 let body: ResponseBody = if ctx.should_rewrite && !proxy_prefix_host.is_empty() {
                     match classify_content(&content_type) {
-                        RewriteTarget::Html | RewriteTarget::Css => {
+                        RewriteTarget::Html | RewriteTarget::Css | RewriteTarget::Js => {
                             let encoding = detect_charset(&content_type);
                             let (body_str, _, _) = encoding.decode(&body_bytes);
                             let rewritten = std::panic::catch_unwind(
