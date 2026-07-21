@@ -255,6 +255,7 @@ impl HttpForwardPlugin {
                     if key_lower == "content-length"
                         || key_lower == "transfer-encoding"
                         || key_lower == "content-encoding"
+                        || key_lower == "x-content-type-options"
                     {
                         continue;
                     }
