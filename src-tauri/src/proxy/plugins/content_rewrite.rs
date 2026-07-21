@@ -62,7 +62,7 @@ impl ProxyPlugin for ContentRewriterPlugin {
         let body_bytes = body.into_inner();
 
         let encoding = detect_charset(&content_type);
-        let (body_str, _, _) = encoding.decode(&body_bytes);
+        let (body_str, _, _) = encoding.decode(body_bytes.as_deref().unwrap_or(&[]));
 
         let rewritten =
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -77,7 +77,7 @@ impl ProxyPlugin for ContentRewriterPlugin {
                     .insert("content-length", new_bytes.len().into());
                 Ok(Response::from_parts(parts, Full::new(Bytes::from(new_bytes))))
             }
-            Err(_) => Ok(Response::from_parts(parts, Full::new(body_bytes))),
+            Err(_) => Ok(Response::from_parts(parts, Full::new(body_bytes.expect("content_rewrite: body_bytes is None")))),
         }
     }
 }
