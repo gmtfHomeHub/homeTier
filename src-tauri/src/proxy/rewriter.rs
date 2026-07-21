@@ -370,5 +370,28 @@ pub fn rewrite_urls<'a>(
         })
         .into_owned();
 
+    // 11. Rewrite dynamic import() expressions
+    let re_dynamic_import = Regex::new(
+        r#"(?i)(import\s*\(\s*['""])([^'""]+)(['""])"#
+    ).unwrap();
+    result = re_dynamic_import
+        .replace_all(&result, |caps: &regex::Captures| {
+            let prefix = caps.get(1).unwrap().as_str();
+            let url = caps.get(2).unwrap().as_str();
+            let suffix = caps.get(3).unwrap().as_str();
+
+            if skip_proxied(url) {
+                return format!("{}{}{}", prefix, url, suffix);
+            }
+            if url.starts_with('/') || url.starts_with("http://") || url.starts_with("https://") || url.starts_with("//") || url.starts_with("./") || url.starts_with("../") {
+                let absolute = resolve_url(url);
+                if is_absolute(&absolute) {
+                    return format!("{}{}{}", prefix, encode_proxy(&absolute), suffix);
+                }
+            }
+            format!("{}{}{}", prefix, url, suffix)
+        })
+        .into_owned();
+
     Cow::Owned(result)
 }

@@ -46,18 +46,22 @@ impl HttpForwardPlugin {
             None => request_path.to_string(),
         };
 
-        let origin = Self::extract_origin(&decoded)
-            .ok_or_else(|| "Cannot extract origin from Referer URL".to_string())?;
+        // Extract base directory from the original URL (strip filename, keep trailing /)
+        let base_dir = match decoded.rfind('/') {
+            Some(pos) => decoded[..=pos].to_string(),
+            None => format!("{}/", decoded),
+        };
 
-        Ok(format!("{}{}", origin, full_path))
-    }
+        // Request path from proxy is always absolute (e.g. /noise-c.wasm).
+        // In the original page context, the JS was a relative reference (import('./noise-c.wasm')),
+        // so strip the leading / and append to the original base directory.
+        let clean_path = request_path.trim_start_matches('/');
+        let upstream = format!("{}{}", base_dir, clean_path);
 
-    fn extract_origin(url: &str) -> Option<String> {
-        let pos = url.find("://")?;
-        let after_scheme = &url[pos + 3..];
-        match after_scheme.find('/') {
-            Some(path_start) => Some(url[..pos + 3 + path_start].to_string()),
-            None => Some(url.to_string()),
+        if upstream.starts_with("http://") || upstream.starts_with("https://") {
+            Ok(upstream)
+        } else {
+            Err("Resolved URL is not absolute".to_string())
         }
     }
 }
