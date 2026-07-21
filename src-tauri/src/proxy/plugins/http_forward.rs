@@ -192,13 +192,14 @@ impl ProxyHandler for HttpForwardPlugin {
                     .to_lowercase();
 
                 let body: ResponseBody = if ctx.should_rewrite && !proxy_prefix_host.is_empty() {
-                    match classify_content(&content_type) {
+                    let target = classify_content(&content_type);
+                    match target {
                         RewriteTarget::Html | RewriteTarget::Css | RewriteTarget::Js => {
                             let encoding = detect_charset(&content_type);
                             let (body_str, _, _) = encoding.decode(&body_bytes);
                             let rewritten = std::panic::catch_unwind(
                                 std::panic::AssertUnwindSafe(|| {
-                                    rewrite_urls(&body_str, &target_url, &proxy_prefix_host)
+                                    rewrite_urls(&body_str, &target_url, &proxy_prefix_host, target)
                                 }),
                             );
                             match rewritten {

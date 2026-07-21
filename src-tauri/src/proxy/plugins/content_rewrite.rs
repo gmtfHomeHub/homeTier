@@ -4,7 +4,7 @@ use hyper::body::{Bytes, Incoming};
 use hyper::{Request, Response};
 
 use crate::proxy::plugin::{ProxyPlugin, ProxyResponse, RequestContext, ResponseBody};
-use crate::proxy::rewriter::{classify_content, detect_charset, rewrite_urls};
+use crate::proxy::rewriter::{classify_content, detect_charset, rewrite_urls, RewriteTarget};
 
 pub struct ContentRewriterPlugin {
     proxy_prefix: Option<String>,
@@ -52,9 +52,9 @@ impl ProxyPlugin for ContentRewriterPlugin {
             None => return Ok(resp),
         };
 
-        match classify_content(&content_type) {
-            crate::proxy::rewriter::RewriteTarget::Html
-            | crate::proxy::rewriter::RewriteTarget::Css => {}
+        let target = classify_content(&content_type);
+        match target {
+            RewriteTarget::Html | RewriteTarget::Css => {}
             _ => return Ok(resp),
         }
 
@@ -66,7 +66,7 @@ impl ProxyPlugin for ContentRewriterPlugin {
 
         let rewritten =
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                rewrite_urls(&body_str, &target_url, &proxy_prefix)
+                rewrite_urls(&body_str, &target_url, &proxy_prefix, target)
             }));
 
         match rewritten {

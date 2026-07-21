@@ -32,11 +32,17 @@ pub fn detect_charset(content_type: &str) -> &'static Encoding {
         .unwrap_or(encoding_rs::UTF_8)
 }
 
-/// Rewrite all sub-resource URLs in HTML/CSS to go through the proxy.
+/// Rewrite all sub-resource URLs in HTML/CSS/JS to go through the proxy.
+/// The `target` parameter controls which rewrite rules are applied:
+/// - `Html`: all rules (HTML attributes, CSS, JS)
+/// - `Css`: CSS rules only (url(), @import)
+/// - `Js`: JS rules only (import/export/require, fetch, Worker, XHR)
+/// - `None`: no rewriting
 pub fn rewrite_urls<'a>(
     content: &'a str,
     base_url: &str,
     proxy_prefix: &str,
+    target: RewriteTarget,
 ) -> Cow<'a, str> {
     let base_origin = {
         if let Some(pos) = base_url.find("://") {
@@ -92,85 +98,115 @@ pub fn rewrite_urls<'a>(
     let mut result = content.to_string();
 
     // 1. Rewrite HTML tag attributes (src, href, action, poster, data-*)
-    let re_attr = Regex::new(
-        r#"(?i)(\b(?:src|href|action|poster|data-src|data-href|data-url)\s*=\s*)"([^"]+)"|(\b(?:src|href|action|poster|data-src|data-href|data-url)\s*=\s*)'([^']+)'"#
-    ).unwrap();
-    result = re_attr
-        .replace_all(&result, |caps: &regex::Captures| {
-            let double_quoted = caps.get(2).is_some();
-            let (prefix, url, quote) = if double_quoted {
-                (caps.get(1).unwrap().as_str().to_string(), caps.get(2).unwrap().as_str().to_string(), "\"")
-            } else {
-                (caps.get(3).unwrap().as_str().to_string(), caps.get(4).unwrap().as_str().to_string(), "'")
-            };
-
-            if skip_proxied(&url) {
-                return format!("{}{}{}{}", prefix, quote, url, quote);
-            }
-            if url.starts_with("http://")
-                || url.starts_with("https://")
-                || url.starts_with("//")
-                || url.starts_with('/')
-                || !url.contains("://")
-            {
-                let absolute = resolve_url(&url);
-                if is_absolute(&absolute) {
-                    return format!("{}{}{}{}", prefix, quote, encode_proxy(&absolute), quote);
-                }
-            }
-            format!("{}{}{}{}", prefix, quote, url, quote)
-        })
-        .into_owned();
-
     // 2. Rewrite srcset attributes
-    let re_srcset = Regex::new(
-        r#"(?i)(\bsrcset\s*=\s*)"([^"]+)"|(\bsrcset\s*=\s*)'([^']+)'"#
-    ).unwrap();
-    result = re_srcset
-        .replace_all(&result, |caps: &regex::Captures| {
-            let double_quoted = caps.get(2).is_some();
-            let (prefix, value, quote) = if double_quoted {
-                (caps.get(1).unwrap().as_str().to_string(), caps.get(2).unwrap().as_str().to_string(), "\"")
-            } else {
-                (caps.get(3).unwrap().as_str().to_string(), caps.get(4).unwrap().as_str().to_string(), "'")
-            };
+    if matches!(target, RewriteTarget::Html) {
+        let re_attr = Regex::new(
+            r#"(?i)(\b(?:src|href|action|poster|data-src|data-href|data-url)\s*=\s*)"([^"]+)"|(\b(?:src|href|action|poster|data-src|data-href|data-url)\s*=\s*)'([^']+)'"#,
+        )
+        .unwrap();
+        result = re_attr
+            .replace_all(&result, |caps: &regex::Captures| {
+                let double_quoted = caps.get(2).is_some();
+                let (prefix, url, quote) = if double_quoted {
+                    (
+                        caps.get(1).unwrap().as_str().to_string(),
+                        caps.get(2).unwrap().as_str().to_string(),
+                        "\"",
+                    )
+                } else {
+                    (
+                        caps.get(3).unwrap().as_str().to_string(),
+                        caps.get(4).unwrap().as_str().to_string(),
+                        "'",
+                    )
+                };
 
-            let rewritten = value
-                .split(',')
-                .map(|part| {
-                    let part = part.trim();
-                    let parts: Vec<&str> = part.splitn(2, |c: char| c.is_whitespace()).collect();
-                    let url = parts[0].trim();
-                    let descriptor = if parts.len() > 1 { parts[1] } else { "" };
-
-                    if skip_proxied(&url) {
-                        return part.to_string();
+                if skip_proxied(&url) {
+                    return format!("{}{}{}{}", prefix, quote, url, quote);
+                }
+                if url.starts_with("http://")
+                    || url.starts_with("https://")
+                    || url.starts_with("//")
+                    || url.starts_with('/')
+                    || !url.contains("://")
+                {
+                    let absolute = resolve_url(&url);
+                    if is_absolute(&absolute) {
+                        return format!(
+                            "{}{}{}{}",
+                            prefix,
+                            quote,
+                            encode_proxy(&absolute),
+                            quote
+                        );
                     }
-                    if url.starts_with("http://")
-                        || url.starts_with("https://")
-                        || url.starts_with("//")
-                        || url.starts_with('/')
-                        || !url.contains("://")
-                    {
-                        let absolute = resolve_url(&url);
-                        if is_absolute(&absolute) {
-                            if descriptor.is_empty() {
-                                return encode_proxy(&absolute);
-                            }
-                            return format!("{} {}", encode_proxy(&absolute), descriptor);
+                }
+                format!("{}{}{}{}", prefix, quote, url, quote)
+            })
+            .into_owned();
+
+        let re_srcset = Regex::new(
+            r#"(?i)(\bsrcset\s*=\s*)"([^"]+)"|(\bsrcset\s*=\s*)'([^']+)'"#,
+        )
+        .unwrap();
+        result = re_srcset
+            .replace_all(&result, |caps: &regex::Captures| {
+                let double_quoted = caps.get(2).is_some();
+                let (prefix, value, quote) = if double_quoted {
+                    (
+                        caps.get(1).unwrap().as_str().to_string(),
+                        caps.get(2).unwrap().as_str().to_string(),
+                        "\"",
+                    )
+                } else {
+                    (
+                        caps.get(3).unwrap().as_str().to_string(),
+                        caps.get(4).unwrap().as_str().to_string(),
+                        "'",
+                    )
+                };
+
+                let rewritten = value
+                    .split(',')
+                    .map(|part| {
+                        let part = part.trim();
+                        let parts: Vec<&str> =
+                            part.splitn(2, |c: char| c.is_whitespace()).collect();
+                        let url = parts[0].trim();
+                        let descriptor = if parts.len() > 1 { parts[1] } else { "" };
+
+                        if skip_proxied(&url) {
+                            return part.to_string();
                         }
-                    }
-                    part.to_string()
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
+                        if url.starts_with("http://")
+                            || url.starts_with("https://")
+                            || url.starts_with("//")
+                            || url.starts_with('/')
+                            || !url.contains("://")
+                        {
+                            let absolute = resolve_url(&url);
+                            if is_absolute(&absolute) {
+                                if descriptor.is_empty() {
+                                    return encode_proxy(&absolute);
+                                }
+                                return format!("{} {}", encode_proxy(&absolute), descriptor);
+                            }
+                        }
+                        part.to_string()
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
 
-            format!("{}{}{}{}", prefix, quote, rewritten, quote)
-        })
-        .into_owned();
+                format!("{}{}{}{}", prefix, quote, rewritten, quote)
+            })
+            .into_owned();
+    }
 
     // 3. Rewrite CSS url() references
-    let re_css_url = Regex::new(r#"(?i)url\(\s*['"]?([^'")\s]+)['"]?\s*\)"#).unwrap();
+    // 4. Rewrite CSS @import statements
+    if matches!(target, RewriteTarget::Html | RewriteTarget::Css) {
+        let re_css_url =
+            Regex::new(r#"(?i)url\(\s*['"]?([^'")\s]+)['"]?\s*\)"#).unwrap();
     result = re_css_url
         .replace_all(&result, |caps: &regex::Captures| {
             let url = caps.get(1).unwrap().as_str().trim();
@@ -223,21 +259,24 @@ pub fn rewrite_urls<'a>(
             format!("{}{}{}{}", prefix, quote, url, quote)
         })
         .into_owned();
+    }
 
     // 5. Force <meta charset> to UTF-8
-    let re_meta_charset =
-        Regex::new(r#"(?i)(<meta\s+[^>]*?charset\s*=\s*['"])([^'">\s]+)(['"])"#).unwrap();
-    result = re_meta_charset
-        .replace_all(&result, "${1}UTF-8${3}")
-        .into_owned();
-
     // 6. Force <meta http-equiv="Content-Type" content="...charset=XXX..."> to UTF-8
-    let re_meta_hc = Regex::new(
-        r#"(?i)(<meta\s+[^>]*?http-equiv\s*=\s*['"]?content-type['"]?\s+[^>]*?charset\s*=\s*)([^\s"';>]+)"#
-    ).unwrap();
-    result = re_meta_hc
-        .replace_all(&result, "${1}UTF-8")
-        .into_owned();
+    if matches!(target, RewriteTarget::Html) {
+        let re_meta_charset =
+            Regex::new(r#"(?i)(<meta\s+[^>]*?charset\s*=\s*['"])([^'">\s]+)(['"])"#).unwrap();
+        result = re_meta_charset
+            .replace_all(&result, "${1}UTF-8${3}")
+            .into_owned();
+
+        let re_meta_hc = Regex::new(
+            r#"(?i)(<meta\s+[^>]*?http-equiv\s*=\s*['"]?content-type['"]?\s+[^>]*?charset\s*=\s*)([^\s"';>]+)"#
+        ).unwrap();
+        result = re_meta_hc
+            .replace_all(&result, "${1}UTF-8")
+            .into_owned();
+    }
 
     // 7. Rewrite JavaScript import/export/require module paths
     let re_js_module = Regex::new(
