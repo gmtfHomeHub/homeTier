@@ -2,6 +2,7 @@
   "identifier": "default",
   "description": "Default capability set for homeTier",
   "windows": ["main"],
+  "webviews": ["main", "app-webview"],
   "permissions": [
     "core:default",
     "shell:allow-open",

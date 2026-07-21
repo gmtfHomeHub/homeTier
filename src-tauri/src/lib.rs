@@ -18,6 +18,7 @@ use std::sync::OnceLock;
 use tokio::sync::RwLock;
 use tauri::Manager;
 
+use commands::app_view::AppWebview;
 use proxy::plugins::*;
 use proxy::{ActiveOrigin, ProxyHandler, ProxyKeyMap};
 
@@ -108,6 +109,7 @@ pub fn run() -> std::process::ExitCode {
             app.manage(proxy_server);
             app.manage(key_map);
             app.manage(active_origin);
+            app.manage(AppWebview(std::sync::Mutex::new(None)));
 
             Ok(())
         })
@@ -174,6 +176,12 @@ pub fn run() -> std::process::ExitCode {
             commands::proxy::get_proxy_status,
             commands::proxy::register_proxy_key,
             commands::proxy::set_proxy_source,
+            // WebView 模式
+            commands::util::get_webapp_mode,
+            commands::util::set_webapp_mode,
+            commands::app_view::open_app_view,
+            commands::app_view::close_app_view,
+            commands::app_view::resize_app_view,
         ])
         .on_window_event(|_win, event| {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]

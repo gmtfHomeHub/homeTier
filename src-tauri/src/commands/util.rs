@@ -26,3 +26,13 @@ pub fn get_relay_prefix(db: State<'_, Arc<Database>>) -> Result<String, String> 
 pub fn set_relay_prefix(prefix: String, db: State<'_, Arc<Database>>) -> Result<(), String> {
     db.set_setting("RELAY_NETWORK_PREFIX", &prefix)
 }
+
+#[tauri::command]
+pub fn get_webapp_mode(db: State<'_, Arc<Database>>) -> Result<String, String> {
+    Ok(db.get_setting("WEBAPP_MODE")?.unwrap_or_else(|| "iframe".to_string()))
+}
+
+#[tauri::command]
+pub fn set_webapp_mode(mode: String, db: State<'_, Arc<Database>>) -> Result<(), String> {
+    db.set_setting("WEBAPP_MODE", &mode)
+}

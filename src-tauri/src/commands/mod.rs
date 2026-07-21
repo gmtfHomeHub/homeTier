@@ -8,4 +8,5 @@ pub mod hotkey;
 pub mod util;
 pub mod log;
 pub mod app;
+pub mod app_view;
 pub mod proxy;

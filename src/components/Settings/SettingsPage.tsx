@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { LogViewer } from "../Log/LogViewer";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { Settings as SettingsIcon, Terminal, Network, Palette, Languages, HelpCircle } from "lucide-react";
-import { getSystemConfig, setSystemConfig, getRelayPrefix, setRelayPrefix } from "../../utils/api";
+import { getSystemConfig, setSystemConfig, getRelayPrefix, setRelayPrefix, getWebappMode, setWebappMode } from "../../utils/api";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { EasyTierConfig } from "../../types/config";
 import { useTranslation } from "react-i18next";
@@ -17,6 +17,7 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [relayPrefix, setRelayPrefixState] = useState("");
   const [relayPrefixLoaded, setRelayPrefixLoaded] = useState(false);
+  const [webappMode, setWebappModeState] = useState<string | null>(null);
   const { theme, language, setTheme, setLanguage, relayPrefix: storePrefix, setRelayPrefix: setStorePrefix } = useSettingsStore();
   const { t, i18n } = useTranslation();
 
@@ -29,6 +30,12 @@ export function SettingsPage() {
       });
     }
   }, [activeTab, relayPrefixLoaded]);
+
+  useEffect(() => {
+    if (activeTab === "basic" && webappMode === null) {
+      getWebappMode().then(setWebappModeState);
+    }
+  }, [activeTab, webappMode]);
 
   useEffect(() => {
     if (activeTab === "easytier" && !configLoaded) {
@@ -168,6 +175,35 @@ export function SettingsPage() {
                   placeholder="homeTier_"
                 />
               </section>
+
+              {/* WebView 模式 */}
+              {webappMode !== null && (
+                <section>
+                  <Flex align="center" gap="2" mb="3">
+                    <Text size="2" weight="bold">Web 应用打开方式</Text>
+                  </Flex>
+                  <Flex gap="2">
+                    {([
+                      { value: "iframe", label: "内嵌窗口 (iframe)" },
+                      { value: "webview", label: "独立窗口 (WebView)" },
+                    ] as const).map((opt) => (
+                      <Button
+                        key={opt.value}
+                        onClick={() => {
+                          setWebappModeState(opt.value);
+                          setWebappMode(opt.value).catch((e) => alert(String(e)));
+                        }}
+                        variant={webappMode === opt.value ? "solid" : "outline"}
+                        color={webappMode === opt.value ? "blue" : "gray"}
+                        size="2"
+                        className="flex-1"
+                      >
+                        {opt.label}
+                      </Button>
+                    ))}
+                  </Flex>
+                </section>
+              )}
             </div>
           </Tabs.Content>
 

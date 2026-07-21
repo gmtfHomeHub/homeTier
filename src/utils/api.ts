@@ -291,3 +291,23 @@ export async function registerProxyKey(url: string): Promise<string> {
 export async function setProxySource(url: string): Promise<void> {
   return invoke("set_proxy_source", { url });
 }
+
+export async function getWebappMode(): Promise<string> {
+  return invoke("get_webapp_mode");
+}
+
+export async function setWebappMode(mode: string): Promise<void> {
+  return invoke("set_webapp_mode", { mode });
+}
+
+export async function openAppView(url: string, x: number, y: number, w: number, h: number): Promise<void> {
+  return invoke("open_app_view", { url, x, y, w, h });
+}
+
+export async function closeAppView(): Promise<void> {
+  return invoke("close_app_view");
+}
+
+export async function resizeAppView(x: number, y: number, w: number, h: number): Promise<void> {
+  return invoke("resize_app_view", { x, y, w, h });
+}

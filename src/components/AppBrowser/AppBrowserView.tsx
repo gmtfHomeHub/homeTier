@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, ExternalLink, ShieldAlert, Loader2 } from "lucide-react";
+import { ArrowLeft, RefreshCw, ExternalLink, ShieldAlert, Loader2, Monitor } from "lucide-react";
 import { Button, Flex, Text, Card } from "@radix-ui/themes";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { open } from "@tauri-apps/plugin-shell";
@@ -19,6 +19,8 @@ export function AppBrowserView() {
   const [proxyUrl, setProxyUrl] = useState<string | null>(null);
   const [proxyKey, setProxyKey] = useState<string | null>(null);
   const [proxyLoading, setProxyLoading] = useState(true);
+  const [webappMode, setWebappMode] = useState<string>("iframe");
+  const [webviewReady, setWebviewReady] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const space = spaces.find((s) => s.id === id);
@@ -63,10 +65,58 @@ export function AppBrowserView() {
     }
   }, [app]);
 
+  // 读取 WebView 模式
+  useEffect(() => {
+    api.getWebappMode().then(setWebappMode);
+  }, []);
+
+  // webview 模式下自动打开
+  useEffect(() => {
+    if (webappMode !== "webview" || !app || !proxyUrl || !proxyKey) return;
+    const appUrl = buildAppUrl(app);
+    const appPath = appUrl.replace(/^https?:\/\/[^\/]+/, "");
+    const proxyAppUrl = `${proxyUrl}/__proxy__${proxyKey}${appPath || "/"}`;
+    api.openAppView(proxyAppUrl, 0, 56, window.innerWidth, window.innerHeight - 56)
+      .then(() => setWebviewReady(true))
+      .catch(console.error);
+  }, [webappMode, app, proxyUrl, proxyKey]);
+
+  // webview 模式下监听窗口 resize
+  useEffect(() => {
+    if (webappMode !== "webview") return;
+    const handler = () => {
+      api.resizeAppView(0, 56, window.innerWidth, window.innerHeight - 56)
+        .catch(console.error);
+    };
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, [webappMode]);
+
+  // 离开时关闭 webview
+  useEffect(() => {
+    return () => {
+      api.closeAppView().catch(console.error);
+    };
+  }, []);
+
   const handleRefresh = useCallback(() => {
     setLoadError(false);
-    setIframeKey((k) => k + 1);
-  }, []);
+    if (webappMode === "webview") {
+      const appUrl = app ? buildAppUrl(app) : null;
+      const appPath = appUrl ? appUrl.replace(/^https?:\/\/[^\/]+/, "") : "/";
+      const proxyAppUrl = proxyUrl && proxyKey
+        ? `${proxyUrl}/__proxy__${proxyKey}${appPath || "/"}`
+        : null;
+      if (proxyAppUrl) {
+        api.closeAppView().then(() => {
+          setWebviewReady(false);
+          return api.openAppView(proxyAppUrl, 0, 56, window.innerWidth, window.innerHeight - 56);
+        }).then(() => setWebviewReady(true)).catch(console.error);
+      }
+    } else {
+      setIframeKey((k) => k + 1);
+    }
+  }, [webappMode, app, proxyUrl, proxyKey]);
 
   const handleBack = useCallback(() => {
     navigate(`/space/${id}`);
@@ -126,9 +176,27 @@ export function AppBrowserView() {
         </Button>
       </div>
 
-      {/* iframe 主体 */}
+      {/* 内容主体 */}
       <div className="flex-1 bg-white relative">
-        {proxyLoading ? (
+        {webappMode === "webview" ? (
+          webviewReady ? (
+            <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg)]">
+              <Flex direction="column" align="center" gap="3">
+                <Monitor size={48} className="text-[var(--color-primary)]" />
+                <Text size="2" className="text-[var(--color-text-secondary)]">
+                  应用已在独立 WebView 窗口中打开
+                </Text>
+                <Button onClick={handleRefresh} variant="outline" size="2">
+                  刷新窗口
+                </Button>
+              </Flex>
+            </div>
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg)]">
+              <Loader2 size={32} className="animate-spin text-[var(--color-primary)]" />
+            </div>
+          )
+        ) : proxyLoading ? (
           <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg)]">
             <Loader2 size={32} className="animate-spin text-[var(--color-primary)]" />
           </div>
