@@ -109,7 +109,7 @@ pub fn run() -> std::process::ExitCode {
             app.manage(proxy_server);
             app.manage(key_map);
             app.manage(active_origin);
-            app.manage(AppWebview(std::sync::Mutex::new(None)));
+            app.manage(AppWebview::<tauri::Wry>(std::sync::Mutex::new(None)));
 
             Ok(())
         })

@@ -1,23 +1,20 @@
 use std::sync::Mutex;
-use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, Webview, WebviewBuilder, WebviewUrl};
+use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, Runtime, Webview};
+use tauri::webview::{WebviewBuilder, WebviewUrl};
 
-/// 管理子 WebView 的生命周期
-pub struct AppWebview(pub Mutex<Option<Webview>>);
+pub struct AppWebview<R: Runtime>(pub Mutex<Option<Webview<R>>>);
 
 #[tauri::command]
-pub async fn open_app_view(
+pub async fn open_app_view<R: Runtime>(
     url: String,
     x: f64,
     y: f64,
     w: f64,
     h: f64,
-    app: AppHandle,
-    state: tauri::State<'_, AppWebview>,
+    app: AppHandle<R>,
+    state: tauri::State<'_, AppWebview<R>>,
 ) -> Result<(), String> {
-    let window = app
-        .get_webview_window("main")
-        .ok_or("main window not found")?;
-
+    let window = app.get_window("main").ok_or("main window not found")?;
     let parsed: url::Url = url.parse().map_err(|e: url::ParseError| e.to_string())?;
 
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
@@ -37,7 +34,9 @@ pub async fn open_app_view(
 }
 
 #[tauri::command]
-pub async fn close_app_view(state: tauri::State<'_, AppWebview>) -> Result<(), String> {
+pub async fn close_app_view<R: Runtime>(
+    state: tauri::State<'_, AppWebview<R>>,
+) -> Result<(), String> {
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     if let Some(wv) = guard.take() {
         wv.close().map_err(|e| e.to_string())
@@ -47,19 +46,20 @@ pub async fn close_app_view(state: tauri::State<'_, AppWebview>) -> Result<(), S
 }
 
 #[tauri::command]
-pub async fn resize_app_view(
+pub async fn resize_app_view<R: Runtime>(
     x: f64,
     y: f64,
     w: f64,
     h: f64,
-    state: tauri::State<'_, AppWebview>,
+    state: tauri::State<'_, AppWebview<R>>,
 ) -> Result<(), String> {
+    use tauri::LogicalSize as Ls;
     let guard = state.0.lock().map_err(|e| e.to_string())?;
     if let Some(ref wv) = *guard {
-        wv.set_position(LogicalPosition::new(x, y))
-            .map_err(|e| format!("set_position: {}", e))?;
-        wv.set_size(LogicalSize::new(w, h))
-            .map_err(|e| format!("set_size: {}", e))?;
+        wv.reposition(tauri::Position::Logical(LogicalPosition::new(x, y)))
+            .map_err(|e| format!("reposition: {}", e))?;
+        wv.resize(tauri::Size::Logical(Ls::new(w, h)))
+            .map_err(|e| format!("resize: {}", e))?;
     }
     Ok(())
 }
