@@ -74,8 +74,10 @@ pub fn rewrite_urls<'a>(
             let base_dir = if base_url.ends_with('/') {
                 base_url.to_string()
             } else {
-                match base_url.rfind('/') {
-                    Some(pos) => base_url[..=pos].to_string(),
+                let path_start = base_url.find("://").map(|p| p + 3).unwrap_or(0);
+                let after_host = &base_url[path_start..];
+                match after_host.rfind('/') {
+                    Some(pos) => base_url[..path_start + pos + 1].to_string(),
                     None => format!("{}/", base_url),
                 }
             };
