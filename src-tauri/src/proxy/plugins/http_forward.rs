@@ -136,7 +136,8 @@ impl HttpForwardPlugin {
         } else if let Some(spos) = rest[key_end..].find('/') {
             // 同域：__proxy__{key}/path
             let remaining = &rest[key_end + spos..];
-            format!("{}{}", source_url.trim_end_matches('/'), remaining)
+            let query = req.uri().query().map(|q| format!("?{}", q)).unwrap_or_default();
+            format!("{}{}{}", source_url.trim_end_matches('/'), remaining, query)
         } else {
             source_url.clone()
         };
