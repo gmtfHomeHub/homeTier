@@ -2,6 +2,8 @@ use async_trait::async_trait;
 use std::net::Ipv4Addr;
 
 use super::{TunConfig, TunDeviceInfo, TunManager};
+use tun_easytier::AbstractDevice;
+use easytier::common::ifcfg::IfConfiguerTrait;
 
 pub struct IosTunManager;
 
