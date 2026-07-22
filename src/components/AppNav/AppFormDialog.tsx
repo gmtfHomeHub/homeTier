@@ -60,7 +60,7 @@ export function AppFormDialog({ app, spaceId, callerId, existingCategories, onCl
         pathname: pathname || undefined,
       };
 
-      if (isEditing && app) {
+      if (isEditing && app && app.id) {
         await api.updateApp(app.id, name.trim(), callerId, options);
       } else {
         await api.addApp(spaceId, name.trim(), callerId, options);
