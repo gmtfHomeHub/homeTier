@@ -60,7 +60,7 @@ pub fn get_log_dir() -> PathBuf {
 pub fn init_tun_cap_check() {
     let available = check_tun_available_inner();
     TUN_AVAILABLE.store(available, Ordering::SeqCst);
-    log_info!(format!("TUN 能力检查完成: available={}", available));
+    crate::log_info!(format!("TUN 能力检查完成: available={}", available));
 }
 
 /// 返回缓存的 TUN 可用性状态

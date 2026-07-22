@@ -70,5 +70,5 @@ impl PlatformAdapter for LinuxAdapter {
 
 fn log_system_auth(details: &str) {
     log_error!(details);
-    crate::log::log_system("authorize_tun", details);
+    // crate::log::log_system("authorize_tun", details);
 }

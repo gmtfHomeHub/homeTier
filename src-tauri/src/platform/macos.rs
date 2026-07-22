@@ -39,18 +39,18 @@ impl PlatformAdapter for MacOSAdapter {
             .status()
         {
             Ok(status) if status.success() => {
-                log_error!("macOS TUN 授权成功（用户确认提权）");
-                crate::log::log_system("authorize_tun", "macOS TUN 授权成功");
+                crate::log_info!("macOS TUN 授权成功（用户确认提权）");
+                // crate::log::log_system("authorize_tun", "macOS TUN 授权成功");
                 AuthResult { success: true, message: "授权成功".into(), needs_restart: false }
             }
             Ok(_) => {
-                log_error!("macOS TUN 授权被取消");
-                crate::log::log_system("authorize_tun", "macOS TUN 授权被取消");
+                crate::log_info!("macOS TUN 授权被取消");
+                // crate::log::log_system("authorize_tun", "macOS TUN 授权被取消");
                 AuthResult { success: false, message: "授权被取消".into(), needs_restart: false }
             }
             Err(e) => {
-                log_error!(format!("osascript 不可用: {}", e));
-                crate::log::log_system("authorize_tun", &format!("osascript 不可用: {}", e));
+                crate::log_error!(format!("osascript 不可用: {}", e));
+                // crate::log::log_system("authorize_tun", &format!("osascript 不可用: {}", e));
                 AuthResult { success: false, message: "系统授权工具不可用".into(), needs_restart: false }
             }
         }

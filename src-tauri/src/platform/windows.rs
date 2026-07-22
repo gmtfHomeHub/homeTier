@@ -53,13 +53,13 @@ impl PlatformAdapter for WindowsAdapter {
             Ok(p) => p.to_string_lossy().to_string(),
             Err(e) => {
                 log_error!(format!("获取可执行路径失败: {}", e));
-                crate::log::log_system("authorize_tun", &format!("获取可执行路径失败: {}", e));
+                // crate::log::log_system("authorize_tun", &format!("获取可执行路径失败: {}", e));
                 return AuthResult { success: false, message: "获取可执行路径失败".into(), needs_restart: false };
             }
         };
 
         log_error!(format!("Windows TUN 授权: 通过 runas 重启进程, exe={}", exe));
-        crate::log::log_system("authorize_tun", &format!("Windows TUN 授权: 通过 runas 重启进程, exe={}", exe));
+        // crate::log::log_system("authorize_tun", &format!("Windows TUN 授权: 通过 runas 重启进程, exe={}", exe));
 
         // 使用 ShellExecuteW 以管理员身份启动新进程
         let result = unsafe {
