@@ -106,6 +106,7 @@ export interface SpaceApp {
   name: string;
   category: string;
   icon: string;
+  description?: string;
   protocol: string;
   hostname: string;
   port: string;

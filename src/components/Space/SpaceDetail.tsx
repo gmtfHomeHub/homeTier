@@ -20,11 +20,11 @@ export function SpaceDetail() {
   const isOwner = !!space?.owner_id;
   const callerId = space?.owner_id || "";
 
-  useEffect(() => {
-    if (id && space?.status === "disconnected") {
-      connectSpace(id);
-    }
-  }, [id]);
+  // useEffect(() => {
+  //   if (id && space?.status === "disconnected") {
+  //     connectSpace(id);
+  //   }
+  // }, [id]);
 
   const handleDelete = async () => {
     if (!id || !space) return;
@@ -81,15 +81,15 @@ export function SpaceDetail() {
           )}
         </div>
         <div className="flex-1" />
-        <Flex gap="2" align="center">
+        <Flex gap="3" align="center">
           {/* 对话按钮 — 显式显示 */}
           <Button
             onClick={() => navigate(`/space/${id}/chat`)}
-            variant="soft"
+            variant="ghost"
             size="2"
           >
             <MessageSquare size={16} />
-            对话
+            {/* 对话 */}
           </Button>
           {/* 更多操作下拉菜单 */}
           <DropdownMenu.Root>

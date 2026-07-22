@@ -2,17 +2,17 @@ import { useState, useEffect, useCallback } from "react";
 import { getLogs, getSpaceLogs, clearLogs } from "../../utils/api";
 import type { LogEntry } from "../../types";
 import { RefreshCw, Trash2, Filter } from "lucide-react";
-import { Button, Select, Checkbox, ScrollArea, Text, Flex, Badge } from "@radix-ui/themes";
+import { Button, Select, Checkbox, ScrollArea, Text, Flex, Badge, ButtonProps } from "@radix-ui/themes";
 
 interface LogViewerProps {
   spaceId?: string;
 }
 
-const LEVEL_COLORS: Record<string, string> = {
+const LEVEL_COLORS: Record<string, ButtonProps['color']> = {
   error: "red",
   warning: "yellow",
-  info: "",
-  debug: "gray",
+  info: "gray",
+  debug: "teal",
 };
 
 export function LogViewer({ spaceId }: LogViewerProps) {
@@ -100,7 +100,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
 
       {/* 日志列表 */}
       <ScrollArea className="flex-1">
-        <div className="font-mono text-xs">
+        <div className="h-full font-mono text-xs">
           {filtered.length === 0 ? (
             <div className="flex items-center justify-center h-full text-[var(--color-text-secondary)] p-4">
               暂无日志
@@ -116,9 +116,10 @@ export function LogViewer({ spaceId }: LogViewerProps) {
                     {entry.timestamp}
                   </span>
                   <Badge
-                    className={`px-1 rounded uppercase font-bold ${LEVEL_COLORS[entry.level] || ""}`}
+                    className={`px-1 rounded font-bold`}
+                    color={LEVEL_COLORS[entry.level]}
                   >
-                    {entry.level}
+                    <span className="uppercase">{entry.level}</span>
                   </Badge>
                   <span className="text-[var(--color-text-secondary)] whitespace-nowrap">
                     [{entry.module}]
