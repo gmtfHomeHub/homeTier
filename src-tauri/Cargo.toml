@@ -57,6 +57,9 @@ regex = "1"
 encoding_rs = "0.8"
 async-trait = "0.1"
 
+# TUN 设备管理（与 EasyTier 内部使用的 tun-easytier 同源）
+tun-easytier = { git = "https://github.com/EasyTier/rust-tun", features = ["async"] }
+
 # EasyTier (本地引用)
 easytier = { path = "../third_libs/easytier/easytier", features = [
     "wireguard",

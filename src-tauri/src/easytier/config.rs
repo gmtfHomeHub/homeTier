@@ -274,6 +274,22 @@ impl NetworkConfig {
         if let Some(v) = self.flags.get("bind_device") {
             flags.bind_device = v == "true";
         }
+        if let Some(ref s) = self.flags.get("dev_name") {
+            if !s.is_empty() {
+                flags.dev_name = s.clone();
+            }
+        }
+        if let Some(v) = self.flags.get("enable_encryption") {
+            flags.enable_encryption = v == "true";
+        }
+        if let Some(v) = self.flags.get("enable_ipv6") {
+            flags.enable_ipv6 = v == "true";
+        }
+        if let Some(ref s) = self.flags.get("default_protocol") {
+            if !s.is_empty() {
+                flags.default_protocol = s.clone();
+            }
+        }
         cfg.set_flags(flags);
 
         Ok(cfg)

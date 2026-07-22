@@ -10,6 +10,7 @@ pub mod proxy;
 pub mod screen;
 pub mod space;
 pub mod types;
+pub mod tun;
 pub mod voice;
 
 use std::collections::HashMap;
