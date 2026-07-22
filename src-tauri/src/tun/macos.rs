@@ -13,7 +13,7 @@ impl TunManager for MacosTunManager {
         let mut tun_cfg = tun_easytier::Configuration::default();
         tun_cfg
             .layer(tun_easytier::Layer::L3)
-            .mtu(config.mtu)
+            .mtu(config.mtu.try_into().unwrap())
             .up();
         if let Some(ref name) = config.dev_name {
             if !name.is_empty() {

@@ -276,7 +276,7 @@ impl NetworkConfig {
         }
         if let Some(ref s) = self.flags.get("dev_name") {
             if !s.is_empty() {
-                flags.dev_name = s.clone();
+                flags.dev_name = s.to_string();
             }
         }
         if let Some(v) = self.flags.get("enable_encryption") {
@@ -287,7 +287,7 @@ impl NetworkConfig {
         }
         if let Some(ref s) = self.flags.get("default_protocol") {
             if !s.is_empty() {
-                flags.default_protocol = s.clone();
+                flags.default_protocol = s.to_string();
             }
         }
         cfg.set_flags(flags);
