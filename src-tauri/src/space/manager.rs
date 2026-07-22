@@ -249,11 +249,6 @@ impl SpaceManager {
         let cfg = crate::easytier::config::NetworkConfig {
             network_name: space.network_name.clone(),
             network_secret: space.network_secret.clone(),
-            flags: {
-                let mut f = std::collections::HashMap::new();
-                f.insert("no_tun".to_string(), "true".to_string());
-                f
-            },
             ..Default::default()
         };
 
