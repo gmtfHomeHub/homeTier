@@ -33,8 +33,11 @@ pub fn run() -> std::process::ExitCode {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .plugin(tauri_plugin_os::init())
-        .setup(|app| {
+        .plugin(tauri_plugin_os::init());
+
+    let builder = proxy::hometier_protocol::register_protocol(builder);
+
+    let builder = builder.setup(|app| {
             log_info!("homeTier 应用启动");
 
             // 初始化数据库

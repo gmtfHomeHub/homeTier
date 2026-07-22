@@ -1,12 +1,13 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, ExternalLink, ShieldAlert, Loader2, Monitor } from "lucide-react";
-import { Button, Flex, Text, Card } from "@radix-ui/themes";
+import { ArrowLeft, RefreshCw, ExternalLink, Loader2, Monitor } from "lucide-react";
+import { Button, Flex, Text } from "@radix-ui/themes";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { open } from "@tauri-apps/plugin-shell";
 import * as api from "../../utils/api";
 import { buildAppUrl } from "../../types";
 import type { SpaceApp } from "../../types";
+import { ProxyFrame, buildProxyUrl, ProxyErrorFallback } from "./ProxyFrame";
 
 export function AppBrowserView() {
   const { id, appId } = useParams<{ id: string; appId: string }>();
@@ -16,16 +17,11 @@ export function AppBrowserView() {
   const [loading, setLoading] = useState(true);
   const [iframeKey, setIframeKey] = useState(0);
   const [loadError, setLoadError] = useState(false);
-  const [proxyUrl, setProxyUrl] = useState<string | null>(null);
-  const [proxyKey, setProxyKey] = useState<string | null>(null);
-  const [proxyLoading, setProxyLoading] = useState(true);
   const [webappMode, setWebappMode] = useState<string>("iframe");
   const [webviewReady, setWebviewReady] = useState(false);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const space = spaces.find((s) => s.id === id);
 
-  // 加载应用信息
   useEffect(() => {
     if (id && appId) {
       api.listApps(id).then((apps) => {
@@ -36,52 +32,21 @@ export function AppBrowserView() {
     }
   }, [id, appId]);
 
-  // 获取代理地址并注册 key
-  useEffect(() => {
-    api.getProxyUrl()
-      .then((url) => {
-        console.log("[AppBrowser] proxyUrl:", url);
-        setProxyUrl(url);
-        setProxyLoading(false);
-      })
-      .catch((e) => {
-        console.error("[AppBrowser] getProxyUrl failed:", e);
-        setProxyLoading(false);
-      });
-  }, []);
-
-  // 注册 proxy key
-  useEffect(() => {
-    const appUrl = app ? buildAppUrl(app) : null;
-    if (appUrl) {
-      api.registerProxyKey(appUrl)
-        .then((key) => {
-          setProxyKey(key);
-          api.setProxySource(appUrl);
-        })
-        .catch((e) => {
-          console.error("[AppBrowser] registerProxyKey failed:", e);
-        });
-    }
-  }, [app]);
-
-  // 读取 WebView 模式
   useEffect(() => {
     api.getWebappMode().then(setWebappMode);
   }, []);
 
-  // webview 模式下自动打开
+  const appUrl = app ? buildAppUrl(app) : null;
+  const proxyAppUrl = appUrl ? buildProxyUrl(appUrl) : null;
+
+  // webview mode
   useEffect(() => {
-    if (webappMode !== "webview" || !app || !proxyUrl || !proxyKey) return;
-    const appUrl = buildAppUrl(app);
-    const appPath = appUrl.replace(/^https?:\/\/[^\/]+/, "");
-    const proxyAppUrl = `${proxyUrl}/__proxy__${proxyKey}${appPath || "/"}`;
+    if (webappMode !== "webview" || !proxyAppUrl) return;
     api.openAppView(proxyAppUrl, 0, 56, window.innerWidth, window.innerHeight - 56)
       .then(() => setWebviewReady(true))
       .catch(console.error);
-  }, [webappMode, app, proxyUrl, proxyKey]);
+  }, [webappMode, proxyAppUrl]);
 
-  // webview 模式下监听窗口 resize
   useEffect(() => {
     if (webappMode !== "webview") return;
     const handler = () => {
@@ -92,7 +57,6 @@ export function AppBrowserView() {
     return () => window.removeEventListener("resize", handler);
   }, [webappMode]);
 
-  // 离开时关闭 webview
   useEffect(() => {
     return () => {
       api.closeAppView().catch(console.error);
@@ -101,22 +65,15 @@ export function AppBrowserView() {
 
   const handleRefresh = useCallback(() => {
     setLoadError(false);
-    if (webappMode === "webview") {
-      const appUrl = app ? buildAppUrl(app) : null;
-      const appPath = appUrl ? appUrl.replace(/^https?:\/\/[^\/]+/, "") : "/";
-      const proxyAppUrl = proxyUrl && proxyKey
-        ? `${proxyUrl}/__proxy__${proxyKey}${appPath || "/"}`
-        : null;
-      if (proxyAppUrl) {
-        api.closeAppView().then(() => {
-          setWebviewReady(false);
-          return api.openAppView(proxyAppUrl, 0, 56, window.innerWidth, window.innerHeight - 56);
-        }).then(() => setWebviewReady(true)).catch(console.error);
-      }
+    if (webappMode === "webview" && proxyAppUrl) {
+      api.closeAppView().then(() => {
+        setWebviewReady(false);
+        return api.openAppView(proxyAppUrl, 0, 56, window.innerWidth, window.innerHeight - 56);
+      }).then(() => setWebviewReady(true)).catch(console.error);
     } else {
       setIframeKey((k) => k + 1);
     }
-  }, [webappMode, app, proxyUrl, proxyKey]);
+  }, [webappMode, proxyAppUrl]);
 
   const handleBack = useCallback(() => {
     navigate(`/space/${id}`);
@@ -148,12 +105,6 @@ export function AppBrowserView() {
       </div>
     );
   }
-
-  const appUrl = buildAppUrl(app);
-  const appPath = appUrl.replace(/^https?:\/\/[^\/]+/, "");
-  const proxyAppUrl = proxyUrl && proxyKey
-    ? `${proxyUrl}/__proxy__${proxyKey}${appPath || "/"}`
-    : null;
 
   return (
     <div className="flex flex-col flex-1">
@@ -196,61 +147,21 @@ export function AppBrowserView() {
               <Loader2 size={32} className="animate-spin text-[var(--color-primary)]" />
             </div>
           )
-        ) : proxyLoading ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg)]">
-            <Loader2 size={32} className="animate-spin text-[var(--color-primary)]" />
-          </div>
-        ) : !proxyUrl && !proxyLoading ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg)]">
-            <Card className="max-w-md p-6 text-center">
-              <ShieldAlert size={48} className="mx-auto mb-4 text-[var(--color-text-secondary)]" />
-              <Text size="3" weight="bold" className="block mb-2">
-                代理服务不可用
-              </Text>
-              <Text size="2" className="text-[var(--color-text-secondary)] block mb-4">
-                代理服务未启动或已停止，请点击下方按钮在系统浏览器中打开。
-              </Text>
-              <Flex gap="3" justify="center">
-                <Button onClick={handleOpenInBrowser} variant="solid" color="blue" size="2">
-                  <ExternalLink size={16} /> 在浏览器中打开
-                </Button>
-                <Button onClick={handleBack} variant="outline" size="2">
-                  返回
-                </Button>
-              </Flex>
-            </Card>
-          </div>
-        ) : loadError ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg)]">
-            <Card className="max-w-md p-6 text-center">
-              <ShieldAlert size={48} className="mx-auto mb-4 text-[var(--color-text-secondary)]" />
-              <Text size="3" weight="bold" className="block mb-2">
-                无法在内部加载
-              </Text>
-              <Text size="2" className="text-[var(--color-text-secondary)] block mb-4">
-                该网站无法通过代理加载。
-                请点击下方按钮在系统浏览器中打开。
-              </Text>
-              <Flex gap="3" justify="center">
-                <Button onClick={handleOpenInBrowser} variant="solid" color="blue" size="2">
-                  <ExternalLink size={16} /> 在浏览器中打开
-                </Button>
-                <Button onClick={handleBack} variant="outline" size="2">
-                  返回
-                </Button>
-              </Flex>
-            </Card>
-          </div>
-        ) : (
-          <iframe
+        ) : proxyAppUrl && !loadError ? (
+          <ProxyFrame
             key={iframeKey}
-            ref={iframeRef}
-            src={proxyAppUrl || appUrl}
-            className="w-full h-full border-none"
-            title={app.name}
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+            proxyUrl={proxyAppUrl}
+            name={app.name}
+            onOpenBrowser={handleOpenInBrowser}
+            onBack={handleBack}
             onError={() => setLoadError(true)}
           />
+        ) : loadError ? (
+          <ProxyErrorFallback onOpenBrowser={handleOpenInBrowser} onBack={handleBack} />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-[var(--color-text-secondary)]">
+            应用 URL 无效
+          </div>
         )}
       </div>
     </div>

@@ -1,3 +1,4 @@
+pub mod hometier_protocol;
 pub mod plugin;
 pub mod plugins;
 pub mod rewriter;
