@@ -13,6 +13,7 @@ import type {
   SpaceApp,
   AuthResult,
   TunStatus,
+  TunDeviceInfo,
 } from "../types";
 
 // === Space Commands ===
@@ -224,6 +225,35 @@ export async function refreshTunStatus(): Promise<TunStatus> {
 
 export async function authorizeTun(): Promise<AuthResult> {
   return invoke("authorize_tun");
+}
+
+// === TUN 设备管理 ===
+
+export async function createTun(opts: {
+  devName?: string;
+  ip?: string;
+  cidrPrefix?: number;
+  mtu?: number;
+  routes?: string[];
+}): Promise<TunDeviceInfo> {
+  return invoke("create_tun", opts);
+}
+
+export async function createTunFromFd(opts: {
+  fd: number;
+  ip?: string;
+  cidrPrefix?: number;
+  mtu?: number;
+}): Promise<TunDeviceInfo> {
+  return invoke("create_tun_from_fd", opts);
+}
+
+export async function destroyTun(name: string): Promise<void> {
+  return invoke("destroy_tun", { name });
+}
+
+export async function setTunLinkStatus(name: string, up: boolean): Promise<void> {
+  return invoke("set_tun_link_status", { name, up });
 }
 
 // === Space Apps ===

@@ -112,6 +112,14 @@ export interface TunStatus {
   elevated: boolean;
 }
 
+export interface TunDeviceInfo {
+  name: string;
+  ip: string | null;
+  mtu: number;
+  platform: string;
+  fd: number | null;
+}
+
 export interface SpaceApp {
   id: string;
   space_id: string;

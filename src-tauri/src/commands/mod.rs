@@ -5,6 +5,7 @@ pub mod voice;
 pub mod file;
 pub mod screen;
 pub mod hotkey;
+pub mod tun;
 pub mod util;
 pub mod log;
 pub mod app;
