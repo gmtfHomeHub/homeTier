@@ -102,9 +102,10 @@ impl ProxyHandler for HttpForwardPlugin {
             return self.forward(req, &target_url, &target_url, "", &ctx).await;
         }
 
-        // 路由 ③：fallthrough → Referer → active_origin
+        // 路由 ③：fallthrough → 直通模式（无代理转换，替换 proxy 地址为源地址直接请求）
         let target = self.resolve_target(&req).await?;
-        self.forward(req, &target, &target, "", &ctx).await
+        *self.active_origin.write().await = Some(target.clone());
+        self.passthrough(req, &target).await
     }
 }
 
@@ -185,6 +186,79 @@ impl HttpForwardPlugin {
         // 回退 active_origin
         self.active_origin.read().await.clone()
             .ok_or_else(|| "No target found (no Referer and no active origin)".to_string().into())
+    }
+
+    async fn passthrough(
+        &self,
+        req: Request<Incoming>,
+        target_url: &str,
+    ) -> Result<ProxyResponse, Box<dyn std::error::Error + Send + Sync>> {
+        let method = req.method().clone();
+
+        let hop_by_hop = [
+            "host",
+            "connection",
+            "keep-alive",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "te",
+            "trailers",
+            "transfer-encoding",
+            "upgrade",
+        ];
+        let mut headers_to_forward: Vec<(String, String)> = Vec::new();
+        for (key, value) in req.headers() {
+            let key_lower = key.as_str().to_lowercase();
+            if !hop_by_hop.contains(&key_lower.as_str()) {
+                if let Ok(v) = value.to_str() {
+                    headers_to_forward.push((key.as_str().to_string(), v.to_string()));
+                }
+            }
+        }
+
+        let body_bytes = BodyExt::collect(req.into_body())
+            .await
+            .map(|b| b.to_bytes())
+            .unwrap_or_default();
+
+        let mut req_builder = match method {
+            Method::GET => self.client.get(target_url),
+            Method::POST => self.client.post(target_url).body(body_bytes.clone()),
+            Method::PUT => self.client.put(target_url).body(body_bytes.clone()),
+            Method::PATCH => self.client.patch(target_url).body(body_bytes.clone()),
+            Method::DELETE => self.client.delete(target_url),
+            Method::HEAD => self.client.head(target_url),
+            _ => self.client.get(target_url),
+        };
+
+        for (key, value) in &headers_to_forward {
+            req_builder = req_builder.header(key.as_str(), value.as_str());
+        }
+
+        match req_builder.send().await {
+            Ok(upstream) => {
+                let status = upstream.status();
+                let mut builder = Response::builder().status(status);
+
+                for (key, value) in upstream.headers() {
+                    builder = builder.header(key, value.clone());
+                }
+
+                let body_bytes = upstream.bytes().await.unwrap_or_default();
+                Ok(builder
+                    .header("content-length", body_bytes.len().to_string())
+                    .body(Full::new(Bytes::from(body_bytes)))
+                    .unwrap())
+            }
+            Err(e) => Ok(Response::builder()
+                .status(StatusCode::BAD_GATEWAY)
+                .header("content-type", "text/plain; charset=utf-8")
+                .body(Full::new(Bytes::from(format!(
+                    "Passthrough request failed: {}",
+                    e
+                ))))
+                .unwrap()),
+        }
     }
 
     async fn forward(
