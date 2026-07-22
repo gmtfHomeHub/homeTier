@@ -28,7 +28,7 @@ impl TunManager for AndroidTunManager {
             .await
             .map_err(|e| format!("link up 失败: {}", e))?;
 
-        if let Some(ip) = config.ip {
+        if let Some(ref ip) = config.ip {
             let ip_addr: Ipv4Addr = ip.parse().map_err(|e| format!("无效 IP: {}", e))?;
             let prefix = config.cidr_prefix.unwrap_or(24);
             ifcfg.add_ipv4_ip(&ifname, ip_addr, prefix)
