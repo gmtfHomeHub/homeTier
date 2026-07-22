@@ -1,5 +1,7 @@
 use tauri::State;
 use crate::db::Database;
+use crate::platform;
+use crate::types::{AuthResult, TunStatus};
 use std::sync::Arc;
 
 #[tauri::command]
@@ -35,4 +37,38 @@ pub fn get_webapp_mode(db: State<'_, Arc<Database>>) -> Result<String, String> {
 #[tauri::command]
 pub fn set_webapp_mode(mode: String, db: State<'_, Arc<Database>>) -> Result<(), String> {
     db.set_setting("WEBAPP_MODE", &mode)
+}
+
+/// 获取 TUN 设备状态
+#[tauri::command]
+pub fn get_tun_status() -> TunStatus {
+    let adapter = platform::get_adapter();
+    TunStatus {
+        tun_available: platform::is_tun_available(),
+        platform: adapter.get_platform_name(),
+        elevated: adapter.is_elevated(),
+    }
+}
+
+/// 重新检查 TUN 可用性（刷新缓存）
+#[tauri::command]
+pub fn refresh_tun_status() -> TunStatus {
+    let available = platform::check_tun_available();
+    let adapter = platform::get_adapter();
+    TunStatus {
+        tun_available: available,
+        platform: adapter.get_platform_name(),
+        elevated: adapter.is_elevated(),
+    }
+}
+
+/// 由用户手动触发 TUN 授权。按平台不同会弹系统级授权对话框。
+#[tauri::command]
+pub fn authorize_tun() -> AuthResult {
+    let result = platform::get_adapter().authorize_tun();
+    if result.success && !result.needs_restart {
+        // 授权后立即生效的平台（如 macOS），刷新缓存
+        platform::init_tun_cap_check();
+    }
+    result
 }

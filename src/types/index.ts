@@ -100,6 +100,18 @@ export interface PeerInfo {
   nat_type?: string;
 }
 
+export interface AuthResult {
+  success: boolean;
+  message: string;
+  needs_restart: boolean;
+}
+
+export interface TunStatus {
+  tun_available: boolean;
+  platform: string;
+  elevated: boolean;
+}
+
 export interface SpaceApp {
   id: string;
   space_id: string;

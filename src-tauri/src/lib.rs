@@ -84,6 +84,9 @@ pub fn run() -> std::process::ExitCode {
             let screen_share = Arc::new(screen::share::ScreenShareEngine::new());
             app.manage(screen_share);
 
+            // 初始化 TUN 能力检查
+            platform::init_tun_cap_check();
+
             // 启动 HTTP 代理服务器（用于绕过 iframe 安全限制）
             let active_origin: ActiveOrigin = Arc::new(RwLock::new(None));
             let key_map: ProxyKeyMap = Arc::new(RwLock::new(HashMap::new()));
@@ -179,6 +182,9 @@ pub fn run() -> std::process::ExitCode {
             // WebView 模式
             commands::util::get_webapp_mode,
             commands::util::set_webapp_mode,
+            commands::util::get_tun_status,
+            commands::util::refresh_tun_status,
+            commands::util::authorize_tun,
             commands::app_view::open_app_view,
             commands::app_view::close_app_view,
             commands::app_view::resize_app_view,

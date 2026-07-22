@@ -11,6 +11,8 @@ import type {
   NetworkConfig,
   LogEntry,
   SpaceApp,
+  AuthResult,
+  TunStatus,
 } from "../types";
 
 // === Space Commands ===
@@ -208,6 +210,20 @@ export async function updateSpaceConfig(spaceId: string, configJson: string): Pr
 
 export async function getSpacePeers(spaceId: string): Promise<any[]> {
   return invoke("get_space_peers", { spaceId });
+}
+
+// === TUN 授权 ===
+
+export async function getTunStatus(): Promise<TunStatus> {
+  return invoke("get_tun_status");
+}
+
+export async function refreshTunStatus(): Promise<TunStatus> {
+  return invoke("refresh_tun_status");
+}
+
+export async function authorizeTun(): Promise<AuthResult> {
+  return invoke("authorize_tun");
 }
 
 // === Space Apps ===

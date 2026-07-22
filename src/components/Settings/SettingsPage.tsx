@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { LogViewer } from "../Log/LogViewer";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
-import { Settings as SettingsIcon, Terminal, Network, Palette, Languages, HelpCircle } from "lucide-react";
+import { TunAuthPanel } from "./TunAuthPanel";
+import { Settings as SettingsIcon, Terminal, Network, Palette, Languages, HelpCircle, Shield } from "lucide-react";
 import { getSystemConfig, setSystemConfig, getRelayPrefix, setRelayPrefix, getWebappMode, setWebappMode } from "../../utils/api";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { EasyTierConfig } from "../../types/config";
@@ -174,6 +175,15 @@ export function SettingsPage() {
                   }}
                   placeholder="homeTier_"
                 />
+              </section>
+
+              {/* TUN 授权 */}
+              <section>
+                <Flex align="center" gap="2" mb="3">
+                  <Shield size={16} />
+                  <Text size="2" weight="bold">虚拟网卡授权</Text>
+                </Flex>
+                <TunAuthPanel />
               </section>
 
               {/* WebView 模式 */}

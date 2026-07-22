@@ -2,6 +2,9 @@ use serde::Serialize;
 use std::sync::OnceLock;
 use std::sync::Mutex;
 
+#[cfg(target_os = "windows")]
+use windows::Win32::System::Diagnostics::Debug::OutputDebugStringA;
+
 /// 日志级别
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -32,6 +35,34 @@ fn store() -> &'static Mutex<Vec<LogEntry>> {
 pub fn clear() {
     if let Ok(mut logs) = store().lock() {
         logs.clear();
+    }
+}
+
+/// 将消息同时写入应用内存日志和 OS 系统日志。
+/// 适用于授权失败等重要错误。
+pub fn log_system(tag: &str, message: &str) {
+    log(LogLevel::Error, tag, message.to_string(), None);
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("logger")
+            .args(["-t", &format!("homeTier[{}]", tag), "-p", "user.err", "--", message])
+            .status();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("logger")
+            .args(["-t", &format!("homeTier[{}]", tag), "-p", "user.err", "--", message])
+            .status();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // Windows Event Log 写入 (简化: 通过 OutputDebugString)
+        let formatted = format!("homeTier[{}]: {}\0", tag, message);
+        unsafe {
+            OutputDebugStringA(
+                windows::core::s!(formatted),
+            );
+        }
     }
 }
 
