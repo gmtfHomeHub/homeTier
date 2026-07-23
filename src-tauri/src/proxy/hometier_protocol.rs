@@ -170,7 +170,7 @@ var _o=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u)
 var _WS=window.WebSocket;window.WebSocket=function(u,p){{if(typeof u=="string"){{u=r_ws(u)}}return new _WS(u,p)}};window.WebSocket.prototype=_WS.prototype;window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;
 function r_ws(u){{var m=u.match(/^(wss?):\/\/(?:hometierproxy|127\.0\.0\.1|localhost)(?::\d+)?(?=\/|\?|#|$)/i);if(m)return u;var s=u.indexOf("://");if(s<0)return u;var sc=u.substring(0,s);var rest=u.substring(s+3);var p=rest.indexOf("/");var h=p>=0?rest.substring(0,p):rest;var pa=p>=0?rest.substring(p):"/";return "ws://127.0.0.1:"+P+"/"+(sc==="wss"?"wss":"ws")+"/"+h+pa}};
 function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/')return "hometierproxy://"+H+"/"+u.replace(/^\/+/,"");var m=u.match(/^https?:\/\/hometierproxy(?::\d+)?(?=\/|\?|#|$)/i);if(m)return u.replace(/^https?:\/\/[^\/]+/,"hometierproxy://"+H);return u.replace(RegExp("^https?://"+H.replace(/\./g,"\\.")+"(?=/|\\?|#|$)","i"),"hometierproxy://"+H)}};
-}}})()"#,
+}})()"#,
         host_key, proxy_port
     );
 

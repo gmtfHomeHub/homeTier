@@ -114,10 +114,10 @@ pub async fn handle_stream(
     let default_port: u16 = if scheme == "wss" { 443 } else { 80 };
     let (target_host, target_port) = match authority.rfind(':') {
         Some(pos) => (
-            &authority[..pos],
+            authority[..pos].to_string(),
             authority[pos + 1..].parse().unwrap_or(default_port),
         ),
-        None => (authority, default_port),
+        None => (authority.to_string(), default_port),
     };
 
     let mut ws_key = String::new();
@@ -162,13 +162,13 @@ pub async fn handle_stream(
             ))
             .with_no_client_auth();
         let connector = tokio_rustls::TlsConnector::from(Arc::new(config));
-        let domain = rustls::pki_types::ServerName::try_from(target_host)
+        let domain = rustls::pki_types::ServerName::try_from(target_host.clone())
             .map_err(|_| format!("invalid hostname: {}", target_host))?;
         let tls_stream = connector
             .connect(domain, bare)
             .await
             .map_err(|e| format!("tls connect: {}", e))?;
-        WsUpstream::Tls(tls_stream)
+        WsUpstream::Tls(tokio_rustls::TlsStream::Client(tls_stream))
     } else {
         WsUpstream::Plain(bare)
     };
