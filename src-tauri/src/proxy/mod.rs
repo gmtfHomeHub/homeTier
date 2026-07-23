@@ -3,6 +3,7 @@ pub mod plugin;
 pub mod plugins;
 pub mod rewriter;
 pub mod server;
+pub mod ws_proxy;
 
 pub use plugin::{PluginChain, ProxyHandler, ProxyPlugin, RequestContext};
 pub use server::ProxyServer;

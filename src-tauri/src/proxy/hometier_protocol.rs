@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
@@ -8,6 +8,13 @@ use reqwest::blocking::Client;
 use sha2::Digest;
 use sha2::Sha256;
 use tauri::{AppHandle, Runtime, UriSchemeContext, UriSchemeResponder};
+
+/// 代理服务器端口，由 lib.rs 在启动后设置
+static PROXY_PORT: OnceLock<u16> = OnceLock::new();
+
+pub fn set_proxy_port(port: u16) {
+    let _ = PROXY_PORT.set(port);
+}
 
 struct ForwardTarget {
     host: String,
@@ -154,16 +161,17 @@ fn inject_proxy_script(html_bytes: Vec<u8>, host_key: &str) -> (Vec<u8>, String)
         Err(_) => return (html_bytes, String::new()),
     };
 
+    let proxy_port = PROXY_PORT.get().copied().unwrap_or(1420);
     let js_content = format!(
         r#"(function(){{
-var H="{}";
+var H="{}",P="{}";
 var _f=window.fetch;window.fetch=function(u,i){{if(typeof u=="string"){{u=r(u)}}else if(u&&u.url){{var nu=r(u.url);if(nu!==u.url)u=new Request(nu,u)}}return _f.call(this,u,i)}};
 var _o=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){{if(typeof u=="string"){{arguments[1]=r(u)}}return _o.apply(this,arguments)}};
 var _WS=window.WebSocket;window.WebSocket=function(u,p){{if(typeof u=="string"){{u=r_ws(u)}}return new _WS(u,p)}};window.WebSocket.prototype=_WS.prototype;window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;
-function r_ws(u){{var m=u.match(/^(wss?):\/\/(?:hometierproxy|127\.0\.0\.1|localhost)(?::\d+)?(?=\/|\?|#|$)/i);if(m)return m[1].toLowerCase()+"://"+H+u.substring(m[0].length);return u}};
+function r_ws(u){{var m=u.match(/^(wss?):\/\/(?:hometierproxy|127\.0\.0\.1|localhost)(?::\d+)?(?=\/|\?|#|$)/i);if(m)return u;var s=u.indexOf("://");if(s<0)return u;var sc=u.substring(0,s);var rest=u.substring(s+3);var p=rest.indexOf("/");var h=p>=0?rest.substring(0,p):rest;var pa=p>=0?rest.substring(p):"/";return "ws://127.0.0.1:"+P+"/"+(sc==="wss"?"wss":"ws")+"/"+h+pa}};
 function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/')return "hometierproxy://"+H+"/"+u.replace(/^\/+/,"");var m=u.match(/^https?:\/\/hometierproxy(?::\d+)?(?=\/|\?|#|$)/i);if(m)return u.replace(/^https?:\/\/[^\/]+/,"hometierproxy://"+H);return u.replace(RegExp("^https?://"+H.replace(/\./g,"\\.")+"(?=/|\\?|#|$)","i"),"hometierproxy://"+H)}};
 }}})()"#,
-        host_key
+        host_key, proxy_port
     );
 
     let hash = Sha256::digest(js_content.as_bytes());

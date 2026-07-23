@@ -112,6 +112,7 @@ pub fn run() -> std::process::ExitCode {
                 handlers,
             ).map_err(|e| format!("启动代理服务器失败: {}", e))?);
             log_info!(format!("代理服务器已启动: port={}", proxy_server.port));
+            proxy::hometier_protocol::set_proxy_port(proxy_server.port);
             let _ = PROXY_SERVER.set(proxy_server.clone());
             app.manage(proxy_server);
             app.manage(key_map);
