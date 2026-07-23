@@ -6,6 +6,7 @@ use base64::Engine;
 use http::Uri;
 use reqwest::blocking::Client;
 use sha2::Digest;
+use sha2::Sha256;
 use tauri::{AppHandle, Runtime, UriSchemeContext, UriSchemeResponder};
 
 struct ForwardTarget {
@@ -146,8 +147,13 @@ fn rewrite_html_body(body: &[u8], origin_str: &str) -> Vec<u8> {
     }
 }
 
-/// 构建注入脚本内容和其 CSP hash
-fn make_inject_script(host_key: &str) -> (String, String) {
+/// 注入代理修复脚本：修复 location 属性 + 拦截 fetch/XHR 重写 URL
+fn inject_proxy_script(html_bytes: Vec<u8>, host_key: &str) -> (Vec<u8>, String) {
+    let mut html = match String::from_utf8(html_bytes.clone()) {
+        Ok(h) => h,
+        Err(_) => return (html_bytes, String::new()),
+    };
+
     let hostname = host_key.split(':').next().unwrap_or(host_key);
     let port = host_key.split(':').nth(1).unwrap_or("");
     let origin = format!("https://{}", host_key);
@@ -166,18 +172,7 @@ function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/
     let hash = Sha256::digest(js_content.as_bytes());
     let encoded = base64::engine::general_purpose::STANDARD.encode(hash);
     let csp_hash = format!("'sha256-{}'", encoded);
-
-    (format!("<script id=\"__ht\">{}</script>", js_content), csp_hash)
-}
-
-/// 注入代理修复脚本：修复 location 属性 + 拦截 fetch/XHR 重写 URL
-fn inject_proxy_script(html_bytes: Vec<u8>, host_key: &str) -> (Vec<u8>, String) {
-    let mut html = match String::from_utf8(html_bytes) {
-        Ok(h) => h,
-        Err(_) => return (html_bytes, String::new()),
-    };
-
-    let (script_tag, csp_hash) = make_inject_script(host_key);
+    let script_tag = format!("<script id=\"__ht\">{}</script>", js_content);
 
     // 注入到 <head> 之后（最早执行，拦截页面脚本）
     let lower = html.to_lowercase();
