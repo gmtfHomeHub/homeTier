@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use http::Uri;
 use reqwest::blocking::Client;
 use tauri::{AppHandle, Runtime, UriSchemeContext, UriSchemeResponder};
 
-/// 协议 URL 中标识当前请求的来源，格式为 `hometierproxy://{host}:{port}/{path}`
 struct ForwardTarget {
     host: String,
     port: Option<u16>,
@@ -55,8 +55,8 @@ fn get_or_create_client(
     }
     let client = Client::builder()
         .no_proxy()
-        .timeout(std::time::Duration::from_secs(30))
-        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(60))
+        .connect_timeout(std::time::Duration::from_secs(15))
         .build()
         .unwrap_or_default();
     map.insert(host.to_string(), client.clone());
@@ -77,10 +77,7 @@ fn strip_iframe_restrictions(resp: &mut http::Response<Vec<u8>>) {
             if joined.is_empty() {
                 headers.remove("content-security-policy");
             } else {
-                headers.insert(
-                    "content-security-policy",
-                    joined.parse().unwrap(),
-                );
+                headers.insert("content-security-policy", joined.parse().unwrap());
             }
         }
     }
@@ -105,18 +102,107 @@ fn is_html_content(content_type: Option<&http::HeaderValue>) -> bool {
     }
 }
 
+// --- Cookie Jar ---
+
+struct StoredCookie {
+    name: String,
+    value: String,
+    expires_at: Option<u64>,
+}
+
+struct PerHostCookieJar(Vec<StoredCookie>);
+
+impl PerHostCookieJar {
+    fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    fn add_set_cookie(&mut self, header: &str) {
+        let parts: Vec<&str> = header.split(';').collect();
+        if parts.is_empty() {
+            return;
+        }
+
+        let first_eq = match parts[0].find('=') {
+            Some(pos) => pos,
+            None => return,
+        };
+        let name = parts[0][..first_eq].trim().to_string();
+        let value = parts[0][first_eq + 1..].trim().to_string();
+
+        let mut expires_at: Option<u64> = None;
+        for part in &parts[1..] {
+            let part = part.trim();
+            if let Some(eq) = part.find('=') {
+                let key = part[..eq].trim().to_lowercase();
+                let val = part[eq + 1..].trim();
+                if key == "max-age" {
+                    if let Ok(secs) = val.parse::<i64>() {
+                        if secs <= 0 {
+                            expires_at = Some(0);
+                        } else {
+                            let now = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs();
+                            expires_at = Some(now + secs as u64);
+                        }
+                    }
+                }
+            }
+        }
+
+        self.0.retain(|c| c.name != name);
+        self.0.push(StoredCookie { name, value, expires_at });
+    }
+
+    fn build_cookie_header(&mut self) -> Option<String> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        self.0.retain(|c| match c.expires_at {
+            Some(exp) => exp > now,
+            None => true,
+        });
+
+        if self.0.is_empty() {
+            return None;
+        }
+
+        Some(
+            self.0
+                .iter()
+                .map(|c| format!("{}={}", c.name, c.value))
+                .collect::<Vec<_>>()
+                .join("; "),
+        )
+    }
+}
+
+// --- Request handling ---
+
 fn handle_request<R: Runtime>(
     app_handle: &AppHandle<R>,
     clients: &Arc<Mutex<HashMap<String, Client>>>,
+    cookie_jars: &Arc<Mutex<HashMap<String, PerHostCookieJar>>>,
     request: &http::Request<Vec<u8>>,
 ) -> Result<http::Response<Vec<u8>>, String> {
     let target = parse_target(request.uri())?;
     let forward_url = build_forward_url(&target);
-    let origin_str = build_origin_str(&target.host, target.port);
+    let host_key = build_origin_str(&target.host, target.port);
     let client = get_or_create_client(clients, &target.host);
     let method = request.method().clone();
-    let headers = request.headers().clone();
+    let req_headers = request.headers().clone();
     let body = request.body().clone();
+
+    // 1. Build forwarded request with cookie injection
+    let cookie_header = {
+        let mut jars = cookie_jars.lock().unwrap();
+        let jar = jars.entry(host_key.clone()).or_insert_with(PerHostCookieJar::new);
+        jar.build_cookie_header()
+    };
 
     let mut req_builder = match method {
         http::Method::GET => client.get(&forward_url),
@@ -132,13 +218,19 @@ fn handle_request<R: Runtime>(
         "host", "connection", "keep-alive", "proxy-authenticate",
         "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade",
     ];
-    for (key, value) in &headers {
+
+    // Forward browser headers, replacing cookie with our jar value
+    for (key, value) in &req_headers {
         let key_lower = key.as_str().to_lowercase();
-        if !hop_by_hop.contains(&key_lower) {
+        if !hop_by_hop.contains(&key_lower) && key_lower != "cookie" {
             req_builder = req_builder.header(key.as_str(), value.as_str());
         }
     }
+    if let Some(ref cookies) = cookie_header {
+        req_builder = req_builder.header("Cookie", cookies.as_str());
+    }
 
+    // 2. Send upstream
     let upstream = req_builder
         .send()
         .map_err(|e| format!("Forward request failed: {}", e))?;
@@ -151,6 +243,16 @@ fn handle_request<R: Runtime>(
         .map_err(|e| format!("Failed to read upstream body: {}", e))?
         .to_vec();
 
+    // 3. Capture Set-Cookie into jar
+    for value in upstream_headers.get_all("set-cookie") {
+        if let Ok(val) = value.to_str() {
+            let mut jars = cookie_jars.lock().unwrap();
+            let jar = jars.entry(host_key.clone()).or_insert_with(PerHostCookieJar::new);
+            jar.add_set_cookie(val);
+        }
+    }
+
+    // 4. Build proxy response (strip Set-Cookie from downstream)
     let mut builder = http::Response::builder().status(status);
 
     for (key, value) in &upstream_headers {
@@ -158,6 +260,7 @@ fn handle_request<R: Runtime>(
         if key_lower == "content-length"
             || key_lower == "transfer-encoding"
             || key_lower == "content-encoding"
+            || key_lower == "set-cookie"
         {
             continue;
         }
@@ -165,7 +268,7 @@ fn handle_request<R: Runtime>(
     }
 
     let body = if is_html_content(content_type) {
-        rewrite_html_body(body_bytes, &origin_str)
+        rewrite_html_body(body_bytes, &host_key)
     } else {
         body_bytes
     };
@@ -184,6 +287,8 @@ fn handle_request<R: Runtime>(
 pub fn register_protocol<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     let clients: Arc<Mutex<HashMap<String, Client>>> =
         Arc::new(Mutex::new(HashMap::new()));
+    let cookie_jars: Arc<Mutex<HashMap<String, PerHostCookieJar>>> =
+        Arc::new(Mutex::new(HashMap::new()));
 
     builder.register_asynchronous_uri_scheme_protocol(
         "hometierproxy",
@@ -192,9 +297,10 @@ pub fn register_protocol<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Build
               responder: UriSchemeResponder| {
             let app_handle = ctx.app_handle().clone();
             let clients = clients.clone();
+            let cookie_jars = cookie_jars.clone();
 
             std::thread::spawn(move || {
-                let result = handle_request(&app_handle, &clients, &request);
+                let result = handle_request(&app_handle, &clients, &cookie_jars, &request);
                 match result {
                     Ok(response) => responder.respond(response),
                     Err(e) => {
