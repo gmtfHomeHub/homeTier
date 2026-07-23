@@ -168,7 +168,7 @@ var H="{}",P="{}";
 var _f=window.fetch;window.fetch=function(u,i){{if(typeof u=="string"){{u=r(u)}}else if(u&&u.url){{var nu=r(u.url);if(nu!==u.url)u=new Request(nu,u)}}return _f.call(this,u,i)}};
 var _o=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){{if(typeof u=="string"){{arguments[1]=r(u)}}return _o.apply(this,arguments)}};
 var _WS=window.WebSocket;window.WebSocket=function(u,p){{if(typeof u=="string"){{u=r_ws(u)}}return new _WS(u,p)}};window.WebSocket.prototype=_WS.prototype;window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;
-function r_ws(u){{var m=u.match(/^(wss?):\/\/(?:hometierproxy|127\.0\.0\.1|localhost)(?::\d+)?(?=\/|\?|#|$)/i);if(m)return u;var s=u.indexOf("://");if(s<0)return u;var sc=u.substring(0,s);var rest=u.substring(s+3);var p=rest.indexOf("/");var h=p>=0?rest.substring(0,p):rest;var pa=p>=0?rest.substring(p):"/";return "ws://127.0.0.1:"+P+"/"+(sc==="wss"?"wss":"ws")+"/"+h+pa}};
+function r_ws(u){{if(u.indexOf("ws://127.0.0.1:"+P+"/")===0)return u;var m=u.match(/^(wss?):\/\/(.*)/i);if(!m)return u;var r=m[2].replace(/^hometierproxy\/{{0,2}}/i,"");var s=r.indexOf("/");var h=s>=0?r.substring(0,s):r;var pa=s>=0?r.substring(s):"/";return "ws://127.0.0.1:"+P+"/"+m[1].toLowerCase()+"/"+h+pa}};
 function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/')return "hometierproxy://"+H+"/"+u.replace(/^\/+/,"");var m=u.match(/^https?:\/\/hometierproxy(?::\d+)?(?=\/|\?|#|$)/i);if(m)return u.replace(/^https?:\/\/[^\/]+/,"hometierproxy://"+H);return u.replace(RegExp("^https?://"+H.replace(/\./g,"\\.")+"(?=/|\\?|#|$)","i"),"hometierproxy://"+H)}};
 }})()"#,
         host_key, proxy_port
@@ -339,6 +339,33 @@ fn handle_request<R: Runtime>(
     }
     if let Some(ref cookies) = cookie_header {
         req_builder = req_builder.header("Cookie", cookies.as_str());
+    }
+
+    // Fix Origin/Referer: replace hometierproxy:// with http:// for upstream
+    let origin_target_str = match target.port {
+        Some(p) => format!("{}:{}", target.host, p),
+        None => target.host.clone(),
+    };
+    let upstream_base = format!("http://{}", origin_target_str);
+    if let Some(origin_val) = req_headers.get("origin") {
+        if let Ok(origin_str) = origin_val.to_str() {
+            if origin_str.starts_with("hometierproxy://") {
+                req_builder = req_builder.header("origin", &upstream_base);
+            }
+        }
+    }
+    if let Some(referer_val) = req_headers.get("referer") {
+        if let Ok(referer_str) = referer_val.to_str() {
+            if referer_str.starts_with("hometierproxy://") {
+                if let Some(path_start) = referer_str.find('/') {
+                    let after_scheme = &referer_str[path_start + 1..];
+                    if let Some(slash_pos) = after_scheme.find('/') {
+                        let path_and_qs = &after_scheme[slash_pos..];
+                        req_builder = req_builder.header("referer", format!("{}{}", upstream_base, path_and_qs));
+                    }
+                }
+            }
+        }
     }
 
     // 2. Send upstream

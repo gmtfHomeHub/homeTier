@@ -5,6 +5,7 @@ use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tokio::time::{timeout, Duration};
 
 enum WsUpstream {
     Plain(TcpStream),
@@ -151,9 +152,13 @@ pub async fn handle_stream(
         target_port,
     );
 
-    let bare = TcpStream::connect(format!("{}:{}", target_host, target_port))
-        .await
-        .map_err(|e| format!("connect upstream {}:{}: {}", target_host, target_port, e))?;
+    let bare = timeout(
+        Duration::from_secs(15),
+        TcpStream::connect(format!("{}:{}", target_host, target_port)),
+    )
+    .await
+    .map_err(|_| format!("connect upstream {}:{}: timeout", target_host, target_port))?
+    .map_err(|e| format!("connect upstream {}:{}: {}", target_host, target_port, e))?;
 
     let mut upstream: WsUpstream = if scheme == "wss" {
         let config = rustls::ClientConfig::builder()
@@ -168,7 +173,7 @@ pub async fn handle_stream(
             .connect(domain, bare)
             .await
             .map_err(|e| format!("tls connect: {}", e))?;
-        WsUpstream::Tls(tokio_rustls::TlsStream::Client(tls_stream))
+        WsUpstream::Tls(tls_stream)
     } else {
         WsUpstream::Plain(bare)
     };
@@ -203,11 +208,7 @@ pub async fn handle_stream(
 
     if !resp_str.contains("101") {
         let _ = writer.write_all(resp_data).await;
-        return Err(format!(
-            "upstream did not switch: {}",
-            resp_str.lines().next().unwrap_or("?")
-        )
-        .into());
+        return Ok(());
     }
 
     let resp_eoh = resp_data
