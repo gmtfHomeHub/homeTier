@@ -154,19 +154,14 @@ fn inject_proxy_script(html_bytes: Vec<u8>, host_key: &str) -> (Vec<u8>, String)
         Err(_) => return (html_bytes, String::new()),
     };
 
-    let hostname = host_key.split(':').next().unwrap_or(host_key);
-    let port = host_key.split(':').nth(1).unwrap_or("");
-    let origin = format!("https://{}", host_key);
-
     let js_content = format!(
         r#"(function(){{
-var H="{}",N="{}",P="{}",S="https",O="{}";
-try{{Object.defineProperties(window.location,{{host:{{get:function(){{return H}},configurable:!0}},hostname:{{get:function(){{return N}},configurable:!0}},port:{{get:function(){{return P}},configurable:!0}},protocol:{{get:function(){{return S+":"}},configurable:!0}},origin:{{get:function(){{return O}},configurable:!0}}}})}}catch(e){{}}
+var H="{}";
 var _f=window.fetch;window.fetch=function(u,i){{if(typeof u=="string"){{u=r(u)}}else if(u&&u.url){{var nu=r(u.url);if(nu!==u.url)u=new Request(nu,u)}}return _f.call(this,u,i)}};
 var _o=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){{if(typeof u=="string"){{arguments[1]=r(u)}}return _o.apply(this,arguments)}};
-function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/')return "hometierproxy://"+H+"/"+u.replace(/^\/+/,"");return u.replace(RegExp("^https?://"+H.replace(/\./g,"\\.")+"(?=/|\\?|#|$)","i"),"hometierproxy://"+H)}};
+function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/')return "hometierproxy://"+H+"/"+u.replace(/^\/+/,"");var m=u.match(/^https?:\/\/hometierproxy(?::\d+)?(?=\/|\?|#|$)/i);if(m)return u.replace(/^https?:\/\/[^\/]+/,"hometierproxy://"+H);return u.replace(RegExp("^https?://"+H.replace(/\./g,"\\.")+"(?=/|\\?|#|$)","i"),"hometierproxy://"+H)}};
 }})()"#,
-        host_key, hostname, port, origin
+        host_key
     );
 
     let hash = Sha256::digest(js_content.as_bytes());
@@ -415,6 +410,7 @@ pub fn register_protocol<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Build
                         let error_response = http::Response::builder()
                             .status(500)
                             .header("content-type", "text/plain; charset=utf-8")
+                            .header("access-control-allow-origin", "*")
                             .body(e.into_bytes())
                             .unwrap();
                         responder.respond(error_response);
