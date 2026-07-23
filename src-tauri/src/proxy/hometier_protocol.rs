@@ -159,8 +159,10 @@ fn inject_proxy_script(html_bytes: Vec<u8>, host_key: &str) -> (Vec<u8>, String)
 var H="{}";
 var _f=window.fetch;window.fetch=function(u,i){{if(typeof u=="string"){{u=r(u)}}else if(u&&u.url){{var nu=r(u.url);if(nu!==u.url)u=new Request(nu,u)}}return _f.call(this,u,i)}};
 var _o=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){{if(typeof u=="string"){{arguments[1]=r(u)}}return _o.apply(this,arguments)}};
+var _WS=window.WebSocket;window.WebSocket=function(u,p){{if(typeof u=="string"){{u=r_ws(u)}}return new _WS(u,p)}};window.WebSocket.prototype=_WS.prototype;window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;
+function r_ws(u){{var m=u.match(/^(wss?):\/\/(?:hometierproxy|127\.0\.0\.1|localhost)(?::\d+)?(?=\/|\?|#|$)/i);if(m)return m[1].toLowerCase()+"://"+H+u.substring(m[0].length);return u}};
 function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/')return "hometierproxy://"+H+"/"+u.replace(/^\/+/,"");var m=u.match(/^https?:\/\/hometierproxy(?::\d+)?(?=\/|\?|#|$)/i);if(m)return u.replace(/^https?:\/\/[^\/]+/,"hometierproxy://"+H);return u.replace(RegExp("^https?://"+H.replace(/\./g,"\\.")+"(?=/|\\?|#|$)","i"),"hometierproxy://"+H)}};
-}})()"#,
+}}})()"#,
         host_key
     );
 
