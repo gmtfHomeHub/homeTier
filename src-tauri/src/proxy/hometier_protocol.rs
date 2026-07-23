@@ -115,13 +115,57 @@ fn strip_iframe_restrictions(resp: &mut http::Response<Vec<u8>>) {
     }
 }
 
-fn rewrite_html_body(body: Vec<u8>, origin_str: &str) -> Vec<u8> {
+fn rewrite_html_body(body: &[u8], origin_str: &str) -> Vec<u8> {
     let old_prefix = format!("http://{}", origin_str);
     let new_prefix = format!("hometierproxy://{}", origin_str);
-    match String::from_utf8(body) {
+    match String::from_utf8(body.to_vec()) {
         Ok(html) => html.replace(&old_prefix, &new_prefix).into_bytes(),
         Err(_) => Vec::new(),
     }
+}
+
+/// 注入代理修复脚本：修复 location 属性 + 拦截 fetch/XHR 重写 URL
+fn inject_proxy_script(html_bytes: Vec<u8>, host_key: &str) -> Vec<u8> {
+    let mut html = match String::from_utf8(html_bytes) {
+        Ok(h) => h,
+        Err(_) => return html_bytes,
+    };
+
+    let hostname = host_key.split(':').next().unwrap_or(host_key);
+    let port = host_key.split(':').nth(1).unwrap_or("");
+    let origin = format!("https://{}", host_key);
+
+    let script = format!(
+        r#"<script id="__ht">(function(){{
+var H="{}",N="{}",P="{}",S="https",O="{}";
+try{{Object.defineProperties(window.location,{{host:{{get:function(){{return H}},configurable:!0}},hostname:{{get:function(){{return N}},configurable:!0}},port:{{get:function(){{return P}},configurable:!0}},protocol:{{get:function(){{return S+":"}},configurable:!0}},origin:{{get:function(){{return O}},configurable:!0}}}})}}catch(e){{}}
+var _f=window.fetch;window.fetch=function(u,i){{if(typeof u=="string"){{u=r(u)}}else if(u&&u.url){{var nu=r(u.url);if(nu!==u.url)u=new Request(nu,u)}}return _f.call(this,u,i)}};
+var _o=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){{if(typeof u=="string"){{arguments[1]=r(u)}}return _o.apply(this,arguments)}};
+function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/')return "hometierproxy://"+H+"/"+u.replace(/^\/+/,"");return u.replace(RegExp("^https?://"+H.replace(/\./g,"\\.")+"(?=/|\\?|#|$)","i"),"hometierproxy://"+H)}};
+}})()</script>"#,
+        host_key, hostname, port, origin
+    );
+
+    // 注入到 <head> 之后（最早执行，拦截页面脚本）
+    let lower = html.to_lowercase();
+    if let Some(pos) = lower.find("<head") {
+        let after = pos + 5;
+        let rest = &lower[after..];
+        if let Some(close) = rest.find('>') {
+            let inject_at = after + close + 1;
+            html.insert_str(inject_at, &script);
+            return html.into_bytes();
+        }
+    }
+    // fallback: 在 </head> 前注入
+    if let Some(pos) = lower.find("</head>") {
+        html.insert_str(pos, &script);
+    } else if let Some(pos) = lower.find("<body") {
+        html.insert_str(pos, &script);
+    } else {
+        html.insert_str(0, &script);
+    }
+    html.into_bytes()
 }
 
 fn is_html_content(content_type: Option<&http::HeaderValue>) -> bool {
@@ -302,7 +346,8 @@ fn handle_request<R: Runtime>(
     }
 
     let body = if is_html_content(content_type) {
-        rewrite_html_body(body_bytes, &host_key)
+        let rewritten = rewrite_html_body(&body_bytes, &host_key);
+        inject_proxy_script(rewritten, &host_key)
     } else {
         body_bytes
     };
