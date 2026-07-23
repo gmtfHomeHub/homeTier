@@ -60,52 +60,34 @@ impl ProxyServer {
                                     let chain = chain.clone();
                                     let shutdown_flag = shutdown_flag_clone.clone();
                                     tokio::spawn(async move {
-                                        // Peek at first bytes to detect WebSocket upgrade
-                                        let mut peek_buf = [0u8; 4096];
-                                        let peeked = match stream.peek(&mut peek_buf).await {
-                                            Ok(n) if n > 0 => &peek_buf[..n],
-                                            _ => {
-                                                let io = TokioIo::new(stream);
-                                                let service = service_fn(move |req: Request<Incoming>| {
-                                                    let chain = chain.clone();
-                                                    async move {
-                                                        let ctx = RequestContext::new();
-                                                        Ok::<_, std::convert::Infallible>(chain.process(req, ctx).await)
-                                                    }
-                                                });
-                                                let conn = http1::Builder::new()
-                                                    .serve_connection(io, service);
-                                                let _ = conn.await;
-                                                return;
-                                            }
-                                        };
-
-                                        if ws_proxy::is_ws_upgrade(peeked) {
-                                            if let Err(e) = ws_proxy::handle_stream(stream).await {
-                                                eprintln!("WebSocket proxy error: {}", e);
-                                            }
-                                        } else {
-                                            let io = TokioIo::new(stream);
-                                            let service = service_fn(move |req: Request<Incoming>| {
-                                                let chain = chain.clone();
-                                                async move {
+                                        let io = TokioIo::new(stream);
+                                        let service = service_fn(move |req: Request<Incoming>| {
+                                            let chain = chain.clone();
+                                            async move {
+                                                if ws_proxy::is_ws_upgrade(&req) {
+                                                    Ok::<_, std::convert::Infallible>(
+                                                        ws_proxy::handle_upgrade(req).await,
+                                                    )
+                                                } else {
                                                     let ctx = RequestContext::new();
-                                                    Ok::<_, std::convert::Infallible>(chain.process(req, ctx).await)
+                                                    Ok::<_, std::convert::Infallible>(
+                                                        chain.process(req, ctx).await,
+                                                    )
                                                 }
-                                            });
-                                            let conn = http1::Builder::new()
-                                                .serve_connection(io, service);
-                                            tokio::select! {
-                                                _ = conn => {}
-                                                _ = async {
-                                                    loop {
-                                                        if *shutdown_flag.lock().await {
-                                                            break;
-                                                        }
-                                                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                                                    }
-                                                } => {}
                                             }
+                                        });
+                                        let conn = http1::Builder::new()
+                                            .serve_connection(io, service);
+                                        tokio::select! {
+                                            _ = conn => {}
+                                            _ = async {
+                                                loop {
+                                                    if *shutdown_flag.lock().await {
+                                                        break;
+                                                    }
+                                                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                                                }
+                                            } => {}
                                         }
                                     });
                                 }

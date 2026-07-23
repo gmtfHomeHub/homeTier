@@ -2,6 +2,9 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use http_body_util::Full;
+use hyper::body::{Bytes, Incoming};
+use hyper::{Request, Response};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -58,54 +61,52 @@ impl AsyncWrite for WsUpstream {
     }
 }
 
-pub fn is_ws_upgrade(buf: &[u8]) -> bool {
-    let s = match std::str::from_utf8(buf) {
-        Ok(s) => s,
-        Err(_) => return false,
-    };
-    if !s.starts_with("GET") && !s.starts_with("get") {
-        return false;
-    }
-    let lower = s.to_lowercase();
-    lower.contains("upgrade:") && lower.contains("websocket")
+fn error_response(status: u16, msg: &str) -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(status)
+        .header("content-type", "text/plain; charset=utf-8")
+        .header("access-control-allow-origin", "*")
+        .body(Full::new(Bytes::from(msg.to_string())))
+        .unwrap()
 }
 
-pub async fn handle_stream(
-    stream: TcpStream,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let (mut reader, mut writer) = tokio::io::split(stream);
-
-    let mut buf = vec![0u8; 8192];
-    let n = reader
-        .read(&mut buf)
-        .await
-        .map_err(|e| format!("read ws request: {}", e))?;
-    if n == 0 {
-        return Err("connection closed before ws request".into());
+fn extract_header<'a>(headers: &'a str, name: &str) -> &'a str {
+    for line in headers.lines() {
+        if let Some((k, v)) = line.split_once(':') {
+            if k.trim().to_lowercase() == name {
+                return v.trim();
+            }
+        }
     }
-    let data = &buf[..n];
+    ""
+}
 
-    let eoh = data
-        .windows(4)
-        .position(|w| w == b"\r\n\r\n")
-        .ok_or_else(|| "incomplete ws headers".to_string())?;
-    let header_str = std::str::from_utf8(&data[..eoh])
-        .map_err(|_| "invalid utf-8 in ws request".to_string())?;
+pub fn is_ws_upgrade(req: &Request<Incoming>) -> bool {
+    req.method() == hyper::Method::GET
+        && req
+            .headers()
+            .get("upgrade")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.to_lowercase().contains("websocket"))
+            .unwrap_or(false)
+        && req
+            .headers()
+            .get("connection")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.to_lowercase().contains("upgrade"))
+            .unwrap_or(false)
+}
 
-    let mut lines = header_str.lines();
-    let request_line = lines.next().ok_or("missing request line")?;
-    let parts: Vec<&str> = request_line.split_whitespace().collect();
-    if parts.len() < 2 {
-        return Err("invalid request line".into());
-    }
-    let path = parts[1];
+pub async fn handle_upgrade(req: Request<Incoming>) -> Response<Full<Bytes>> {
+    let (parts, body) = req.into_parts();
 
+    let path = parts.uri.path();
     let (scheme, rest) = if let Some(r) = path.strip_prefix("/ws/") {
         ("ws", r)
     } else if let Some(r) = path.strip_prefix("/wss/") {
         ("wss", r)
     } else {
-        return Err(format!("invalid ws proxy path: {}", path).into());
+        return error_response(400, &format!("invalid ws proxy path: {}", path));
     };
 
     let (authority, tpath) = match rest.find('/') {
@@ -121,17 +122,18 @@ pub async fn handle_stream(
         None => (authority.to_string(), default_port),
     };
 
-    let mut ws_key = String::new();
-    let mut ws_version = String::new();
-    for line in lines {
-        if let Some((k, v)) = line.split_once(':') {
-            match k.trim().to_lowercase().as_str() {
-                "sec-websocket-key" => ws_key = v.trim().to_string(),
-                "sec-websocket-version" => ws_version = v.trim().to_string(),
-                _ => {}
-            }
-        }
-    }
+    let ws_key = parts
+        .headers
+        .get("sec-websocket-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let ws_version = parts
+        .headers
+        .get("sec-websocket-version")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("13")
+        .to_string();
 
     let upstream_req = format!(
         "GET {} HTTP/1.1\r\n\
@@ -152,49 +154,31 @@ pub async fn handle_stream(
         target_port,
     );
 
-    let bare = timeout(
-        Duration::from_secs(15),
-        TcpStream::connect(format!("{}:{}", target_host, target_port)),
-    )
-    .await
-    .map_err(|_| format!("connect upstream {}:{}: timeout", target_host, target_port))?
-    .map_err(|e| format!("connect upstream {}:{}: {}", target_host, target_port, e))?;
-
-    let mut upstream: WsUpstream = if scheme == "wss" {
-        let config = rustls::ClientConfig::builder()
-            .with_root_certificates(rustls::RootCertStore::from_iter(
-                webpki_roots::TLS_SERVER_ROOTS.iter().cloned(),
-            ))
-            .with_no_client_auth();
-        let connector = tokio_rustls::TlsConnector::from(Arc::new(config));
-        let domain = rustls::pki_types::ServerName::try_from(target_host.clone())
-            .map_err(|_| format!("invalid hostname: {}", target_host))?;
-        let tls_stream = connector
-            .connect(domain, bare)
-            .await
-            .map_err(|e| format!("tls connect: {}", e))?;
-        WsUpstream::Tls(tokio_rustls::TlsStream::Client(tls_stream))
-    } else {
-        WsUpstream::Plain(bare)
+    let mut upstream = match connect_upstream(&target_host, target_port, scheme).await {
+        Ok(u) => u,
+        Err(e) => return error_response(502, &e),
     };
 
-    upstream
-        .write_all(upstream_req.as_bytes())
-        .await
-        .map_err(|e| format!("send upstream ws upgrade: {}", e))?;
+    if let Err(e) = upstream.write_all(upstream_req.as_bytes()).await {
+        return error_response(502, &format!("send upstream: {}", e));
+    }
 
+    // Read upstream response (HTTP headers only, rest is WS frames)
     let mut resp_buf = vec![0u8; 4096];
     let mut resp_total = 0;
     loop {
-        let nr = upstream
-            .read(&mut resp_buf[resp_total..])
-            .await
-            .map_err(|e| format!("read upstream response: {}", e))?;
+        let nr = match upstream.read(&mut resp_buf[resp_total..]).await {
+            Ok(n) => n,
+            Err(e) => return error_response(502, &format!("read upstream response: {}", e)),
+        };
         if nr == 0 {
             break;
         }
         resp_total += nr;
-        if resp_buf[..resp_total].windows(4).any(|w| w == b"\r\n\r\n") {
+        if resp_buf[..resp_total]
+            .windows(4)
+            .any(|w| w == b"\r\n\r\n")
+        {
             break;
         }
         if resp_total == resp_buf.len() {
@@ -203,60 +187,108 @@ pub async fn handle_stream(
     }
 
     let resp_data = &resp_buf[..resp_total];
-    let resp_str =
-        std::str::from_utf8(resp_data).map_err(|_| "invalid utf-8 upstream response")?;
+    let resp_str = match std::str::from_utf8(resp_data) {
+        Ok(s) => s,
+        Err(_) => return error_response(502, "invalid utf-8 upstream response"),
+    };
 
     if !resp_str.contains("101") {
-        let _ = writer.write_all(resp_data).await;
-        return Ok(());
+        return Response::builder()
+            .status(200)
+            .body(Full::new(Bytes::from(resp_data.to_vec())))
+            .unwrap();
     }
 
     let resp_eoh = resp_data
         .windows(4)
         .position(|w| w == b"\r\n\r\n")
         .unwrap();
-    let resp_header_str =
-        std::str::from_utf8(&resp_data[..resp_eoh]).map_err(|_| "invalid utf-8 headers")?;
-
-    let mut sec_ws_accept = String::new();
-    for line in resp_header_str.lines() {
-        if let Some((k, v)) = line.split_once(':') {
-            if k.trim().to_lowercase() == "sec-websocket-accept" {
-                sec_ws_accept = v.trim().to_string();
-                break;
-            }
-        }
-    }
-
-    let client_resp = format!(
-        "HTTP/1.1 101 Switching Protocols\r\n\
-         Upgrade: websocket\r\n\
-         Connection: Upgrade\r\n\
-         Sec-WebSocket-Accept: {}\r\n\
-         \r\n",
-        sec_ws_accept
-    );
-    writer
-        .write_all(client_resp.as_bytes())
-        .await
-        .map_err(|e| format!("send 101 to client: {}", e))?;
-
-    let client_leftover = &data[eoh + 4..n];
-    if !client_leftover.is_empty() {
-        let _ = upstream.write_all(client_leftover).await;
-    }
-
-    let up_leftover = &resp_buf[resp_eoh + 4..resp_total];
-    if !up_leftover.is_empty() {
-        let _ = writer.write_all(up_leftover).await;
-    }
-
-    let (mut up_reader, mut up_writer) = tokio::io::split(upstream);
-
-    tokio::select! {
-        _ = tokio::io::copy(&mut reader, &mut up_writer) => {},
-        _ = tokio::io::copy(&mut up_reader, &mut writer) => {},
+    let resp_header_str = match std::str::from_utf8(&resp_data[..resp_eoh]) {
+        Ok(s) => s,
+        Err(_) => return error_response(502, "invalid utf-8 upstream headers"),
     };
 
-    Ok(())
+    let accept_val = extract_header(resp_header_str, "sec-websocket-accept");
+    let up_leftover = resp_buf[resp_eoh + 4..resp_total].to_vec();
+
+    // Get hyper upgrade future — this is safe to call ONLY because we
+    // know the response will be 101 (hyper resolves the future after
+    // we return a 101 response below).
+    let upgrade = body.on_upgrade();
+
+    tokio::spawn(async move {
+        match timeout(Duration::from_secs(30), upgrade).await {
+            Ok(Ok(mut upgraded)) => {
+                // Forward any upstream data already read past the HTTP
+                // upgrade response (first WS frames).
+                if !up_leftover.is_empty() {
+                    let _ = upgraded.write_all(&up_leftover).await;
+                }
+                let (mut ri, mut wi) = tokio::io::split(upgraded);
+                let (mut ru, mut wu) = upstream.split();
+                tokio::select! {
+                    _ = tokio::io::copy(&mut ri, &mut wu) => {},
+                    _ = tokio::io::copy(&mut ru, &mut wi) => {},
+                };
+            }
+            Ok(Err(e)) => {
+                eprintln!("WS upgrade failed: {}", e);
+            }
+            Err(_) => {
+                eprintln!("WS upgrade timed out");
+            }
+        }
+    });
+
+    Response::builder()
+        .status(101)
+        .header("upgrade", "websocket")
+        .header("connection", "upgrade")
+        .header("sec-websocket-accept", accept_val)
+        .body(Full::new(Bytes::new()))
+        .unwrap()
+}
+
+async fn connect_upstream(
+    target_host: &str,
+    target_port: u16,
+    scheme: &str,
+) -> Result<WsUpstream, String> {
+    // Primary attempt: connect to target_host directly
+    let addr = format!("{}:{}", target_host, target_port);
+    let bare = match timeout(Duration::from_secs(10), TcpStream::connect(&addr)).await {
+        Ok(Ok(s)) => s,
+        _ => {
+            // Fallback: try 127.0.0.1 with the same port (for .sock /
+            // internal hostnames that aren't TCP-resolvable)
+            let fallback = format!("127.0.0.1:{}", target_port);
+            timeout(Duration::from_secs(10), TcpStream::connect(&fallback))
+                .await
+                .map_err(|_| format!("connect timeout: {} (fallback {})", addr, fallback))?
+                .map_err(|e| {
+                    format!(
+                        "connect failed: {} and fallback {}: {}",
+                        addr, fallback, e
+                    )
+                })?
+        }
+    };
+
+    if scheme == "wss" {
+        let config = rustls::ClientConfig::builder()
+            .with_root_certificates(rustls::RootCertStore::from_iter(
+                webpki_roots::TLS_SERVER_ROOTS.iter().cloned(),
+            ))
+            .with_no_client_auth();
+        let connector = tokio_rustls::TlsConnector::from(Arc::new(config));
+        let domain = rustls::pki_types::ServerName::try_from(target_host)
+            .map_err(|_| format!("invalid hostname: {}", target_host))?;
+        let tls_stream = connector
+            .connect(domain, bare)
+            .await
+            .map_err(|e| format!("tls connect: {}", e))?;
+        Ok(WsUpstream::Tls(tls_stream))
+    } else {
+        Ok(WsUpstream::Plain(bare))
+    }
 }
