@@ -2,8 +2,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use base64::Engine;
 use http::Uri;
 use reqwest::blocking::Client;
+use sha2::Digest;
 use tauri::{AppHandle, Runtime, UriSchemeContext, UriSchemeResponder};
 
 struct ForwardTarget {
@@ -63,11 +65,16 @@ fn get_or_create_client(
     client
 }
 
-fn strip_iframe_restrictions(resp: &mut http::Response<Vec<u8>>) {
+fn strip_iframe_restrictions(resp: &mut http::Response<Vec<u8>>, script_hash: &str) {
     let headers = resp.headers_mut();
     headers.remove("x-frame-options");
 
+    if script_hash.is_empty() {
+        return;
+    }
+
     // 处理 CSP：移除 frame-ancestors，添加 hometierproxy: 到 connect-src / default-src
+    // 添加 script-src hash 放行注入脚本
     if let Some(csp) = headers.get("content-security-policy") {
         if let Ok(val) = csp.to_str() {
             let mut directives: Vec<String> = val
@@ -75,6 +82,7 @@ fn strip_iframe_restrictions(resp: &mut http::Response<Vec<u8>>) {
                 .map(|s| s.trim().to_string())
                 .collect();
             let mut modified = false;
+            let mut has_script_src = false;
 
             for directive in directives.iter_mut() {
                 let trimmed = directive.trim().to_string();
@@ -82,6 +90,14 @@ fn strip_iframe_restrictions(resp: &mut http::Response<Vec<u8>>) {
                 if trimmed.starts_with("frame-ancestors") {
                     directive.clear();
                     modified = true;
+                }
+                // 在 script-src 中添加 hash
+                if trimmed.starts_with("script-src") {
+                    has_script_src = true;
+                    if !trimmed.contains(script_hash) {
+                        *directive = format!("{} {}", trimmed, script_hash);
+                        modified = true;
+                    }
                 }
                 // 在 connect-src 中添加 hometierproxy:
                 if trimmed.starts_with("connect-src") && !trimmed.contains("hometierproxy:") {
@@ -93,6 +109,12 @@ fn strip_iframe_restrictions(resp: &mut http::Response<Vec<u8>>) {
                     *directive = format!("{} hometierproxy:", trimmed);
                     modified = true;
                 }
+            }
+
+            // 如果 CSP 存在但没有 script-src，添加一个（放行注入脚本）
+            if !has_script_src {
+                directives.push(format!("script-src {}", script_hash));
+                modified = true;
             }
 
             if modified {
@@ -124,27 +146,38 @@ fn rewrite_html_body(body: &[u8], origin_str: &str) -> Vec<u8> {
     }
 }
 
-/// 注入代理修复脚本：修复 location 属性 + 拦截 fetch/XHR 重写 URL
-fn inject_proxy_script(html_bytes: Vec<u8>, host_key: &str) -> Vec<u8> {
-    let mut html = match String::from_utf8(html_bytes) {
-        Ok(h) => h,
-        Err(_) => return html_bytes,
-    };
-
+/// 构建注入脚本内容和其 CSP hash
+fn make_inject_script(host_key: &str) -> (String, String) {
     let hostname = host_key.split(':').next().unwrap_or(host_key);
     let port = host_key.split(':').nth(1).unwrap_or("");
     let origin = format!("https://{}", host_key);
 
-    let script = format!(
-        r#"<script id="__ht">(function(){{
+    let js_content = format!(
+        r#"(function(){{
 var H="{}",N="{}",P="{}",S="https",O="{}";
 try{{Object.defineProperties(window.location,{{host:{{get:function(){{return H}},configurable:!0}},hostname:{{get:function(){{return N}},configurable:!0}},port:{{get:function(){{return P}},configurable:!0}},protocol:{{get:function(){{return S+":"}},configurable:!0}},origin:{{get:function(){{return O}},configurable:!0}}}})}}catch(e){{}}
 var _f=window.fetch;window.fetch=function(u,i){{if(typeof u=="string"){{u=r(u)}}else if(u&&u.url){{var nu=r(u.url);if(nu!==u.url)u=new Request(nu,u)}}return _f.call(this,u,i)}};
 var _o=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){{if(typeof u=="string"){{arguments[1]=r(u)}}return _o.apply(this,arguments)}};
 function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/')return "hometierproxy://"+H+"/"+u.replace(/^\/+/,"");return u.replace(RegExp("^https?://"+H.replace(/\./g,"\\.")+"(?=/|\\?|#|$)","i"),"hometierproxy://"+H)}};
-}})()</script>"#,
+}})()"#,
         host_key, hostname, port, origin
     );
+
+    let hash = Sha256::digest(js_content.as_bytes());
+    let encoded = base64::engine::general_purpose::STANDARD.encode(hash);
+    let csp_hash = format!("'sha256-{}'", encoded);
+
+    (format!("<script id=\"__ht\">{}</script>", js_content), csp_hash)
+}
+
+/// 注入代理修复脚本：修复 location 属性 + 拦截 fetch/XHR 重写 URL
+fn inject_proxy_script(html_bytes: Vec<u8>, host_key: &str) -> (Vec<u8>, String) {
+    let mut html = match String::from_utf8(html_bytes) {
+        Ok(h) => h,
+        Err(_) => return (html_bytes, String::new()),
+    };
+
+    let (script_tag, csp_hash) = make_inject_script(host_key);
 
     // 注入到 <head> 之后（最早执行，拦截页面脚本）
     let lower = html.to_lowercase();
@@ -153,19 +186,19 @@ function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/
         let rest = &lower[after..];
         if let Some(close) = rest.find('>') {
             let inject_at = after + close + 1;
-            html.insert_str(inject_at, &script);
-            return html.into_bytes();
+            html.insert_str(inject_at, &script_tag);
+            return (html.into_bytes(), csp_hash);
         }
     }
     // fallback: 在 </head> 前注入
     if let Some(pos) = lower.find("</head>") {
-        html.insert_str(pos, &script);
+        html.insert_str(pos, &script_tag);
     } else if let Some(pos) = lower.find("<body") {
-        html.insert_str(pos, &script);
+        html.insert_str(pos, &script_tag);
     } else {
-        html.insert_str(0, &script);
+        html.insert_str(0, &script_tag);
     }
-    html.into_bytes()
+    (html.into_bytes(), csp_hash)
 }
 
 fn is_html_content(content_type: Option<&http::HeaderValue>) -> bool {
@@ -345,11 +378,12 @@ fn handle_request<R: Runtime>(
         builder = builder.header(key.as_str(), value.clone());
     }
 
-    let body = if is_html_content(content_type) {
+    let (body, script_hash) = if is_html_content(content_type) {
         let rewritten = rewrite_html_body(&body_bytes, &host_key);
-        inject_proxy_script(rewritten, &host_key)
+        let (injected, hash) = inject_proxy_script(rewritten, &host_key);
+        (injected, hash)
     } else {
-        body_bytes
+        (body_bytes, String::new())
     };
 
     let mut response = builder
@@ -358,7 +392,7 @@ fn handle_request<R: Runtime>(
         .body(body)
         .map_err(|e| format!("Failed to build response: {}", e))?;
 
-    strip_iframe_restrictions(&mut response);
+    strip_iframe_restrictions(&mut response, &script_hash);
 
     Ok(response)
 }
