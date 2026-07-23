@@ -173,7 +173,7 @@ pub async fn handle_stream(
             .connect(domain, bare)
             .await
             .map_err(|e| format!("tls connect: {}", e))?;
-        WsUpstream::Tls(tls_stream)
+        WsUpstream::Tls(tokio_rustls::TlsStream::Client(tls_stream))
     } else {
         WsUpstream::Plain(bare)
     };
