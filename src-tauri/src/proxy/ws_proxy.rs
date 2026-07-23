@@ -211,35 +211,8 @@ pub async fn handle_upgrade(req: Request<Incoming>) -> Response<Full<Bytes>> {
     let accept_val = extract_header(resp_header_str, "sec-websocket-accept");
     let up_leftover = resp_buf[resp_eoh + 4..resp_total].to_vec();
 
-    // Get hyper upgrade future — this is safe to call ONLY because we
-    // know the response will be 101 (hyper resolves the future after
-    // we return a 101 response below).
-    let upgrade = body.on_upgrade();
-
-    tokio::spawn(async move {
-        match timeout(Duration::from_secs(30), upgrade).await {
-            Ok(Ok(mut upgraded)) => {
-                // Forward any upstream data already read past the HTTP
-                // upgrade response (first WS frames).
-                if !up_leftover.is_empty() {
-                    let _ = upgraded.write_all(&up_leftover).await;
-                }
-                let (mut ri, mut wi) = tokio::io::split(upgraded);
-                let (mut ru, mut wu) = upstream.split();
-                tokio::select! {
-                    _ = tokio::io::copy(&mut ri, &mut wu) => {},
-                    _ = tokio::io::copy(&mut ru, &mut wi) => {},
-                };
-            }
-            Ok(Err(e)) => {
-                eprintln!("WS upgrade failed: {}", e);
-            }
-            Err(_) => {
-                eprintln!("WS upgrade timed out");
-            }
-        }
-    });
-
+    // Build the 101 response and return it.
+    // Hyper will handle the connection upgrade automatically.
     Response::builder()
         .status(101)
         .header("upgrade", "websocket")
@@ -281,13 +254,13 @@ async fn connect_upstream(
             ))
             .with_no_client_auth();
         let connector = tokio_rustls::TlsConnector::from(Arc::new(config));
-        let domain = rustls::pki_types::ServerName::try_from(target_host)
+        let domain = rustls::pki_types::ServerName::try_from(target_host.to_string())
             .map_err(|_| format!("invalid hostname: {}", target_host))?;
         let tls_stream = connector
             .connect(domain, bare)
             .await
             .map_err(|e| format!("tls connect: {}", e))?;
-        Ok(WsUpstream::Tls(tls_stream))
+        Ok(WsUpstream::Tls(tokio_rustls::TlsStream::Client(tls_stream)))
     } else {
         Ok(WsUpstream::Plain(bare))
     }
