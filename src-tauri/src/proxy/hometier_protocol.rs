@@ -254,8 +254,10 @@ fn handle_request<R: Runtime>(
     // Forward browser headers, replacing cookie with our jar value
     for (key, value) in &req_headers {
         let key_lower = key.as_str().to_lowercase();
-        if !hop_by_hop.contains(&key_lower) && key_lower != "cookie" {
-            req_builder = req_builder.header(key.as_str(), value.as_str());
+        if !hop_by_hop.contains(&key_lower.as_str()) && key_lower != "cookie" {
+            if let Ok(val_str) = value.to_str() {
+                req_builder = req_builder.header(key.as_str(), val_str);
+            }
         }
     }
     if let Some(ref cookies) = cookie_header {
