@@ -66,18 +66,50 @@ fn get_or_create_client(
 fn strip_iframe_restrictions(resp: &mut http::Response<Vec<u8>>) {
     let headers = resp.headers_mut();
     headers.remove("x-frame-options");
+
+    // 处理 CSP：移除 frame-ancestors，添加 hometierproxy: 到 connect-src / default-src
     if let Some(csp) = headers.get("content-security-policy") {
         if let Ok(val) = csp.to_str() {
-            let filtered: Vec<&str> = val
+            let mut directives: Vec<String> = val
                 .split(';')
-                .map(|s| s.trim())
-                .filter(|s| !s.starts_with("frame-ancestors"))
+                .map(|s| s.trim().to_string())
                 .collect();
-            let joined = filtered.join("; ");
-            if joined.is_empty() {
-                headers.remove("content-security-policy");
-            } else {
-                headers.insert("content-security-policy", joined.parse().unwrap());
+            let mut modified = false;
+
+            for directive in directives.iter_mut() {
+                let trimmed = directive.trim().to_string();
+                // 移除 frame-ancestors
+                if trimmed.starts_with("frame-ancestors") {
+                    directive.clear();
+                    modified = true;
+                }
+                // 在 connect-src 中添加 hometierproxy:
+                if trimmed.starts_with("connect-src") && !trimmed.contains("hometierproxy:") {
+                    *directive = format!("{} hometierproxy:", trimmed);
+                    modified = true;
+                }
+                // 在 default-src 中添加 hometierproxy:
+                if trimmed.starts_with("default-src") && !trimmed.contains("hometierproxy:") {
+                    *directive = format!("{} hometierproxy:", trimmed);
+                    modified = true;
+                }
+            }
+
+            if modified {
+                let joined: Vec<&str> = directives
+                    .iter()
+                    .map(|s| s.as_str())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                let joined = joined.join("; ");
+                if joined.is_empty() {
+                    headers.remove("content-security-policy");
+                } else {
+                    headers.insert(
+                        "content-security-policy",
+                        joined.parse().unwrap(),
+                    );
+                }
             }
         }
     }
@@ -88,7 +120,7 @@ fn rewrite_html_body(body: Vec<u8>, origin_str: &str) -> Vec<u8> {
     let new_prefix = format!("hometierproxy://{}", origin_str);
     match String::from_utf8(body) {
         Ok(html) => html.replace(&old_prefix, &new_prefix).into_bytes(),
-        Err(_) => body,
+        Err(_) => Vec::new(),
     }
 }
 
@@ -206,9 +238,9 @@ fn handle_request<R: Runtime>(
 
     let mut req_builder = match method {
         http::Method::GET => client.get(&forward_url),
-        http::Method::POST => client.post(&forward_url).body(body),
-        http::Method::PUT => client.put(&forward_url).body(body),
-        http::Method::PATCH => client.patch(&forward_url).body(body),
+        http::Method::POST => client.post(&forward_url).body(body.clone()),
+        http::Method::PUT => client.put(&forward_url).body(body.clone()),
+        http::Method::PATCH => client.patch(&forward_url).body(body.clone()),
         http::Method::DELETE => client.delete(&forward_url),
         http::Method::HEAD => client.head(&forward_url),
         _ => client.get(&forward_url),

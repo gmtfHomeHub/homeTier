@@ -3461,6 +3461,7 @@ dependencies = [
  "gethostname 0.5.0",
  "hex",
  "hmac",
+ "http",
  "http-body-util",
  "hyper",
  "hyper-util",
