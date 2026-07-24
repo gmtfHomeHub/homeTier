@@ -4,7 +4,7 @@ easytier/easytier-gui
 
 easytier/easytier-web
 
-easytier/easytier-contrib
+# easytier/easytier-contrib
 
 easytier/tauri-plugin-vpnservice
 
