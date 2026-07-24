@@ -62,41 +62,6 @@ pub async fn update_group_config(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn update_local_config(
-    space_id: String,
-    _config: NetworkConfig,
-) -> Result<(), String> {
-    // 更新本地配置
-    crate::log_info!(format!("更新本地配置: space_id={}", space_id), &space_id);
-
-    // TODO: 将本地配置持久化到数据库
-    // 后续启动时使用本地配置覆盖群配置
-
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn get_effective_config(
-    space_id: String,
-    space_manager: State<'_, Arc<SpaceManager>>,
-) -> Result<NetworkConfig, String> {
-    let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
-
-    // 从 space 中获取当前的网络配置
-    let spaces = space_manager.list().await?;
-    let space = spaces.iter()
-        .find(|s| s.id == id)
-        .ok_or_else(|| "Space not found".to_string())?;
-
-    Ok(NetworkConfig {
-        network_name: space.network_name.clone(),
-        network_secret: space.network_secret.clone(),
-        dhcp: true,
-        ..Default::default()
-    })
-}
-
 /// 获取空间 peer 列表（暂不支持）
 #[tauri::command]
 pub async fn get_space_peers(

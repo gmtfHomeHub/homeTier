@@ -1,6 +1,6 @@
 use tauri::State;
 use uuid::Uuid;
-use crate::types::NetworkConfig;
+use crate::easytier::config::NetworkConfig;
 use crate::space::manager::SpaceManager;
 use std::sync::Arc;
 

@@ -119,6 +119,7 @@ pub fn run() -> std::process::ExitCode {
             };
             #[cfg(any(target_os = "android", target_os = "ios"))]
             let space_manager = Arc::new(space::manager::SpaceManager::new(db, instance_manager));
+            let space_manager_clone = space_manager.clone();
             app.manage(space_manager);
 
             // 初始化语音管理器
@@ -172,7 +173,6 @@ pub fn run() -> std::process::ExitCode {
             // 启动聊天消息监听任务（Desktop）
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
-                let space_manager_clone = space_manager.clone();
                 let app_handle_clone = app.handle().clone();
                 tokio::spawn(async move {
                     let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
@@ -261,7 +261,6 @@ pub fn run() -> std::process::ExitCode {
             commands::app::list_apps,
             // 配置管理
             commands::config::get_effective_config,
-            commands::config::update_local_config,
             // 代理服务
             commands::proxy::get_proxy_url,
             commands::proxy::get_proxy_status,

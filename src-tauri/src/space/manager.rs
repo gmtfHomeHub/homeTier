@@ -465,9 +465,10 @@ Self {
         // 更新 ChatClient
         let mut clients = self.chat_clients.write().await;
         let client = clients.entry(*space_id).or_insert_with(ChatClient::new);
+        let peer_count = peers_map.len();
         client.update_peers(peers_map);
 
-        crate::log_info!(format!("已连接到 {} 个 peers", peers_map.len()));
+        crate::log_info!(format!("已连接到 {} 个 peers", peer_count));
         Ok(())
     }
 

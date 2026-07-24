@@ -689,7 +689,7 @@ mod launcher_internal {
     use super::config;
 
     /// 序列化后返回前端的 Peer 信息
-    #[derive(Debug, Clone, serde::Serialize)]
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
     pub struct PeerInfo {
         pub peer_id: u32,
         pub virtual_ip: Option<String>,

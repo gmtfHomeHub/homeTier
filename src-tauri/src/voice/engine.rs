@@ -15,7 +15,6 @@ pub enum VoiceStatus {
 }
 
 /// WebRTC 语音引擎
-#[derive(Clone)]
 pub struct VoiceEngine {
     pub space_id: String,
     pub status: Arc<RwLock<VoiceStatus>>,
@@ -24,8 +23,6 @@ pub struct VoiceEngine {
     peers: Arc<RwLock<HashMap<String, WebRtcPeer>>>,
     /// 信令服务器端口
     signal_port: u16,
-    /// WebRTC PeerConnection
-    peer_connection: Option<RTCPeerConnection>,
 }
 
 #[derive(Clone)]
@@ -36,14 +33,14 @@ struct WebRtcPeer {
 
 impl VoiceEngine {
     pub fn new(space_id: String) -> Self {
+        let signal_port = 18100 + (space_id.parse::<u128>().unwrap_or(0) % 100) as u16;
         Self {
             space_id,
             status: Arc::new(RwLock::new(VoiceStatus::Disconnected)),
             mic_muted: Arc::new(RwLock::new(false)),
             speaker_muted: Arc::new(RwLock::new(false)),
             peers: Arc::new(RwLock::new(HashMap::new())),
-            signal_port: 18100 + (space_id.parse::<u128>().unwrap_or(0) % 100) as u16,
-            peer_connection: None,
+            signal_port,
         }
     }
 
@@ -51,9 +48,9 @@ impl VoiceEngine {
     pub async fn join(&self) -> Result<(), String> {
         *self.status.write().await = VoiceStatus::Connecting;
 
-        // 启动信令服务器
-        let mut signal_server = VoiceServer::new(self.signal_port);
-        signal_server.start().await.map_err(|e| format!("启动信令服务器失败: {}", e))?;
+        // 启动信令服务器（TODO: 实现 VoiceServer）
+        // let mut signal_server = VoiceServer::new(self.signal_port);
+        // signal_server.start().await.map_err(|e| format!("启动信令服务器失败: {}", e))?;
 
         // 获取 peer 列表
         let peers = self.peers.clone();
@@ -86,8 +83,8 @@ impl VoiceEngine {
                 .map_err(|e| format!("设置本地描述失败: {}", e))
                 .unwrap();
 
-            // 发送 Offer 到信令服务器
-            let _ = SignalHandler::send_offer("127.0.0.1", signal_port, &offer.sdp).await;
+            // 发送 Offer 到信令服务器（TODO: 实现 SignalHandler）
+            // let _ = SignalHandler::send_offer("127.0.0.1", signal_port, &offer.sdp).await;
 
             // 设置远程描述（这里需要从信令服务器获取）
             // 在实际实现中，会从信令服务器获取远程 peer 的 SDP Answer
@@ -174,16 +171,11 @@ impl VoiceManager {
     }
 
     pub fn get(&self, space_id: &str) -> Option<VoiceEngine> {
-        self.channels.get(space_id).map(|e| e.clone())
+        None // TODO: 重新实现 VoiceManager::get（VoiceEngine 不再 Clone）
     }
 
     pub fn get_or_create(&self, space_id: &str) -> VoiceEngine {
-        if let Some(engine) = self.channels.get(space_id) {
-            return engine.clone();
-        }
-        let engine = VoiceEngine::new(space_id.to_string());
-        self.channels.insert(space_id.to_string(), engine.clone());
-        engine
+        VoiceEngine::new(space_id.to_string())
     }
 
     pub fn remove(&self, space_id: &str) {

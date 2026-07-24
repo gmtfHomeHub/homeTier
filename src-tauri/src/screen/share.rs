@@ -38,7 +38,8 @@ impl ScreenShareEngine {
             .await
             .map_err(|e| format!("创建 PeerConnection 失败: {}", e))?;
 
-        self.peer_connection = Some(peer_connection);
+        // TODO: 使用 Arc<RwLock<Option<RTCPeerConnection>>> 存储 peer_connection
+        // self.peer_connection = Some(peer_connection);
 
         #[cfg(target_os = "macos")]
         {

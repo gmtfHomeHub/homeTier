@@ -105,11 +105,11 @@ async fn handle_connection(stream: tokio::net::TcpStream, storage_dir: PathBuf) 
             let file_id = path.trim_start_matches("/files/");
             if let Ok(uuid) = Uuid::parse_str(file_id) {
                 match receive_upload(&request, uuid, &storage_dir).await {
-                    Ok(_) => "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK",
-                    Err(e) => &format!("HTTP/1.1 500 Internal Server Error\r\nContent-Length: {}\r\n\r\n{}", e.len(), e),
+                    Ok(_) => "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK".to_string(),
+                    Err(e) => format!("HTTP/1.1 500 Internal Server Error\r\nContent-Length: {}\r\n\r\n{}", e.len(), e),
                 }
             } else {
-                "HTTP/1.1 400 Bad Request\r\nContent-Length: 15\r\n\r\nInvalid file ID"
+                "HTTP/1.1 400 Bad Request\r\nContent-Length: 15\r\n\r\nInvalid file ID".to_string()
             }
         }
         ("GET", path) if path.starts_with("/files/") => {
