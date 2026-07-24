@@ -2,6 +2,7 @@ use tauri::State;
 use crate::types::{FileInfo, TransferProgress};
 use crate::file::transfer::FileTransferManager;
 use crate::space::manager::SpaceManager;
+use crate::db::Database;
 use std::sync::Arc;
 
 #[tauri::command]
@@ -11,27 +12,51 @@ pub async fn send_file(
     password: Option<String>,
     file_manager: State<'_, Arc<FileTransferManager>>,
     space_manager: State<'_, Arc<SpaceManager>>,
+    db: State<'_, Arc<Database>>,
 ) -> Result<FileInfo, String> {
     let space_uuid = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
     let sender_id = space_uuid;
     let path = std::path::PathBuf::from(&file_path);
 
-    // 通过 EasyTier 获取目标节点的 IP 和端口
-    // 在 P2P 网络中，通过虚拟 IP 直接连接
-    // 实际使用时会从 EasyTier RPC 获取 peer 的虚拟 IP
-    let target_ip = "127.0.0.1"; // 通过 EasyTier 虚拟网络获取 peer IP
-    let target_port = 0; // 通过 EasyTier 服务发现获取端口
+    // 获取 peer 列表
+    let peers = space_manager.get_peers_for_file_transfer(&space_uuid).await?;
+
+    if peers.is_empty() {
+        return Err("没有可用的 peers".to_string());
+    }
+
+    // 选择第一个 peer
+    let (target_ip, target_port) = &peers[0];
 
     crate::log_info!(format!("发送文件: {} -> {}:{}", file_path, target_ip, target_port), &space_id);
 
-    file_manager.send_file(
+    // 执行文件传输
+    let file_info = file_manager.send_file(
         space_uuid,
         sender_id,
-        path,
+        path.clone(),
         password,
         target_ip,
-        target_port,
-    ).await
+        *target_port,
+    ).await?;
+
+    // 保存到数据库
+    let row = crate::db::models::FileRow {
+        id: file_info.id.to_string(),
+        space_id: file_info.space_id.to_string(),
+        sender_id: file_info.sender_id.to_string(),
+        file_name: file_info.file_name.clone(),
+        file_size: file_info.file_size as i64,
+        file_hash: file_info.file_hash.clone(),
+        mime_type: file_info.mime_type.clone(),
+        is_compressed: file_info.is_compressed,
+        is_password_protected: file_info.is_password_protected,
+        storage_path: file_info.storage_path.clone(),
+        created_at: file_info.created_at.to_rfc3339(),
+    };
+    db.insert_file(&row)?;
+
+    Ok(file_info)
 }
 
 #[tauri::command]
@@ -51,9 +76,33 @@ pub async fn receive_file(
 
 #[tauri::command]
 pub async fn list_files(
-    file_manager: State<'_, Arc<FileTransferManager>>,
+    space_id: String,
+    limit: Option<u32>,
+    db: State<'_, Arc<Database>>,
+    space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<Vec<FileInfo>, String> {
-    Ok(file_manager.list_files().await)
+    // 从数据库查询
+    let rows = space_manager.list_space_files(&space_id, limit).await?;
+
+    let files = rows.iter().map(|r| {
+        FileInfo {
+            id: r.id.parse().unwrap_or_default(),
+            space_id: r.space_id.parse().unwrap_or_default(),
+            sender_id: r.sender_id.parse().unwrap_or_default(),
+            file_name: r.file_name.clone(),
+            file_size: r.file_size as u64,
+            file_hash: r.file_hash.clone(),
+            mime_type: r.mime_type.clone(),
+            is_compressed: r.is_compressed,
+            is_password_protected: r.is_password_protected,
+            storage_path: r.storage_path.clone(),
+            created_at: chrono::DateTime::parse_from_rfc3339(&r.created_at)
+                .map(|d| d.with_timezone(&chrono::Local))
+                .unwrap_or_else(|_| chrono::Local::now()),
+        }
+    }).collect();
+
+    Ok(files)
 }
 
 #[tauri::command]

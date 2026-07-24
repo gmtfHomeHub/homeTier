@@ -228,6 +228,23 @@ impl Daemon {
                     Err(e) => ipc::IpcResponse::Error { message: format!("无效的 space_id: {}", e) },
                 }
             }
+            ipc::IpcRequest::ListPeers { space_id } => {
+                crate::log_debug!(format!("[Daemon] 查询 peer 列表: {}", space_id));
+                match uuid::Uuid::parse_str(&space_id) {
+                    Ok(id) => {
+                        match easytier.get_peers(&id).await {
+                            Ok(peers) => {
+                                match serde_json::to_value(&peers) {
+                                    Ok(v) => ipc::IpcResponse::Ok { data: Some(v) },
+                                    Err(e) => ipc::IpcResponse::Error { message: format!("序列化 peer 列表失败: {}", e) },
+                                }
+                            }
+                            Err(e) => ipc::IpcResponse::Error { message: format!("查询 peer 列表失败: {}", e) },
+                        }
+                    }
+                    Err(e) => ipc::IpcResponse::Error { message: format!("无效的 space_id: {}", e) },
+                }
+            }
             ipc::IpcRequest::PatchConfig { space_id, patch } => {
                 crate::log_info!(format!("[Daemon] 修改空间配置: {}", space_id));
                 match uuid::Uuid::parse_str(&space_id) {

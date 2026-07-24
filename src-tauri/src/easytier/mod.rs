@@ -276,14 +276,35 @@ impl EasyTierManager {
                 }
                 connected_peers = peer_infos.peer_infos.len() as u32;
 
+                // 计算平均延迟
+                let mut total_latency = 0.0f64;
+                let mut latency_count = 0u32;
+                let mut total_rx_bytes = 0u64;
+                let mut total_tx_bytes = 0u64;
+
+                for peer in &peer_infos.peer_infos {
+                    if let Some(latency) = peer.latency_ms {
+                        total_latency += latency;
+                        latency_count += 1;
+                    }
+                    if let Some(rx) = peer.rx_bytes {
+                        total_rx_bytes += rx;
+                    }
+                    if let Some(tx) = peer.tx_bytes {
+                        total_tx_bytes += tx;
+                    }
+                }
+
+                let avg_latency_ms = if latency_count > 0 { total_latency / latency_count as f64 } else { 0.0 };
+
                 Some(crate::daemon::ipc::SpaceRuntimeStatus {
                     space_id: instance_id.to_string(),
                     is_running: true,
                     virtual_ip,
                     connected_peers,
-                    rx_bytes: 0,
-                    tx_bytes: 0,
-                    avg_latency_ms: 0.0,
+                    rx_bytes: total_rx_bytes,
+                    tx_bytes: total_tx_bytes,
+                    avg_latency_ms,
                 })
             }
             Err(e) => {
@@ -291,6 +312,12 @@ impl EasyTierManager {
                 None
             }
         }
+    }
+
+    /// 获取详细的网络统计信息
+    pub async fn get_network_stats(&self, instance_id: &Uuid) -> Option<crate::daemon::ipc::SpaceRuntimeStatus> {
+        let rpc_port = self.get_instance_rpc_port(instance_id)?;
+        self.query_rpc_status(instance_id, rpc_port).await
     }
 
     /// 获取实例的 RPC 端口
@@ -305,7 +332,63 @@ impl EasyTierManager {
 
     /// 获取虚拟 IP
     pub fn get_virtual_ip(&self, instance_id: &Uuid) -> Option<String> {
-        self.get_instance_rpc_port(instance_id).and(None) // 同步方法无法查询 RPC
+        self.get_instance_rpc_port(instance_id).and_then(|_| None) // 同步方法无法查询 RPC
+    }
+
+    /// 获取 peer 列表（通过 RPC 查询）
+    pub async fn get_peers(&self, instance_id: &Uuid) -> Result<Vec<crate::launcher::PeerInfo>, String> {
+        let rpc_port = self.get_instance_rpc_port(instance_id)
+            .ok_or_else(|| "未找到 RPC 端口".to_string())?;
+
+        self.query_peer_list(instance_id, rpc_port).await
+            .ok_or_else(|| "查询 peer 列表失败".to_string())
+    }
+
+    /// 通过 RPC 查询 peer 列表
+    async fn query_peer_list(&self, instance_id: &Uuid, rpc_port: u16) -> Option<Vec<crate::launcher::PeerInfo>> {
+        use easytier::proto::rpc_impl::standalone::StandAloneClient;
+        use easytier::proto::rpc_types::controller::BaseController;
+        use easytier::proto::api::instance::PeerManageRpcClientFactory;
+        use easytier::tunnel::tcp::TcpTunnelConnector;
+
+        let addr = format!("tcp://127.0.0.1:{}", rpc_port);
+        let url: url::Url = addr.parse().ok()?;
+
+        let connector = TcpTunnelConnector::new(url);
+        let mut client = StandAloneClient::new(connector);
+
+        let ctrl = BaseController::default();
+        let peer_service = client.scoped_client::<PeerManageRpcClientFactory<BaseController>>("".to_string()).await.ok()?;
+
+        match peer_service.list_peer(ctrl, easytier::proto::api::instance::ListPeerRequest::default()).await {
+            Ok(resp) => {
+                let peers = resp.into_inner();
+                let mut peer_infos = Vec::new();
+
+                for peer in peers.peer_infos {
+                    peer_infos.push(crate::launcher::PeerInfo {
+                        peer_id: peer.peer_id as u32,
+                        virtual_ip: Some(peer.ipv4_addr),
+                        hostname: Some(peer.hostname),
+                        latency_ms: peer.latency_ms,
+                        loss_rate: peer.loss_rate,
+                        rx_bytes: peer.rx_bytes,
+                        tx_bytes: peer.tx_bytes,
+                        connected: peer.connected,
+                        is_local: peer.is_local,
+                        version: Some(peer.version),
+                        tunnel_proto: Some(peer.tunnel_type),
+                        nat_type: Some(peer.nat_type),
+                    });
+                }
+
+                Some(peer_infos)
+            }
+            Err(e) => {
+                crate::log_warn!(format!("EasyTierManager: RPC 查询 peer 列表失败, port={}, error={}", rpc_port, e));
+                None
+            }
+        }
     }
 
     /// 获取空间运行时状态（通过 RPC 查询）

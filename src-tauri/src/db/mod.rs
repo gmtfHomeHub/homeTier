@@ -323,4 +323,218 @@ impl Database {
         }
         Ok(apps)
     }
+
+    // --- Files ---
+
+    pub fn insert_file(&self, file: &models::FileRow) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO files (id, space_id, sender_id, file_name, file_size, file_hash, mime_type, is_compressed, is_password_protected, storage_path, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                file.id, file.space_id, file.sender_id, file.file_name, file.file_size,
+                file.file_hash, file.mime_type, file.is_compressed, file.is_password_protected,
+                file.storage_path, file.created_at,
+            ],
+        ).map_err(|e| format!("Insert file error: {}", e))?;
+        Ok(())
+    }
+
+    pub fn get_file(&self, file_id: &str) -> Result<Option<models::FileRow>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare(
+            "SELECT id, space_id, sender_id, file_name, file_size, file_hash, mime_type, is_compressed, is_password_protected, storage_path, created_at FROM files WHERE id=?1"
+        ).map_err(|e| format!("Query error: {}", e))?;
+
+        let result = stmt.query_row(params![file_id], |row| {
+            Ok(models::FileRow {
+                id: row.get(0)?,
+                space_id: row.get(1)?,
+                sender_id: row.get(2)?,
+                file_name: row.get(3)?,
+                file_size: row.get(4)?,
+                file_hash: row.get(5)?,
+                mime_type: row.get(6)?,
+                is_compressed: row.get(7)?,
+                is_password_protected: row.get(8)?,
+                storage_path: row.get(9)?,
+                created_at: row.get(10)?,
+            })
+        });
+
+        match result {
+            Ok(file) => Ok(Some(file)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("Query error: {}", e)),
+        }
+    }
+
+    pub fn list_files(&self, space_id: &str, limit: Option<u32>) -> Result<Vec<models::FileRow>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let limit_sql = limit.map(|l| format!(" LIMIT {}", l)).unwrap_or_default();
+        let sql = format!(
+            "SELECT id, space_id, sender_id, file_name, file_size, file_hash, mime_type, is_compressed, is_password_protected, storage_path, created_at FROM files WHERE space_id=?1 ORDER BY created_at DESC{}",
+            limit_sql
+        );
+
+        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Query error: {}", e))?;
+
+        let rows = stmt.query_map(params![space_id], |row| {
+            Ok(models::FileRow {
+                id: row.get(0)?,
+                space_id: row.get(1)?,
+                sender_id: row.get(2)?,
+                file_name: row.get(3)?,
+                file_size: row.get(4)?,
+                file_hash: row.get(5)?,
+                mime_type: row.get(6)?,
+                is_compressed: row.get(7)?,
+                is_password_protected: row.get(8)?,
+                storage_path: row.get(9)?,
+                created_at: row.get(10)?,
+            })
+        }).map_err(|e| format!("Query error: {}", e))?;
+
+        let mut files = Vec::new();
+        for row in rows {
+            files.push(row.map_err(|e| format!("Row error: {}", e))?);
+        }
+        Ok(files)
+    }
+
+    pub fn delete_file(&self, file_id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM files WHERE id=?1", params![file_id])
+            .map_err(|e| format!("Delete file error: {}", e))?;
+        Ok(())
+    }
+
+    // --- ACL Rules ---
+
+    pub fn insert_acl_rule(&self, rule: &models::AclRuleRow) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO acl_rules (id, space_id, action, source, dest, ports, description, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                rule.id, rule.space_id, rule.action, rule.source, rule.dest, 
+                rule.ports, rule.description, rule.created_at, rule.updated_at
+            ],
+        ).map_err(|e| format!("Insert ACL rule error: {}", e))?;
+        Ok(())
+    }
+
+    pub fn get_acl_rules(&self, space_id: &str) -> Result<Vec<models::AclRuleRow>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare(
+            "SELECT id, space_id, action, source, dest, ports, description, created_at, updated_at
+             FROM acl_rules WHERE space_id=?1 ORDER BY created_at DESC"
+        ).map_err(|e| format!("Prepare ACL rules error: {}", e))?;
+
+        let rows = stmt.query_map(params![space_id], |row| {
+            Ok(models::AclRuleRow {
+                id: row.get(0)?,
+                space_id: row.get(1)?,
+                action: row.get(2)?,
+                source: row.get(3)?,
+                dest: row.get(4)?,
+                ports: row.get(5)?,
+                description: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
+        }).map_err(|e| format!("Query ACL rules error: {}", e))?;
+
+        let mut rules = Vec::new();
+        for row in rows {
+            rules.push(row.map_err(|e| format!("Row error: {}", e))?);
+        }
+        Ok(rules)
+    }
+
+    pub fn update_acl_rule(&self, rule: &models::AclRuleRow) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE acl_rules SET action=?2, source=?3, dest=?4, ports=?5, description=?6, updated_at=?7 
+             WHERE id=?1",
+            params![
+                rule.id, rule.action, rule.source, rule.dest, rule.ports, 
+                rule.description, rule.updated_at
+            ],
+        ).map_err(|e| format!("Update ACL rule error: {}", e))?;
+        Ok(())
+    }
+
+    pub fn delete_acl_rule(&self, rule_id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM acl_rules WHERE id=?1", params![rule_id])
+            .map_err(|e| format!("Delete ACL rule error: {}", e))?;
+        Ok(())
+    }
+
+    // --- Port Forward Rules ---
+
+    pub fn insert_port_forward_rule(&self, rule: &models::PortForwardRuleRow) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO port_forward_rules (id, space_id, name, protocol, source_ip, source_port, target_ip, target_port, description, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                rule.id, rule.space_id, rule.name, rule.protocol, rule.source_ip, 
+                rule.source_port, rule.target_ip, rule.target_port, rule.description,
+                rule.created_at, rule.updated_at
+            ],
+        ).map_err(|e| format!("Insert port forward rule error: {}", e))?;
+        Ok(())
+    }
+
+    pub fn get_port_forward_rules(&self, space_id: &str) -> Result<Vec<models::PortForwardRuleRow>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare(
+            "SELECT id, space_id, name, protocol, source_ip, source_port, target_ip, target_port, description, created_at, updated_at
+             FROM port_forward_rules WHERE space_id=?1 ORDER BY created_at DESC"
+        ).map_err(|e| format!("Prepare port forward rules error: {}", e))?;
+
+        let rows = stmt.query_map(params![space_id], |row| {
+            Ok(models::PortForwardRuleRow {
+                id: row.get(0)?,
+                space_id: row.get(1)?,
+                name: row.get(2)?,
+                protocol: row.get(3)?,
+                source_ip: row.get(4)?,
+                source_port: row.get(5)?,
+                target_ip: row.get(6)?,
+                target_port: row.get(7)?,
+                description: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        }).map_err(|e| format!("Query port forward rules error: {}", e))?;
+
+        let mut rules = Vec::new();
+        for row in rows {
+            rules.push(row.map_err(|e| format!("Row error: {}", e))?);
+        }
+        Ok(rules)
+    }
+
+    pub fn update_port_forward_rule(&self, rule: &models::PortForwardRuleRow) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE port_forward_rules SET name=?2, protocol=?3, source_ip=?4, source_port=?5, target_ip=?6, target_port=?7, description=?8, updated_at=?9 
+             WHERE id=?1",
+            params![
+                rule.id, rule.name, rule.protocol, rule.source_ip, rule.source_port,
+                rule.target_ip, rule.target_port, rule.description, rule.updated_at
+            ],
+        ).map_err(|e| format!("Update port forward rule error: {}", e))?;
+        Ok(())
+    }
+
+    pub fn delete_port_forward_rule(&self, rule_id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM port_forward_rules WHERE id=?1", params![rule_id])
+            .map_err(|e| format!("Delete port forward rule error: {}", e))?;
+        Ok(())
+    }
 }

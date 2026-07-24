@@ -80,6 +80,63 @@ export interface NetworkConfig extends EasyTierConfig {
   instance_name?: string;
 }
 
+// === Detailed Network Configuration ===
+export interface NetworkConfigDetails {
+  target_os?: string;
+  instance_name?: string;
+  hostname?: string;
+  ipv4?: string;
+  ipv6?: string;
+  dhcp?: boolean;
+  ipv6_public_addr_provider?: boolean;
+  ipv6_public_addr_auto?: boolean;
+  ipv6_public_addr_prefix?: string;
+  network_name: string;
+  network_secret: string;
+  networking_method?: string;
+  peers: PeerConfig[];
+  listeners: string[];
+  mapped_listeners: string[];
+  proxy_networks: ProxyNetworkConfig[];
+  routes: string[];
+  exit_nodes: string[];
+  vpn_portal?: VpnPortalConfig;
+  port_forwards: PortForwardConfig[];
+  flags: Record<string, string>;
+  file_logger?: LogConfig;
+  console_logger?: LogConfig;
+}
+
+export interface PeerConfig {
+  uri: string;
+  peer_public_key?: string;
+}
+
+export interface ProxyNetworkConfig {
+  cidr: string;
+  mapped_cidr?: string;
+  allow?: string[];
+}
+
+export interface PortForwardConfig {
+  bind_addr: string;
+  dst_addr: string;
+  proto: string;
+}
+
+export interface VpnPortalConfig {
+  client_cidr: string;
+  wireguard_listen: string;
+}
+
+export interface LogConfig {
+  level?: string;
+  file?: string;
+  dir?: string;
+  size_mb?: number;
+  count?: number;
+}
+
 export interface LogEntry {
   timestamp: string;
   level: "debug" | "info" | "warning" | "error";
@@ -150,7 +207,42 @@ export function buildAppUrlDisplay(app: SpaceApp): string {
   const parts: string[] = [];
   if (app.hostname) parts.push(app.hostname);
   if (app.port) parts.push(`:${app.port}`);
-  if (app.pathname) parts.push(`/${app.pathname.replace(/^\//, '')}`);
-  return parts.join('') || app.protocol;
+  const pathname = app.pathname ? `/${app.pathname.replace(/^\//, '')}` : '';
+  return parts.length > 0 ? `${parts.join('')}${pathname}` : pathname;
+}
+
+// ACL 规则类型
+export interface AclRule {
+  id: string;
+  space_id: string;
+  action: "allow" | "deny";
+  source: string; // CIDR 格式或 "any"
+  dest: string;   // CIDR 格式或 "any"
+  ports: string;  // 单个端口、端口范围或 "any"
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// 端口转发规则类型
+export interface PortForwardRule {
+  id: string;
+  space_id: string;
+  name: string;
+  protocol: "tcp" | "udp";
+  source_ip: string;
+  source_port: number;
+  target_ip: string;
+  target_port: number;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// 网络配置扩展
+export interface NetworkConfig {
+  space_id: string;
+  acl_rules?: AclRule[];
+  port_forward_rules?: PortForwardRule[];
 }
 

@@ -169,6 +169,35 @@ pub fn run() -> std::process::ExitCode {
             app.manage(active_origin);
             app.manage(AppWebview(std::sync::Mutex::new(None)));
 
+            // 启动聊天消息监听任务（Desktop）
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            {
+                let space_manager_clone = space_manager.clone();
+                let app_handle_clone = app.handle().clone();
+                tokio::spawn(async move {
+                    let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
+                    loop {
+                        interval.tick().await;
+
+                        // 遍历所有聊天服务器，检查消息队列
+                        let servers = space_manager_clone.chat_servers.read().await;
+                        for (space_id, server) in servers.iter() {
+                            let messages = server.drain_messages().await;
+                            for msg in messages {
+                                // 验证消息签名
+                                let spaces = space_manager_clone.spaces.read().await;
+                                if let Some(space) = spaces.iter().find(|s| &s.id == space_id) {
+                                    if msg.verify(&space.network_secret) {
+                                        // 发送事件到前端
+                                        let _ = app_handle_clone.emit("new_message", serde_json::to_value(&msg).ok());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -188,6 +217,7 @@ pub fn run() -> std::process::ExitCode {
             commands::space::disconnect_space,
             commands::space::get_space_status,
             commands::space::patch_space_config,
+            commands::space::update_local_config,
             // 网络管理
             commands::network::get_network_status,
             commands::network::get_network_stats,
@@ -231,6 +261,9 @@ pub fn run() -> std::process::ExitCode {
             commands::app::update_app,
             commands::app::delete_app,
             commands::app::list_apps,
+            // 配置管理
+            commands::config::get_effective_config,
+            commands::config::update_local_config,
             // 代理服务
             commands::proxy::get_proxy_url,
             commands::proxy::get_proxy_status,

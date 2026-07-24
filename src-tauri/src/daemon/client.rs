@@ -129,6 +129,13 @@ impl IpcClient {
         }).await
     }
 
+    /// 列出 peers
+    pub async fn list_peers(&self, space_id: &str) -> Result<IpcResponse, String> {
+        self.send(&IpcRequest::ListPeers {
+            space_id: space_id.to_string(),
+        }).await
+    }
+
     /// 运行时修改空间配置
     pub async fn patch_config(&self, space_id: &str, patch: serde_json::Value) -> Result<IpcResponse, String> {
         self.send(&IpcRequest::PatchConfig {

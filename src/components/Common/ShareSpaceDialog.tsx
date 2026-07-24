@@ -1,5 +1,5 @@
 import { QRCodeSVG } from "qrcode.react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import { X, Copy, Check } from "lucide-react";
 import { generateShareLink } from "../../utils/api";
@@ -14,11 +14,11 @@ export function ShareSpaceDialog({ spaceId, onClose }: ShareSpaceDialogProps) {
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useState(() => {
+  useEffect(() => {
     generateShareLink(spaceId)
       .then(setLink)
       .finally(() => setLoading(false));
-  });
+  }, [spaceId]);
 
   const handleCopy = async () => {
     try {

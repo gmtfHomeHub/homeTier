@@ -6,6 +6,7 @@ import { useSpaceStore } from "../../stores/spaceStore";
 import { MemberCount } from "../Common/MemberCount";
 import { ConfirmDialog } from "../Common/ConfirmDialog";
 import { AppNavPage } from "../AppNav/AppNavPage";
+import { NetworkStatsPanel } from "../Common/NetworkStatsPanel";
 import { useLayoutStore } from "../../stores/layoutStore";
 
 export function SpaceDetail() {
@@ -114,8 +115,13 @@ export function SpaceDetail() {
         </Flex>
       </div>
 
-      {/* 中下区域 — 应用导航页 */}
-      <AppNavPage space={space} isOwner={isOwner} callerId={callerId} />
+       {/* 网络统计面板 */}
+       <div className="px-4 py-2">
+         <NetworkStatsPanel spaceId={id} />
+       </div>
+
+       {/* 中下区域 — 应用导航页 */}
+       <AppNavPage space={space} isOwner={isOwner} callerId={callerId} />
 
       <ConfirmDialog
         open={showDeleteConfirm}

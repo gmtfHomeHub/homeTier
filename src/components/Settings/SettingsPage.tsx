@@ -9,6 +9,7 @@ import { useSettingsStore } from "../../stores/settingsStore";
 import type { EasyTierConfig } from "../../types/config";
 import { useTranslation } from "react-i18next";
 import { Tabs, Tooltip, Button, TextField, Flex, Text } from "@radix-ui/themes";
+import { NetworkConfigEditor } from "./NetworkConfigEditor";
 
 type Tab = "basic" | "logs" | "easytier";
 
@@ -196,6 +197,15 @@ export function SettingsPage() {
                   <Text size="2" weight="bold">EasyTier 引擎</Text>
                 </Flex>
                 <EasyTierVersionManager />
+              </section>
+
+              {/* 本地配置 */}
+              <section>
+                <Flex align="center" gap="2" mb="3">
+                  <Settings size={16} />
+                  <Text size="2" weight="bold">本地配置</Text>
+                </Flex>
+                <NetworkConfigEditor />
               </section>
 
               {/* WebView 模式 */}

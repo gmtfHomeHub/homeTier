@@ -6,12 +6,14 @@ import * as api from "../../utils/api";
 import { Button } from "@radix-ui/themes";
 import { Download, Lock, FileText, ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 export function FileList() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { files, setFiles } = useFileStore();
   const [loading, setLoading] = useState(false);
+  const { t } = useTranslation();
 
   const spaceFiles = id ? files[id] || [] : [];
 
@@ -51,6 +53,16 @@ export function FileList() {
     input.click();
   };
 
+  const handleDownload = async (file: FileInfo) => {
+    if (!id) return;
+    try {
+      await api.receiveFile(file.id, file.file_name);
+    } catch (err) {
+      console.error("Download file failed:", err);
+      alert("下载失败: " + err);
+    }
+  };
+
   return (
     <div className="flex flex-col flex-1">
       <div className="h-14 flex items-center gap-3 px-4 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
@@ -61,20 +73,20 @@ export function FileList() {
         >
           <ArrowLeft size={20} />
         </Button>
-        <span className="font-semibold">文件共享</span>
+        <span className="font-semibold">{t('file.title')}</span>
         <div className="flex-1" />
-        <Button onClick={handleFileSelect} variant="solid" color="blue" size="2">
-          发送文件
-        </Button>
+         <Button onClick={handleFileSelect} variant="solid" color="blue" size="2">
+           {t('file.send')}
+         </Button>
       </div>
 
       <div className="flex-1 p-4 overflow-y-auto">
         {loading ? (
-          <div className="text-center py-8 text-[var(--color-text-secondary)]">加载中...</div>
+           <div className="text-center py-8 text-[var(--color-text-secondary)]">{t('common.loading')}</div>
         ) : spaceFiles.length === 0 ? (
           <div className="text-center py-20 text-[var(--color-text-secondary)]">
             <FileText size={48} className="mx-auto mb-3 opacity-50" />
-            <p>暂无文件</p>
+             <p>{t('file.noFiles')}</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -88,10 +100,10 @@ export function FileList() {
                   <div className="text-sm font-medium truncate">{file.file_name}</div>
                   <div className="text-xs text-[var(--color-text-secondary)]">
                     {formatFileSize(file.file_size)}
-                    {file.is_compressed && " · 已压缩"}
+                    {file.is_compressed && ` · ${t('file.compressed')}`}
                     {file.is_password_protected && (
                       <span className="ml-1 inline-flex items-center gap-0.5">
-                        <Lock size={10} /> 加密
+                        <Lock size={10} /> {t('file.encrypted')}
                       </span>
                     )}
                     <span className="ml-2">{formatTimestamp(file.created_at)}</span>
@@ -101,6 +113,7 @@ export function FileList() {
                   variant="ghost"
                   size="2"
                   title="下载"
+                  onClick={() => handleDownload(file)}
                 >
                   <Download size={18} />
                 </Button>

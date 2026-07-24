@@ -20,6 +20,9 @@ pub enum IpcRequest {
     GetSpaceStatus {
         space_id: String,
     },
+    ListPeers {
+        space_id: String,
+    },
     PatchConfig {
         space_id: String,
         patch: serde_json::Value,

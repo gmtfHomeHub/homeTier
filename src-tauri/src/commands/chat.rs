@@ -45,6 +45,12 @@ pub async fn send_message(
     };
     db.insert_message(&row)?;
 
+    // 广播消息到所有 peers
+    let errors = space_manager.broadcast_message(&msg).await;
+    if !errors.is_empty() {
+        crate::log_warn!(format!("广播消息失败: {:?}", errors));
+    }
+
     // 返回给前端
     Ok(Message {
         id: msg.id,

@@ -141,3 +141,15 @@ pub async fn patch_space_config(
 ) -> Result<(), String> {
     space_manager.patch_config(&space_id, patch).await
 }
+
+#[tauri::command]
+pub async fn update_local_config(
+    space_id: String,
+    config_json: String,
+    space_manager: State<'_, Arc<SpaceManager>>,
+) -> Result<(), String> {
+    let config: crate::easytier::config::NetworkConfig = serde_json::from_str(&config_json)
+        .map_err(|e| format!("解析配置失败: {}", e))?;
+    let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
+    space_manager.update_local_config(&id, config).await
+}

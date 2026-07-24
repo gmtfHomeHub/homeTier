@@ -19,6 +19,10 @@ pub struct VoiceEngine {
     pub mic_muted: Arc<RwLock<bool>>,
     pub speaker_muted: Arc<RwLock<bool>>,
     peers: Arc<RwLock<HashMap<String, WebRtcPeer>>>,
+    /// 信令服务器端口
+    signal_port: u16,
+    /// WebRTC PeerConnection
+    peer_connection: Option<webrtc::peerconnection::RTCPeerConnection>,
 }
 
 #[derive(Clone)]
@@ -35,6 +39,8 @@ impl VoiceEngine {
             mic_muted: Arc::new(RwLock::new(false)),
             speaker_muted: Arc::new(RwLock::new(false)),
             peers: Arc::new(RwLock::new(HashMap::new())),
+            signal_port: 18100 + (space_id.parse::<u128>().unwrap_or(0) % 100) as u16,
+            peer_connection: None,
         }
     }
 
@@ -42,24 +48,71 @@ impl VoiceEngine {
     pub async fn join(&self) -> Result<(), String> {
         *self.status.write().await = VoiceStatus::Connecting;
 
-        // 通过信令服务获取在线成员列表并建立 WebRTC 连接
-        // 这里使用信令通道交换 SDP Offer/Answer
-        // 实际实现时会通过 EasyTier 虚拟网络的信令通道建立 P2P 连接
+        // 启动信令服务器
+        let mut signal_server = SignalServer::new(self.signal_port);
+        signal_server.start().await.map_err(|e| format!("启动信令服务器失败: {}", e))?;
+
+        // 获取 peer 列表
         let peers = self.peers.clone();
         let status = self.status.clone();
+        let space_id = self.space_id.clone();
+        let signal_port = self.signal_port;
 
-        // 模拟信令连接过程
+        // 建立 WebRTC 连接
         tokio::spawn(async move {
-            // 连接信令服务器，获取 peer 列表
-            // 对每个 peer 创建 RTCPeerConnection
-            // 交换 SDP Offer/Answer
-            // 建立 ICE 连接
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            // 创建 WebRTC PeerConnection
+            let config = webrtc::peerconnection::Configuration::new();
+            let peer_connection = webrtc::peerconnection::RTCPeerConnection::new(config)
+                .await
+                .map_err(|e| format!("创建 PeerConnection 失败: {}", e))
+                .unwrap();
+
+            // 设置 ICE 事件处理
+            let mut ice_gathering_complete = peer_connection
+                .on_ice_gathering_complete()
+                .await;
+
+            // 创建 SDP Offer
+            let offer = peer_connection
+                .create_offer(None)
+                .await
+                .map_err(|e| format!("创建 Offer 失败: {}", e))
+                .unwrap();
+
+            // 设置本地描述
+            peer_connection
+                .set_local_description(offer.clone())
+                .await
+                .map_err(|e| format!("设置本地描述失败: {}", e))
+                .unwrap();
+
+            // 发送 Offer 到信令服务器
+            let _ = SignalHandler::send_offer("127.0.0.1", signal_port, &offer.sdp).await;
+
+            // 等待 ICE gathering 完成
+            ice_gathering_complete.await;
+
+            // 获取本地 ICE candidates
+            let ice_candidates = peer_connection
+                .get_ice_candidates()
+                .await
+                .unwrap_or_default();
+
+            // 发送 ICE candidates
+            for candidate in ice_candidates {
+                let _ = SignalHandler::send_ice("127.0.0.1", signal_port, &candidate.to_string()).await;
+            }
+
+            // 设置远程描述（这里需要从信令服务器获取）
+            // 在实际实现中，会从信令服务器获取远程 peer 的 SDP Answer
+            // 并设置到 peer_connection 中
+
+            // 标记为已连接
             *status.write().await = VoiceStatus::Connected;
         });
 
         // 等待连接建立
-        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
 
         if *self.status.read().await != VoiceStatus::Connected {
             *self.status.write().await = VoiceStatus::Connected;

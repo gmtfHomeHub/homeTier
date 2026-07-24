@@ -74,6 +74,34 @@ CREATE TABLE IF NOT EXISTS space_apps (
     created_at TEXT NOT NULL,
     FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS acl_rules (
+    id TEXT PRIMARY KEY,
+    space_id TEXT NOT NULL,
+    action TEXT NOT NULL CHECK (action IN ('allow', 'deny')),
+    source TEXT NOT NULL,
+    dest TEXT NOT NULL,
+    ports TEXT NOT NULL,
+    description TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS port_forward_rules (
+    id TEXT PRIMARY KEY,
+    space_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    protocol TEXT NOT NULL CHECK (protocol IN ('tcp', 'udp')),
+    source_ip TEXT NOT NULL,
+    source_port INTEGER NOT NULL,
+    target_ip TEXT NOT NULL,
+    target_port INTEGER NOT NULL,
+    description TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE
+);
 ";
 
 // 兼容性迁移：对已存在的旧数据库添加新列（幂等执行）

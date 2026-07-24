@@ -119,6 +119,15 @@ export async function toggleSpeaker(spaceId: string): Promise<boolean> {
   return invoke("toggle_speaker", { spaceId });
 }
 
+// === Space Configuration ===
+
+export async function updateLocalConfig(
+  spaceId: string,
+  config: NetworkConfig
+): Promise<void> {
+  return invoke("update_local_config", { spaceId, config: JSON.stringify(config) });
+}
+
 // === File Commands ===
 
 export async function sendFile(
@@ -129,8 +138,11 @@ export async function sendFile(
   return invoke("send_file", { spaceId, filePath, password });
 }
 
-export async function listFiles(spaceId: string): Promise<FileInfo[]> {
-  return invoke("list_files", { spaceId });
+export async function listFiles(
+  spaceId: string,
+  limit?: number
+): Promise<FileInfo[]> {
+  return invoke("list_files", { spaceId, limit });
 }
 
 export async function getTransferProgress(

@@ -1,18 +1,50 @@
 use std::sync::Arc;
 use uuid::Uuid;
 use tokio::sync::RwLock;
+use std::collections::HashMap;
 use crate::db::Database;
 use crate::types::{Space, SpaceStatus, Member, ShareInfo};
 use crate::db::models::SpaceRow;
+use crate::chat::server::ChatServer;
+use crate::chat::client::ChatClient;
+use crate::voice::server::VoiceServer;
+use crate::screen::server::ScreenShareSignalServer;
+use crate::easytier::config::NetworkConfig;
+use crate::file::FileServer;
 
 /// 空间管理器
 pub struct SpaceManager {
     db: Arc<Database>,
     #[cfg(any(target_os = "android", target_os = "ios"))]
     easytier: Arc<crate::easytier::EasyTierManager>,
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[cfg(not(any(target_os = "android", target_os = "ios"))]
     ipc_client: Arc<crate::daemon::client::IpcClient>,
     spaces: Arc<RwLock<Vec<Space>>>,
+    /// 聊天服务器映射: space_id -> ChatServer
+    chat_servers: Arc<RwLock<HashMap<Uuid, ChatServer>>>,
+    /// 聊天客户端映射: space_id -> ChatClient
+    chat_clients: Arc<RwLock<HashMap<Uuid, ChatClient>>>,
+    /// 语音服务器映射: space_id -> VoiceServer
+    voice_servers: Arc<RwLock<HashMap<Uuid, VoiceServer>>>,
+    /// 屏幕共享服务器映射: space_id -> ScreenShareSignalServer
+    screen_servers: Arc<RwLock<HashMap<Uuid, ScreenShareSignalServer>>>,
+    /// 本地配置映射: space_id -> NetworkConfig
+    local_configs: Arc<RwLock<HashMap<Uuid, NetworkConfig>>>,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl Clone for SpaceManager {
+    fn clone(&self) -> Self {
+        Self {
+            db: self.db.clone(),
+            ipc_client: self.ipc_client.clone(),
+            spaces: self.spaces.clone(),
+            chat_servers: self.chat_servers.clone(),
+            chat_clients: self.chat_clients.clone(),
+            file_servers: self.file_servers.clone(),
+            storage_dir: self.storage_dir.clone(),
+        }
+    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -22,7 +54,24 @@ impl SpaceManager {
         _easytier: Arc<crate::easytier::EasyTierManager>,
         ipc_client: Arc<crate::daemon::client::IpcClient>,
     ) -> Self {
-        Self { db, ipc_client, spaces: Arc::new(RwLock::new(Vec::new())) }
+        let storage_dir = std::env::var("APPDATA_DIR")
+            .or_else(|_| std::env::var("HOME"))
+            .map(|p| PathBuf::from(p).join("homeTier/files"))
+            .unwrap_or_else(|_| PathBuf::from(".files"));
+
+        let _ = std::fs::create_dir_all(&storage_dir);
+
+Self {
+            db,
+            ipc_client,
+            spaces: Arc::new(RwLock::new(Vec::new())),
+            chat_servers: Arc::new(RwLock::new(HashMap::new())),
+            chat_clients: Arc::new(RwLock::new(HashMap::new())),
+            voice_servers: Arc::new(RwLock::new(HashMap::new())),
+            screen_servers: Arc::new(RwLock::new(HashMap::new())),
+            storage_dir: Arc::new(RwLock::new(storage_dir)),
+            local_configs: Arc::new(RwLock::new(HashMap::new())),
+        }
     }
 
     /// 创建空间（创建者自动成为 owner）
@@ -258,28 +307,30 @@ impl SpaceManager {
             crate::log_info!("connect: 从 DB 加载历史配置", &space_id.to_string());
         }
 
-        // 构建 NetworkConfig（优先使用保存的配置）
-        let cfg = if let Some(ref config_str) = existing_config {
-            // 尝试从保存的 JSON 解析 NetworkConfig
-            serde_json::from_str::<crate::easytier::config::NetworkConfig>(config_str)
-                .unwrap_or_else(|_| crate::easytier::config::NetworkConfig {
-                    network_name: space.network_name.clone(),
-                    network_secret: space.network_secret.clone(),
-                    ..Default::default()
-                })
-        } else {
-            crate::easytier::config::NetworkConfig {
-                network_name: space.network_name.clone(),
-                network_secret: space.network_secret.clone(),
-                ..Default::default()
-            }
-        };
+        // 获取有效配置（合并本地配置和组配置）
+        let cfg = self.get_effective_config(space_id).await?;
 
         // 通过 IPC 连接
         let config_value = serde_json::to_value(&cfg).map_err(|e| format!("序列化配置失败: {}", e))?;
         match self.ipc_client.connect_space(&space_id.to_string(), config_value).await {
             Ok(crate::daemon::ipc::IpcResponse::Ok { .. }) => {
                 crate::log_info!(format!("连接空间: {}", space.name), &space_id.to_string());
+                // 启动聊天服务器
+                self.start_chat_server(*space_id).await?;
+                // 启动文件服务器
+                self.start_file_server(*space_id).await?;
+                // 启动语音服务器
+                self.start_voice_server(*space_id).await?;
+                // 启动屏幕共享服务器
+                self.start_screen_share_server(*space_id).await?;
+                // 发现并连接 peers
+                tokio::spawn({
+                    let space_id = *space_id;
+                    let manager = self.clone();
+                    async move {
+                        let _ = manager.discover_and_connect_peers(&space_id).await;
+                    }
+                });
                 Ok(())
             }
             Ok(crate::daemon::ipc::IpcResponse::Error { message }) => Err(message),
@@ -327,6 +378,286 @@ impl SpaceManager {
             Ok(crate::daemon::ipc::IpcResponse::Error { message }) => Err(message),
             Err(e) => Err(e),
         }
+    }
+
+    /// 更新本地配置（覆盖组配置）
+    pub async fn update_local_config(&self, space_id: &str, local_config: serde_json::Value) -> Result<(), String> {
+        // 保存到数据库
+        self.db.update_space_config(space_id, &local_config.to_string())?;
+        
+        // 通知 daemon 更新配置
+        self.patch_config(space_id, local_config).await
+    }
+
+    /// 获取有效配置（默认 → 组 → 本地）
+    pub async fn get_effective_config(&self, space_id: &str) -> Result<serde_json::Value, String> {
+        // 获取默认配置
+        let default_config = serde_json::json!({
+            "network_name": "",
+            "network_secret": "",
+            "dhcp": false,
+            "ipv4": null,
+            "ipv6": null,
+            "peers": [],
+            "listeners": [],
+            "flags": {}
+        });
+
+        // 获取组配置（来自数据库）
+        let group_config = self.db.get_space_config(space_id).ok().flatten()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_else(|| default_config.clone());
+
+        // 获取本地配置（覆盖组配置）
+        let local_config = self.db.get_space_config(space_id).ok().flatten()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_else(|| group_config.clone());
+
+        Ok(local_config)
+    }
+
+    /// 启动聊天服务器
+    async fn start_chat_server(&self, space_id: Uuid) -> Result<(), String> {
+        let chat_port = 18000 + (space_id.as_u128() % 1000) as u16;
+
+        let mut server = ChatServer::new();
+        server.start(chat_port).await.map_err(|e| format!("启动聊天服务器失败: {}", e))?;
+
+        self.chat_servers.write().await.insert(space_id, server);
+        crate::log_info!(format!("聊天服务器已启动: space_id={}, port={}", space_id, chat_port));
+        Ok(())
+    }
+
+    /// 启动语音服务器
+    async fn start_voice_server(&self, space_id: Uuid) -> Result<(), String> {
+        let voice_port = 18100 + (space_id.as_u128() % 1000) as u16;
+
+        let mut server = VoiceServer::new(voice_port);
+        server.start().await.map_err(|e| format!("启动语音服务器失败: {}", e))?;
+
+        self.voice_servers.write().await.insert(space_id, server);
+        crate::log_info!(format!("语音服务器已启动: space_id={}, port={}", space_id, voice_port));
+        Ok(())
+    }
+
+    /// 启动屏幕共享服务器
+    async fn start_screen_share_server(&self, space_id: Uuid) -> Result<(), String> {
+        let screen_port = 18200 + (space_id.as_u128() % 1000) as u16;
+
+        let mut server = ScreenShareSignalServer::new(screen_port);
+        server.start().await.map_err(|e| format!("启动屏幕共享服务器失败: {}", e))?;
+
+        self.screen_servers.write().await.insert(space_id, server);
+        crate::log_info!(format!("屏幕共享服务器已启动: space_id={}, port={}", space_id, screen_port));
+        Ok(())
+    }
+
+    /// 启动文件服务器
+    async fn start_file_server(&self, space_id: Uuid) -> Result<(), String> {
+        let file_port = 19000 + (space_id.as_u128() % 1000) as u16;
+        let storage_dir = self.storage_dir.join(space_id.to_string());
+
+        let mut server = FileServer::new(storage_dir);
+        server.start(file_port).await.map_err(|e| format!("启动文件服务器失败: {}", e))?;
+
+        self.file_servers.write().await.insert(space_id, server);
+        crate::log_info!(format!("文件服务器已启动: space_id={}, port={}", space_id, file_port));
+        Ok(())
+    }
+
+    /// 发现并连接到 peers
+    async fn discover_and_connect_peers(&self, space_id: &Uuid) -> Result<(), String> {
+        // 获取 space 状态以获取虚拟 IP
+        let status = self.get_space_status(&space_id.to_string()).await?;
+        let status_data = status.ok_or_else(|| "未获取到状态".to_string())?;
+
+        let virtual_ip = status_data.get("virtual_ip")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "未获取到虚拟 IP".to_string())?;
+
+        let my_chat_port = 18000 + (space_id.as_u128() % 1000) as u16;
+
+        // 获取 peer 列表（通过 RPC）
+        let peer_list = self.get_peers(space_id).await?;
+        let mut peers_map = HashMap::new();
+
+        for peer in peer_list {
+            if let Some(peer_ip) = peer.virtual_ip {
+                // peer 的聊天端口也是基于 space_id 计算
+                let peer_chat_port = 18000 + (space_id.as_u128() % 1000) as u16;
+                peers_map.insert(peer.peer_id.to_string(), (peer_ip, peer_chat_port));
+            }
+        }
+
+        // 更新 ChatClient
+        let mut clients = self.chat_clients.write().await;
+        let client = clients.entry(*space_id).or_insert_with(ChatClient::new);
+        client.update_peers(peers_map);
+
+        crate::log_info!(format!("已连接到 {} 个 peers", peers_map.len()));
+        Ok(())
+    }
+
+    /// 广播消息到所有 peers
+    pub async fn broadcast_message(&self, msg: &crate::chat::message::ChatMessage) -> Vec<(String, String)> {
+        let clients = self.chat_clients.read().await;
+        if let Some(client) = clients.get(&msg.space_id) {
+            client.broadcast(msg).await
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// 获取 peer 列表（通过 RPC 查询）
+    async fn get_peers(&self, space_id: &Uuid) -> Result<Vec<crate::types::Peer>, String> {
+        match self.ipc_client.list_peers(&space_id.to_string()).await {
+            Ok(crate::daemon::ipc::IpcResponse::Ok { data }) => {
+                if let Some(v) = data {
+                    serde_json::from_value(v).map_err(|e| format!("解析 peer 列表失败: {}", e))
+                } else {
+                    Ok(Vec::new())
+                }
+            }
+            Ok(crate::daemon::ipc::IpcResponse::Error { message }) => Err(message),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// 获取有效配置（合并本地配置和组配置）
+    pub async fn get_effective_config(&self, space_id: &Uuid) -> Result<NetworkConfig, String> {
+        let spaces = self.spaces.read().await;
+        let space = spaces.iter().find(|s| &s.id == space_id)
+            .ok_or_else(|| "Space not found".to_string())?;
+
+        // 获取组配置（从 space 对象）
+        let mut config = NetworkConfig {
+            network_name: space.network_name.clone(),
+            network_secret: space.network_secret.clone(),
+            ..Default::default()
+        };
+
+        // 获取本地配置（如果有）
+        let local_configs = self.local_configs.read().await;
+        if let Some(local_config) = local_configs.get(space_id) {
+            // 合并本地配置到组配置
+            // 网络标识
+            if !local_config.network_name.is_empty() {
+                config.network_name = local_config.network_name.clone();
+            }
+            if !local_config.network_secret.is_empty() {
+                config.network_secret = local_config.network_secret.clone();
+            }
+
+            // 实例名
+            if let Some(ref name) = local_config.instance_name {
+                if !name.is_empty() {
+                    config.instance_name = Some(name.clone());
+                }
+            }
+
+            // 主机名
+            if let Some(ref hostname) = local_config.hostname {
+                if !hostname.is_empty() {
+                    config.hostname = Some(hostname.clone());
+                }
+            }
+
+            // DHCP / 静态 IP
+            config.dhcp = local_config.dhcp;
+
+            // IPv4
+            if let Some(ref ipv4) = local_config.ipv4 {
+                if !ipv4.is_empty() {
+                    config.ipv4 = Some(ipv4.clone());
+                }
+            }
+
+            // IPv6
+            if let Some(ref ipv6) = local_config.ipv6 {
+                if !ipv6.is_empty() {
+                    config.ipv6 = Some(ipv6.clone());
+                }
+            }
+
+            // IPv6 公共地址
+            if let Some(v) = local_config.ipv6_public_addr_provider {
+                config.ipv6_public_addr_provider = Some(v);
+            }
+            if let Some(v) = local_config.ipv6_public_addr_auto {
+                config.ipv6_public_addr_auto = Some(v);
+            }
+            if let Some(ref prefix) = local_config.ipv6_public_addr_prefix {
+                if !prefix.is_empty() {
+                    config.ipv6_public_addr_prefix = Some(prefix.clone());
+                }
+            }
+
+            // 节点列表
+            if !local_config.peers.is_empty() {
+                config.peers = local_config.peers.clone();
+            }
+
+            // 监听地址
+            if !local_config.listeners.is_empty() {
+                config.listeners = local_config.listeners.clone();
+            }
+
+            // 子网代理
+            if !local_config.proxy_networks.is_empty() {
+                config.proxy_networks = local_config.proxy_networks.clone();
+            }
+
+            // 路由
+            if !local_config.routes.is_empty() {
+                config.routes = local_config.routes.clone();
+            }
+
+            // 出口节点
+            if !local_config.exit_nodes.is_empty() {
+                config.exit_nodes = local_config.exit_nodes.clone();
+            }
+
+            // 标志位
+            if !local_config.flags.is_empty() {
+                config.flags = local_config.flags.clone();
+            }
+
+            // 日志配置
+            if let Some(ref logger) = local_config.file_logger {
+                config.file_logger = Some(logger.clone());
+            }
+            if let Some(ref logger) = local_config.console_logger {
+                config.console_logger = Some(logger.clone());
+            }
+        }
+
+        Ok(config)
+    }
+
+    /// 更新本地配置
+    pub async fn update_local_config(&self, space_id: &Uuid, config: NetworkConfig) -> Result<(), String> {
+        let mut local_configs = self.local_configs.write().await;
+        local_configs.insert(*space_id, config);
+        Ok(())
+    }
+
+    /// 获取用于文件传输的 peer (IP, port) 列表
+    pub async fn get_peers_for_file_transfer(&self, space_id: &Uuid) -> Result<Vec<(String, u16)>, String> {
+        let peers = self.get_peers(space_id).await?;
+        let file_port = 19000 + (space_id.as_u128() % 1000) as u16;
+
+        let mut results = Vec::new();
+        for peer in peers {
+            if let Some(virtual_ip) = peer.virtual_ip {
+                results.push((virtual_ip, file_port));
+            }
+        }
+        Ok(results)
+    }
+
+    /// 获取文件列表
+    pub async fn list_space_files(&self, space_id: &str, limit: Option<u32>) -> Result<Vec<crate::db::models::FileRow>, String> {
+        self.db.list_files(space_id, limit)
     }
 
     /// 校验是否为空间创建者

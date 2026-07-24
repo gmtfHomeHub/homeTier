@@ -8,6 +8,7 @@ import { VoicePanel } from "./components/Voice/VoicePanel";
 import { FileList } from "./components/FileShare/FileList";
 import { SettingsPage } from "./components/Settings/SettingsPage";
 import { SpaceLogView } from "./components/Log/SpaceLogView";
+import { NotFoundPage } from "./components/Common/NotFoundPage";
 import { useSpaceStore } from "./stores/spaceStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useEffect, useState } from "react";
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="/space/:id/logs" element={<SpaceLogView />} />
             <Route path="/space/:id/app/:appId" element={<AppBrowserView />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </AppLayout>
       </BrowserRouter>

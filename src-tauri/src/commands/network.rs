@@ -21,18 +21,27 @@ pub async fn get_network_stats(
 ) -> Result<NetworkStats, String> {
     let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
 
-    // 从 EasyTier RPC 获取统计数据
-    let status = easytier.get_status(&id).await?;
-
-    // 构造统计数据
-    Ok(NetworkStats {
-        rx_bytes: 0,
-        tx_bytes: 0,
-        rx_packets: 0,
-        tx_packets: 0,
-        loss_rate: 0.0,
-        avg_latency_ms: status.latency_ms.unwrap_or(0.0),
-    })
+    // 使用新的网络统计方法
+    if let Some(rpc_status) = easytier.get_network_stats(&id).await {
+        Ok(NetworkStats {
+            rx_bytes: rpc_status.rx_bytes,
+            tx_bytes: rpc_status.tx_bytes,
+            rx_packets: 0, // EasyTier 暂不提供包计数
+            tx_packets: 0,
+            loss_rate: 0.0, // EasyTier 暂不提供丢包率
+            avg_latency_ms: rpc_status.avg_latency_ms,
+        })
+    } else {
+        // 如果查询失败，返回默认值
+        Ok(NetworkStats {
+            rx_bytes: 0,
+            tx_bytes: 0,
+            rx_packets: 0,
+            tx_packets: 0,
+            loss_rate: 0.0,
+            avg_latency_ms: 0.0,
+        })
+    }
 }
 
 #[tauri::command]

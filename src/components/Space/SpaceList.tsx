@@ -2,6 +2,7 @@ import { useSpaceStore } from "../../stores/spaceStore";
 import { useNavigate } from "react-router-dom";
 import { Share2, Trash2, Settings, X, Users } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "../Common/ConfirmDialog";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { MemberCount } from "../Common/MemberCount";
@@ -12,6 +13,7 @@ import type { EasyTierConfig } from "../../types/config";
 export function SpaceList() {
   const { spaces, connectSpace, disconnectSpace, deleteSpace, loadSpaces } = useSpaceStore();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; ownerId?: string } | null>(null);
   const [configTarget, setConfigTarget] = useState<string | null>(null);
   const [spaceConfig, setSpaceConfig] = useState<Partial<EasyTierConfig>>({});
@@ -116,13 +118,13 @@ export function SpaceList() {
 
   return (
     <div className="flex-1 p-6 overflow-y-auto">
-      <h1 className="mb-6 text-2xl font-bold">空间概览</h1>
+      <h1 className="mb-6 text-2xl font-bold">{t('space.list')}</h1>
 
       {spaces.length === 0 && (
         <div className="text-center py-20 text-[var(--color-text-secondary)]">
           <div className="mb-4 text-5xl">🏠</div>
-          <p className="mb-2 text-lg">还没有加入任何空间</p>
-          <p className="text-sm">在左侧创建或加入一个空间开始使用</p>
+          <p className="mb-2 text-lg">{t('space.notJoined')}</p>
+          <p className="text-sm">{t('space.createOrJoinHint')}</p>
         </div>
       )}
 
@@ -158,14 +160,14 @@ export function SpaceList() {
                     size="2"
                     className="flex-1"
                   >
-                    打开
+                    {t('space.open')}
                   </Button>
                   <Button
                     onClick={() => disconnectSpace(space.id)}
                     variant="outline"
                     size="2"
                   >
-                    断开
+                    {t('space.leave')}
                   </Button>
                 </>
               ) : (
@@ -175,9 +177,9 @@ export function SpaceList() {
                   variant="soft"
                   size="2"
                   className="flex-1"
-                  loading={space.status === "connecting" || connectingId === space.id}
-                >
-                  {space.status === "connecting" ? "连接中..." : "连接"}
+                   loading={space.status === "connecting" || connectingId === space.id}
+                 >
+                   {space.status === "connecting" ? t('space.connecting') : t('space.connect')}
                 </Button>
               )}
               <Button

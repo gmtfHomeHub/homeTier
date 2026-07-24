@@ -6,6 +6,7 @@ import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
 import { ArrowLeft, Mic, Monitor, FileUp, MoreHorizontal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Button, Flex, DropdownMenu } from "@radix-ui/themes";
 
 export function ChatView() {
@@ -14,6 +15,7 @@ export function ChatView() {
   const { messages, loadMessages } = useChatStore();
   const { spaces } = useSpaceStore();
   const [sending, setSending] = useState(false);
+  const { t } = useTranslation();
 
   const space = spaces.find((s) => s.id === id);
   const spaceMessages = id ? messages[id] || [] : [];
@@ -27,7 +29,7 @@ export function ChatView() {
   if (!id || !space) {
     return (
       <div className="flex-1 flex items-center justify-center text-[var(--color-text-secondary)]">
-        请选择一个空间
+        {t('space.selectSpace')}
       </div>
     );
   }
@@ -43,7 +45,7 @@ export function ChatView() {
         >
           <ArrowLeft size={20} />
         </Button>
-        <span className="font-semibold">对话</span>
+        <span className="font-semibold">{t('chat.title')}</span>
         <div className="flex-1" />
         <DropdownMenu.Root>
           <DropdownMenu.Trigger>
