@@ -16,6 +16,13 @@ pub fn set_proxy_port(port: u16) {
     let _ = PROXY_PORT.set(port);
 }
 
+/// 全局共享的 CookieJar（HTTP 代理 + WS 代理共用）
+static COOKIE_JARS: OnceLock<Mutex<HashMap<String, PerHostCookieJar>>> = OnceLock::new();
+
+pub fn cookie_jars() -> &'static Mutex<HashMap<String, PerHostCookieJar>> {
+    COOKIE_JARS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 struct ForwardTarget {
     host: String,
     port: Option<u16>,
@@ -154,6 +161,21 @@ fn rewrite_html_body(body: &[u8], origin_str: &str) -> Vec<u8> {
     }
 }
 
+/// 替换请求体中的 hometierproxy://{host}:{port} 为 http://{host}:{port}
+fn rewrite_request_body(body: Vec<u8>, host_origin: &str) -> Vec<u8> {
+    let old_prefix = format!("hometierproxy://{}", host_origin);
+    let new_prefix = format!("http://{}", host_origin);
+    if let Ok(text) = String::from_utf8(body.clone()) {
+        if text.contains(&old_prefix) {
+            text.replace(&old_prefix, &new_prefix).into_bytes()
+        } else {
+            body
+        }
+    } else {
+        body
+    }
+}
+
 /// 注入代理修复脚本：修复 location 属性 + 拦截 fetch/XHR 重写 URL
 fn inject_proxy_script(html_bytes: Vec<u8>, host_key: &str) -> (Vec<u8>, String) {
     let mut html = match String::from_utf8(html_bytes.clone()) {
@@ -165,15 +187,16 @@ fn inject_proxy_script(html_bytes: Vec<u8>, host_key: &str) -> (Vec<u8>, String)
     let js_content = format!(
         r#"(function(){{
 var H="{}",P="{}";
-var _f=window.fetch;window.fetch=function(u,i){{if(typeof u=="string"){{u=r(u)}}else if(u&&u.url){{var nu=r(u.url);if(nu!==u.url)u=new Request(nu,u)}}return _f.call(this,u,i)}};
+var _f=window.fetch;window.fetch=function(u,i){{if(typeof u=="string"){{u=r(u)}}else if(u&&u.url){{var nu=r(u.url);if(nu!==u.url)u=new Request(nu,u)}};return _f.call(this,u,i)}};
 var _o=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){{if(typeof u=="string"){{arguments[1]=r(u)}}return _o.apply(this,arguments)}};
 var _WS=window.WebSocket;window.WebSocket=function(u,p){{if(typeof u=="string"){{u=r_ws(u)}}return new _WS(u,p)}};window.WebSocket.prototype=_WS.prototype;window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;
-function r_ws(u){{if(u.indexOf("ws://127.0.0.1:"+P+"/")===0)return u;var m=u.match(/^(wss?):\/\/(.*)/i);if(!m)return u;var r=m[2].replace(/^hometierproxy\/{{0,2}}/i,"");var s=r.indexOf("/");var h=s>=0?r.substring(0,s):r;var pa=s>=0?r.substring(s):"/";return "ws://127.0.0.1:"+P+"/"+m[1].toLowerCase()+"/"+h+pa}};
+function r_ws(u){{if(u.indexOf("ws://127.0.0.1:"+P+"?")===0){{return u}}var m=u.match(/^(wss?):\/\/(.*)/i);if(!m){{return u}}var out="ws://127.0.0.1:"+P+"?"+m[1].toLowerCase()+"="+encodeURIComponent(m[2].replace('hometierproxy', H));return out}};
 function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/')return "hometierproxy://"+H+"/"+u.replace(/^\/+/,"");var m=u.match(/^https?:\/\/hometierproxy(?::\d+)?(?=\/|\?|#|$)/i);if(m)return u.replace(/^https?:\/\/[^\/]+/,"hometierproxy://"+H);return u.replace(RegExp("^https?://"+H.replace(/\./g,"\\.")+"(?=/|\\?|#|$)","i"),"hometierproxy://"+H)}};
 }})()"#,
         host_key, proxy_port
     );
 
+// function r(l){{var u=l;if(u.match(/hometierproxy/g).length>1){{var u1=u.slice(u.lastIndexOf('hometierproxy'));u = u1;}}if(u.indexOf("hometierproxy://")>= 0) {{u=u.slice(u.indexOf("hometierproxy://"));}} if(u.indexOf("hometierproxy")>=0){{var u2=u.slice(u.indexOf("hometierproxy")); if(u2.indexOf("://"+H)===0) {{return u2;}} if(u2.indexOf(H)<0&&u2.indexOf("://")<0) return u2.replace("hometierproxy","hometierproxy://"+H); return "hometierproxy://"+H+u2.slice(H);}}if(u.charAt(0) === "/") return "hometierproxy://" + H + "/" + u.replace(/^\//, "");var m = u.match(/^https?:\/\/hometierproxy(?::\d+)?(?=\/|\?|#|$)/i);if(m)return u.replace(/^https?:\/\/[^\/]+/, "hometierproxy://" + H); return u.replace(RegExp("^https?://"+H.replace(/\./g,"\\.")+"(?=/|\\?|#|$)","i"),"hometierproxy://"+H);}}
     let hash = Sha256::digest(js_content.as_bytes());
     let encoded = base64::engine::general_purpose::STANDARD.encode(hash);
     let csp_hash = format!("'sha256-{}'", encoded);
@@ -211,22 +234,29 @@ fn is_html_content(content_type: Option<&http::HeaderValue>) -> bool {
     }
 }
 
-// --- Cookie Jar ---
-
-struct StoredCookie {
-    name: String,
-    value: String,
-    expires_at: Option<u64>,
+/// 检查响应体是否以 HTML 文档标记开头（区分真正的 HTML 页面与 text/html 的 JSON API）
+fn looks_like_html_body(body: &[u8]) -> bool {
+    let start = if body.len() > 15 { &body[..15] } else { body };
+    let lower = start.to_ascii_lowercase();
+    lower.starts_with(b"<!doctype") || lower.starts_with(b"<html")
 }
 
-struct PerHostCookieJar(Vec<StoredCookie>);
+// --- Cookie Jar ---
+
+pub struct StoredCookie {
+    pub name: String,
+    pub value: String,
+    pub expires_at: Option<u64>,
+}
+
+pub struct PerHostCookieJar(Vec<StoredCookie>);
 
 impl PerHostCookieJar {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self(Vec::new())
     }
 
-    fn add_set_cookie(&mut self, header: &str) {
+    pub fn add_set_cookie(&mut self, header: &str) {
         let parts: Vec<&str> = header.split(';').collect();
         if parts.is_empty() {
             return;
@@ -265,7 +295,7 @@ impl PerHostCookieJar {
         self.0.push(StoredCookie { name, value, expires_at });
     }
 
-    fn build_cookie_header(&mut self) -> Option<String> {
+    pub fn build_cookie_header(&mut self) -> Option<String> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -295,7 +325,6 @@ impl PerHostCookieJar {
 fn handle_request<R: Runtime>(
     app_handle: &AppHandle<R>,
     clients: &Arc<Mutex<HashMap<String, Client>>>,
-    cookie_jars: &Arc<Mutex<HashMap<String, PerHostCookieJar>>>,
     request: &http::Request<Vec<u8>>,
 ) -> Result<http::Response<Vec<u8>>, String> {
     let target = parse_target(request.uri())?;
@@ -308,7 +337,7 @@ fn handle_request<R: Runtime>(
 
     // 1. Build forwarded request with cookie injection
     let cookie_header = {
-        let mut jars = cookie_jars.lock().unwrap();
+        let mut jars = cookie_jars().lock().unwrap();
         let jar = jars.entry(host_key.clone()).or_insert_with(PerHostCookieJar::new);
         jar.build_cookie_header()
     };
@@ -361,7 +390,8 @@ fn handle_request<R: Runtime>(
                     let after_scheme = &referer_str[path_start + 1..];
                     if let Some(slash_pos) = after_scheme.find('/') {
                         let path_and_qs = &after_scheme[slash_pos..];
-                        req_builder = req_builder.header("referer", format!("{}{}", upstream_base, path_and_qs));
+                        let new_referer = format!("{}{}", upstream_base, path_and_qs);
+                        req_builder = req_builder.header("referer", new_referer);
                     }
                 }
             }
@@ -384,7 +414,7 @@ fn handle_request<R: Runtime>(
     // 3. Capture Set-Cookie into jar
     for value in upstream_headers.get_all("set-cookie") {
         if let Ok(val) = value.to_str() {
-            let mut jars = cookie_jars.lock().unwrap();
+            let mut jars = cookie_jars().lock().unwrap();
             let jar = jars.entry(host_key.clone()).or_insert_with(PerHostCookieJar::new);
             jar.add_set_cookie(val);
         }
@@ -405,7 +435,7 @@ fn handle_request<R: Runtime>(
         builder = builder.header(key.as_str(), value.clone());
     }
 
-    let (body, script_hash) = if is_html_content(content_type) {
+    let (body, script_hash) = if is_html_content(content_type) && looks_like_html_body(&body_bytes) {
         let rewritten = rewrite_html_body(&body_bytes, &host_key);
         let (injected, hash) = inject_proxy_script(rewritten, &host_key);
         (injected, hash)
@@ -427,8 +457,6 @@ fn handle_request<R: Runtime>(
 pub fn register_protocol<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     let clients: Arc<Mutex<HashMap<String, Client>>> =
         Arc::new(Mutex::new(HashMap::new()));
-    let cookie_jars: Arc<Mutex<HashMap<String, PerHostCookieJar>>> =
-        Arc::new(Mutex::new(HashMap::new()));
 
     builder.register_asynchronous_uri_scheme_protocol(
         "hometierproxy",
@@ -437,10 +465,9 @@ pub fn register_protocol<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Build
               responder: UriSchemeResponder| {
             let app_handle = ctx.app_handle().clone();
             let clients = clients.clone();
-            let cookie_jars = cookie_jars.clone();
 
             std::thread::spawn(move || {
-                let result = handle_request(&app_handle, &clients, &cookie_jars, &request);
+                let result = handle_request(&app_handle, &clients, &request);
                 match result {
                     Ok(response) => responder.respond(response),
                     Err(e) => {

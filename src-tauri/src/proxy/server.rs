@@ -1,3 +1,5 @@
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::sync::Arc;
 
 use hyper::body::Incoming;
@@ -7,6 +9,7 @@ use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use http_body_util::Full;
 use hyper::body::Bytes;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{oneshot, Mutex};
 
@@ -18,6 +21,63 @@ pub struct ProxyServer {
     pub proxy_prefix: String,
     _runtime: tokio::runtime::Runtime,
     shutdown_tx: Option<oneshot::Sender<()>>,
+}
+
+/// 包装 TcpStream，将预先读取的字节「放回」读取流前面，
+/// 使得下游（hyper）仍然能读到完整数据。
+struct PrependStream {
+    stream: TcpStream,
+    buf: Vec<u8>,
+    pos: usize,
+}
+
+impl PrependStream {
+    fn new(stream: TcpStream, initial_data: Vec<u8>) -> Self {
+        Self { stream, buf: initial_data, pos: 0 }
+    }
+}
+
+impl AsyncRead for PrependStream {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        // 先提供预先读取的缓存数据
+        if self.pos < self.buf.len() {
+            let remaining = &self.buf[self.pos..];
+            let to_copy = std::cmp::min(remaining.len(), buf.remaining());
+            buf.put_slice(&remaining[..to_copy]);
+            self.pos += to_copy;
+            return Poll::Ready(Ok(()));
+        }
+        // 缓存耗尽后直接从 TcpStream 读取
+        Pin::new(&mut self.stream).poll_read(cx, buf)
+    }
+}
+
+impl AsyncWrite for PrependStream {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        Pin::new(&mut self.get_mut().stream).poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.get_mut().stream).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.get_mut().stream).poll_shutdown(cx)
+    }
 }
 
 impl ProxyServer {
@@ -60,34 +120,40 @@ impl ProxyServer {
                                     let chain = chain.clone();
                                     let shutdown_flag = shutdown_flag_clone.clone();
                                     tokio::spawn(async move {
-                                        let io = TokioIo::new(stream);
-                                        let service = service_fn(move |req: Request<Incoming>| {
-                                            let chain = chain.clone();
-                                            async move {
-                                                if ws_proxy::is_ws_upgrade(&req) {
-                                                    Ok::<_, std::convert::Infallible>(
-                                                        ws_proxy::handle_upgrade(req).await,
-                                                    )
-                                                } else {
-                                                    let ctx = RequestContext::new();
-                                                    Ok::<_, std::convert::Infallible>(
-                                                        chain.process(req, ctx).await,
-                                                    )
+                                        // 尝试读取初始字节，判断是否为 WS upgrade
+                                        let mut peek_buf = vec![0u8; 8192];
+                                        let n = match stream.try_read(&mut peek_buf) {
+                                            Ok(n) => n,
+                                            Err(_) => {
+                                                // 没有立即可读数据，尝试异步读取
+                                                match stream.readable().await {
+                                                    Ok(()) => match stream.try_read(&mut peek_buf) {
+                                                        Ok(n) => n,
+                                                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                                                            // 仍不可读，按非 WS 处理
+                                                            // 将 stream 传给 hyper（空预读数据）
+                                                            let prepend = PrependStream::new(stream, vec![]);
+                                                            let io = TokioIo::new(prepend);
+                                                            serve_http(io, chain, shutdown_flag).await;
+                                                            return;
+                                                        }
+                                                        Err(_) => return,
+                                                    },
+                                                    Err(_) => return,
                                                 }
                                             }
-                                        });
-                                        let conn = http1::Builder::new()
-                                            .serve_connection(io, service);
-                                        tokio::select! {
-                                            _ = conn => {}
-                                            _ = async {
-                                                loop {
-                                                    if *shutdown_flag.lock().await {
-                                                        break;
-                                                    }
-                                                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                                                }
-                                            } => {}
+                                        };
+
+                                        let peek_data = &peek_buf[..n];
+
+                                        if ws_proxy::is_raw_ws_upgrade(peek_data) {
+                                            // WS 请求：直接使用原始 TcpStream，不经过 hyper
+                                            ws_proxy::handle_raw_upgrade(stream, peek_data.to_vec()).await;
+                                        } else {
+                                            // 非 WS 请求：将预读数据包装回 stream，传给 hyper
+                                            let prepend = PrependStream::new(stream, peek_data.to_vec());
+                                            let io = TokioIo::new(prepend);
+                                            serve_http(io, chain, shutdown_flag).await;
                                         }
                                     });
                                 }
@@ -138,4 +204,62 @@ impl Drop for ProxyServer {
     fn drop(&mut self) {
         self.shutdown();
     }
+}
+
+async fn serve_http(
+    io: TokioIo<PrependStream>,
+    chain: Arc<PluginChain>,
+    shutdown_flag: Arc<Mutex<bool>>,
+) {
+    let service = service_fn(move |req: Request<Incoming>| {
+        let chain = chain.clone();
+        async move {
+            if ws_proxy::is_ws_upgrade(&req) {
+                // WS 请求通过 hyper 返回 101 响应（无 upgrade 处理）
+                let ws_key = req
+                    .headers()
+                    .get("sec-websocket-key")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("");
+                Ok::<_, std::convert::Infallible>(
+                    Response::builder()
+                        .status(101)
+                        .header("upgrade", "websocket")
+                        .header("connection", "upgrade")
+                        .header("sec-websocket-accept", compute_accept(ws_key))
+                        .body(Full::new(Bytes::new()))
+                        .unwrap(),
+                )
+            } else {
+                let ctx = RequestContext::new();
+                Ok::<_, std::convert::Infallible>(
+                    chain.process(req, ctx).await,
+                )
+            }
+        }
+    });
+    let conn = http1::Builder::new()
+        .serve_connection(io, service);
+    tokio::select! {
+        _ = conn => {}
+        _ = async {
+            loop {
+                if *shutdown_flag.lock().await {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        } => {}
+    }
+}
+
+/// 计算 WebSocket Accept 值 (RFC 6455)
+fn compute_accept(key: &str) -> String {
+    use sha1::{Sha1, Digest};
+    const WS_GUID: &str = "258EAFA5-E914-47DA-95CA-5AB9B8A4C3CF";
+    let mut hasher = Sha1::new();
+    hasher.update(key.as_bytes());
+    hasher.update(WS_GUID.as_bytes());
+    let result = hasher.finalize();
+    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, result)
 }
