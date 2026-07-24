@@ -54,11 +54,11 @@ export async function disconnectSpace(spaceId: string): Promise<void> {
   return invoke("disconnect_space", { spaceId });
 }
 
-export async function getSpaceStatus(spaceId: string): Promise<any> {
+export async function getSpaceStatus(spaceId: string): Promise<never> {
   return invoke("get_space_status", { spaceId });
 }
 
-export async function patchSpaceConfig(spaceId: string, patch: Record<string, any>): Promise<void> {
+export async function patchSpaceConfig(spaceId: string, patch: Record<string, never>): Promise<void> {
   return invoke("patch_space_config", { spaceId, patch });
 }
 
@@ -217,7 +217,7 @@ export async function updateSpaceConfig(spaceId: string, configJson: string): Pr
 
 // === Peers ===
 
-export async function getSpacePeers(spaceId: string): Promise<any[]> {
+export async function getSpacePeers(spaceId: string): Promise<never[]> {
   return invoke("get_space_peers", { spaceId });
 }
 

@@ -105,7 +105,7 @@ impl EasyTierDownloader {
         // 更新版本元数据
         self.set_current_version(version)?;
 
-        crate::log_info!("[EasyTierDownloader] 二进制安装完成, version={}, path={}", version, target_path.display());
+        crate::log_info!(format!("[EasyTierDownloader] 二进制安装完成, version={}, path={}", version, target_path.display()));
         Ok(target_path)
     }
 
@@ -140,9 +140,9 @@ impl EasyTierDownloader {
         let archive_path = archive_path.to_path_buf();
         let target_dir = target_dir.to_path_buf();
         tokio::task::spawn_blocking(move || {
-            if archive_path.extension().map_or(false, |e| e == "tar" || e == "gz") {
+            if archive_path.extension().is_some_and(|e| e == "tar" || e == "gz") {
                 Self::extract_tar_gz(&archive_path, &target_dir)
-            } else if archive_path.extension().map_or(false, |e| e == "zip") {
+            } else if archive_path.extension().is_some_and(|e| e == "zip") {
                 Self::extract_zip(&archive_path, &target_dir)
             } else {
                 Err(format!("不支持的归档格式: {}", archive_path.display()))

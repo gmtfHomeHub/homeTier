@@ -28,7 +28,7 @@ impl SpaceManager {
     /// 创建空间（创建者自动成为 owner）
     pub async fn create(&self, name: String, network_secret: String, owner_id: String, description: Option<String>) -> Result<Space, String> {
         let space_id = Uuid::new_v4();
-        let owner_uuid = uuid::Uuid::parse_str(&owner_id).unwrap_or_else(|_| space_id);
+        let owner_uuid = uuid::Uuid::parse_str(&owner_id).unwrap_or(space_id);
         let network_name = name.clone();
 
         let space = Space {

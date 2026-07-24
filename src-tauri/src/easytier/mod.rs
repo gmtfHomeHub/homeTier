@@ -127,6 +127,7 @@ impl EasyTierManager {
         instance_id: &Uuid,
         initial_config: Option<&str>,
     ) -> Result<PathBuf, String> {
+        use easytier::common::config::ConfigLoader;
         let easytier_cfg = cfg.to_easytier_config()?;
 
         // 应用运行时配置（flags 等）
@@ -149,6 +150,7 @@ impl EasyTierManager {
 
     /// 应用运行时配置
     fn apply_runtime_config(&self, cfg: &easytier::common::config::TomlConfigLoader, config_str: &str) {
+        use easytier::common::config::ConfigLoader;
         if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(config_str) {
             // 应用 flags
             if let Some(flags) = json_val.get("flags").and_then(|f| f.as_object()) {
@@ -263,7 +265,7 @@ impl EasyTierManager {
 
         match peer_service.list_peer(ctrl, easytier::proto::api::instance::ListPeerRequest::default()).await {
             Ok(resp) => {
-                let peer_infos = resp.into_inner();
+                let peer_infos = resp;
                 let mut virtual_ip = None;
                 let mut connected_peers = 0u32;
 
@@ -303,7 +305,7 @@ impl EasyTierManager {
 
     /// 获取虚拟 IP
     pub fn get_virtual_ip(&self, instance_id: &Uuid) -> Option<String> {
-        self.get_instance_rpc_port(instance_id).and_then(|_| None) // 同步方法无法查询 RPC
+        self.get_instance_rpc_port(instance_id).and(None) // 同步方法无法查询 RPC
     }
 
     /// 获取空间运行时状态（通过 RPC 查询）
@@ -625,6 +627,7 @@ mod launcher_internal {
         config_dir: &PathBuf,
         initial_config: Option<String>,
     ) -> Result<RunningInstance, String> {
+        use easytier::common::config::ConfigLoader;
         let network_name = cfg.network_name.clone();
         crate::log_info!(format!("start_easytier: 开始启动, network_name={}, instance_id={}", network_name, instance_id));
 

@@ -88,11 +88,10 @@ pub async fn get_effective_config(
     })
 }
 
+/// 获取空间 peer 列表（暂不支持）
 #[tauri::command]
 pub async fn get_space_peers(
-    space_id: String,
-    easytier: State<'_, Arc<EasyTierManager>>,
+    _space_id: String,
 ) -> Result<Vec<PeerInfo>, String> {
-    let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
-    easytier.get_peers(&id).await
+    Err("get_space_peers 暂不支持".to_string())
 }

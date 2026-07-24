@@ -87,7 +87,7 @@ export function EasyTierConfigEditor({ value, onChange, title, showNetworkIdenti
       <fieldset className={SECTION_CLASS}>
         <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">节点 (Peers)</legend>
         {(value.peers ?? []).map((p, i) => (
-          <div key={i} className="flex gap-2 items-start">
+          <div key={i} className="flex items-start gap-2">
             <TextField.Root size="1" className="flex-1" placeholder="URI" value={p.uri} onChange={e => {
               const peers = [...(value.peers ?? [])];
               peers[i] = { ...peers[i], uri: e.target.value };
@@ -106,7 +106,7 @@ export function EasyTierConfigEditor({ value, onChange, title, showNetworkIdenti
       <fieldset className={SECTION_CLASS}>
         <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">监听地址</legend>
         {(value.listeners ?? []).map((l, i) => (
-          <div key={i} className="flex gap-2 items-start">
+          <div key={i} className="flex items-start gap-2">
             <TextField.Root size="1" className="flex-1" placeholder="tcp://0.0.0.0:11000" value={l} onChange={e => {
               const listeners = [...(value.listeners ?? [])];
               listeners[i] = e.target.value;
@@ -125,7 +125,7 @@ export function EasyTierConfigEditor({ value, onChange, title, showNetworkIdenti
       <fieldset className={SECTION_CLASS}>
         <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">子网代理</legend>
         {(value.proxy_networks ?? []).map((pn, i) => (
-          <div key={i} className="flex gap-2 items-start">
+          <div key={i} className="flex items-start gap-2">
             <TextField.Root size="1" className="flex-1" placeholder="CIDR" value={pn.cidr} onChange={e => {
               const list = [...(value.proxy_networks ?? [])];
               list[i] = { ...list[i], cidr: e.target.value };
@@ -158,7 +158,7 @@ export function EasyTierConfigEditor({ value, onChange, title, showNetworkIdenti
       {/* Flags */}
       <fieldset className={SECTION_CLASS}>
         <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">高级标志</legend>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
           {[
             { key: "mtu", label: "MTU", type: "number" },
             { key: "latency_first", label: "低延迟优先", type: "checkbox" },
@@ -178,7 +178,7 @@ export function EasyTierConfigEditor({ value, onChange, title, showNetworkIdenti
               {type === "checkbox" ? (
                 <Text as="label" size="1" className="flex items-center gap-2">
                   <Checkbox
-                    checked={!!(value.flags as any)?.[key]}
+                    checked={!!(value.flags)?.[key]}
                     onCheckedChange={(c) => setFlags({ [key]: c === true })}
                   />
                   {label}
@@ -187,7 +187,7 @@ export function EasyTierConfigEditor({ value, onChange, title, showNetworkIdenti
                 <>
                   <label className={LABEL_CLASS}>{label}</label>
                   <TextField.Root size="1" type={type === "number" ? "number" : "text"}
-                    value={String((value.flags as any)?.[key] ?? "")}
+                    value={String((value.flags)?.[key] ?? "")}
                     onChange={e => setFlags({ [key]: type === "number" ? Number(e.target.value) : e.target.value })} />
                 </>
               )}

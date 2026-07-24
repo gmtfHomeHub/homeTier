@@ -25,7 +25,9 @@ export function SpaceList() {
       // 1. 解析空间级配置
       let spaceCfg: Partial<EasyTierConfig> = {};
       if (configSpace.config_json) {
-        try { spaceCfg = JSON.parse(configSpace.config_json); } catch {}
+        try { spaceCfg = JSON.parse(configSpace.config_json); } catch (err) {
+          console.log(err);
+        }
       }
 
       // 2. 加载系统级配置作为默认值，然后用空间级配置覆盖
@@ -38,7 +40,9 @@ export function SpaceList() {
 
         // 系统级配置作为基础
         if (sysJson) {
-          try { merged = JSON.parse(sysJson); } catch {}
+          try { merged = JSON.parse(sysJson); } catch (err) {
+          console.log(err);
+        }
         }
 
         // 空间级配置覆盖系统级（优先级：空间 > 系统）

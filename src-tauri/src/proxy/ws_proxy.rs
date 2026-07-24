@@ -16,7 +16,7 @@ use tokio::time::{timeout, Duration};
 
 enum WsUpstream {
     Plain(TcpStream),
-    Tls(tokio_rustls::TlsStream<TcpStream>),
+    Tls(Box<tokio_rustls::TlsStream<TcpStream>>)
 }
 
 impl AsyncRead for WsUpstream {
@@ -136,7 +136,7 @@ async fn connect_upstream(
             .connect(domain, bare)
             .await
             .map_err(|e| format!("tls connect: {}", e))?;
-        Ok(WsUpstream::Tls(tokio_rustls::TlsStream::Client(tls_stream)))
+        Ok(WsUpstream::Tls(Box::new(tokio_rustls::TlsStream::Client(tls_stream))))
     } else {
         Ok(WsUpstream::Plain(bare))
     }

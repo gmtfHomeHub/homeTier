@@ -25,7 +25,9 @@ export function MemberCount({ spaceId, connected }: MemberCountProps) {
       try {
         const data = await getSpacePeers(spaceId);
         if (!cancelled) setPeersList(data);
-      } catch {}
+      } catch (err) {
+        console.log(err);
+      }
     };
     poll();
     const timer = setInterval(poll, 2000);

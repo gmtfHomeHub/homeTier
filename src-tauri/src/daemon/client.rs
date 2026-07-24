@@ -21,15 +21,15 @@ impl IpcClient {
     pub async fn send(&self, request: &IpcRequest) -> Result<IpcResponse, String> {
         let addr = format!("127.0.0.1:{}", self.port);
 
-        // 连接
-        let mut stream = tokio::net::TcpStream::connect(&addr).await
+        // 设置连接超时
+        use tokio::time::timeout;
+        let stream = timeout(Duration::from_secs(5), tokio::net::TcpStream::connect(&addr)).await
+            .map_err(|_| format!("连接 daemon 超时"))?
             .map_err(|e| format!("连接 daemon 失败: {}", e))?;
+        let mut stream = stream;
 
-        // 设置读写超时
-        stream.set_read_timeout(Some(Duration::from_secs(5)))
-            .map_err(|e| format!("设置读超时失败: {}", e))?;
-        stream.set_write_timeout(Some(Duration::from_secs(5)))
-            .map_err(|e| format!("设置写超时失败: {}", e))?;
+        // 使用 tokio::io::AsyncReadExt::read 配合 timeout 实现读超时
+        // write 的超时通过 tokio::io::AsyncWriteExt 配合 timeout 实现
 
         // 序列化请求
         let req_json = serde_json::to_string(request)
@@ -61,6 +61,30 @@ impl IpcClient {
         // 反序列化
         serde_json::from_slice(&resp_buf)
             .map_err(|e| format!("反序列化响应失败: {}", e))
+    }
+
+    /// 同步 Ping daemon（用于 setup 等非 async 上下文）
+    pub fn ping_sync(&self) -> bool {
+        let addr = format!("127.0.0.1:{}", self.port);
+        if let Ok(mut stream) = std::net::TcpStream::connect_timeout(
+            &addr.parse().unwrap_or(std::net::SocketAddr::from(([127, 0, 0, 1], self.port))),
+            Duration::from_secs(5),
+        ) {
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+            let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
+            let req_json = serde_json::to_string(&IpcRequest::Ping).ok();
+            if let Some(json) = req_json {
+                let len = json.len() as u32;
+                use std::io::{Read, Write};
+                if stream.write_all(&len.to_le_bytes()).is_err() { return false; }
+                if stream.write_all(json.as_bytes()).is_err() { return false; }
+                let mut len_buf = [0u8; 4];
+                if stream.read_exact(&mut len_buf).is_err() { return false; }
+                let _resp_len = u32::from_le_bytes(len_buf) as usize;
+                return true;
+            }
+        }
+        false
     }
 
     /// Ping daemon

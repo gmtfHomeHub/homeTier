@@ -25,11 +25,13 @@ export function ShareSpaceDialog({ spaceId, onClose }: ShareSpaceDialogProps) {
       await navigator.clipboard.writeText(link);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {}
+    } catch (err) {
+      console.log(err);
+    }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-[var(--color-surface)] rounded-xl p-6 w-80 shadow-xl animate-fade-in">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">分享空间</h2>
@@ -44,7 +46,7 @@ export function ShareSpaceDialog({ spaceId, onClose }: ShareSpaceDialogProps) {
           <div className="space-y-4">
             {/* 二维码 */}
             <div className="flex justify-center">
-              <div className="bg-white p-3 rounded-xl">
+              <div className="p-3 bg-white rounded-xl">
                 <QRCodeSVG value={link} size={180} />
               </div>
             </div>

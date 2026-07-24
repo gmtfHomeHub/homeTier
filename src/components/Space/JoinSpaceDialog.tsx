@@ -37,11 +37,13 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
           setNetworkSecret(secret);
         }
       }
-    } catch {}
+    } catch (err) {
+      console.log(err);
+    }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-[var(--color-surface)] rounded-xl p-6 w-96 shadow-xl animate-fade-in">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">加入空间</h2>
@@ -51,7 +53,7 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">网络名称 (Network Name)</label>
+            <label className="block mb-1 text-sm font-medium">网络名称 (Network Name)</label>
             <TextField.Root
               value={networkName}
               onChange={(e) => setNetworkName(e.target.value)}
@@ -60,7 +62,7 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">网络密钥 (Network Secret)</label>
+            <label className="block mb-1 text-sm font-medium">网络密钥 (Network Secret)</label>
             <TextField.Root
               type="password"
               value={networkSecret}

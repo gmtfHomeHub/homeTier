@@ -75,7 +75,10 @@ export interface ShareInfo {
   host_hint?: string;
 }
 
-export interface NetworkConfig extends EasyTierConfig {}
+export interface NetworkConfig extends EasyTierConfig {
+  instance_id?: string;
+  instance_name?: string;
+}
 
 export interface LogEntry {
   timestamp: string;

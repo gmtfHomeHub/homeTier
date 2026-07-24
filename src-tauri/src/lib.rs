@@ -87,11 +87,11 @@ pub fn run() -> std::process::ExitCode {
                             let client = daemon::client::IpcClient::default_port();
                             let mut ready = false;
                             for _ in 0..50 {
-                                if client.ping().await {
+                                if client.ping_sync() {
                                     ready = true;
                                     break;
                                 }
-                                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                                std::thread::sleep(std::time::Duration::from_millis(100));
                             }
                             if ready {
                                 crate::log_info!("[GUI] daemon 已就绪");

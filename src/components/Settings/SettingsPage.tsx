@@ -43,7 +43,9 @@ export function SettingsPage() {
     if (activeTab === "easytier" && !configLoaded) {
       getSystemConfig().then((json) => {
         if (json) {
-          try { setEasytierConfig(JSON.parse(json)); } catch {}
+          try { setEasytierConfig(JSON.parse(json)); } catch (err) {
+            console.log(err);
+          }
         }
         setConfigLoaded(true);
       });

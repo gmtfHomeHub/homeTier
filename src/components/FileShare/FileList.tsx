@@ -41,6 +41,7 @@ export function FileList() {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file || !id) return;
       try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await api.sendFile(id, (file as any).path || file.name);
         loadFiles();
       } catch (err) {
@@ -51,7 +52,7 @@ export function FileList() {
   };
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex flex-col flex-1">
       <div className="h-14 flex items-center gap-3 px-4 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
         <Button
           onClick={() => navigate(`/space/${id}`)}
@@ -67,7 +68,7 @@ export function FileList() {
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 p-4 overflow-y-auto">
         {loading ? (
           <div className="text-center py-8 text-[var(--color-text-secondary)]">加载中...</div>
         ) : spaceFiles.length === 0 ? (
