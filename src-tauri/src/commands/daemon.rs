@@ -12,10 +12,11 @@ pub async fn check_daemon_running() -> Result<bool, String> {
 pub async fn get_daemon_status() -> Result<serde_json::Value, String> {
     let client = IpcClient::new();
     match client.get_status() {
-        crate::daemon::ipc::IpcResponse::Ok { data } => {
+        Ok(crate::daemon::ipc::IpcResponse::Ok { data }) => {
             Ok(data.unwrap_or(serde_json::Value::Null))
         }
-        crate::daemon::ipc::IpcResponse::Error { message } => Err(message),
+        Ok(crate::daemon::ipc::IpcResponse::Error { message }) => Err(message),
+        Err(e) => Err(e),
         _ => Err("未知响应类型".into()),
     }
 }
@@ -25,8 +26,9 @@ pub async fn get_daemon_status() -> Result<serde_json::Value, String> {
 pub async fn daemon_connect_space(space_id: String) -> Result<(), String> {
     let client = IpcClient::new();
     match client.connect_space(&space_id) {
-        crate::daemon::ipc::IpcResponse::Ok { .. } => Ok(()),
-        crate::daemon::ipc::IpcResponse::Error { message } => Err(message),
+        Ok(crate::daemon::ipc::IpcResponse::Ok { .. }) => Ok(()),
+        Ok(crate::daemon::ipc::IpcResponse::Error { message }) => Err(message),
+        Err(e) => Err(e),
         _ => Err("未知响应类型".into()),
     }
 }
@@ -36,8 +38,9 @@ pub async fn daemon_connect_space(space_id: String) -> Result<(), String> {
 pub async fn daemon_disconnect_space(space_id: String) -> Result<(), String> {
     let client = IpcClient::new();
     match client.disconnect_space(&space_id) {
-        crate::daemon::ipc::IpcResponse::Ok { .. } => Ok(()),
-        crate::daemon::ipc::IpcResponse::Error { message } => Err(message),
+        Ok(crate::daemon::ipc::IpcResponse::Ok { .. }) => Ok(()),
+        Ok(crate::daemon::ipc::IpcResponse::Error { message }) => Err(message),
+        Err(e) => Err(e),
         _ => Err("未知响应类型".into()),
     }
 }
@@ -47,12 +50,12 @@ pub async fn daemon_disconnect_space(space_id: String) -> Result<(), String> {
 pub async fn daemon_list_spaces() -> Result<Vec<String>, String> {
     let client = IpcClient::new();
     match client.list_spaces() {
-        crate::daemon::ipc::IpcResponse::Ok { data } => {
-            data.and_then(|v| serde_json::from_value(v).ok())
-                .unwrap_or_default()
-                .pipe Ok
+        Ok(crate::daemon::ipc::IpcResponse::Ok { data }) => {
+            Ok(data.and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default())
         }
-        crate::daemon::ipc::IpcResponse::Error { message } => Err(message),
+        Ok(crate::daemon::ipc::IpcResponse::Error { message }) => Err(message),
+        Err(e) => Err(e),
         _ => Err("未知响应类型".into()),
     }
 }
@@ -104,8 +107,9 @@ pub async fn is_daemon_service_running() -> Result<bool, String> {
 pub async fn shutdown_daemon() -> Result<(), String> {
     let client = IpcClient::new();
     match client.shutdown() {
-        crate::daemon::ipc::IpcResponse::Ok { .. } => Ok(()),
-        crate::daemon::ipc::IpcResponse::Error { message } => Err(message),
+        Ok(crate::daemon::ipc::IpcResponse::Ok { .. }) => Ok(()),
+        Ok(crate::daemon::ipc::IpcResponse::Error { message }) => Err(message),
+        Err(e) => Err(e),
         _ => Err("未知响应类型".into()),
     }
 }

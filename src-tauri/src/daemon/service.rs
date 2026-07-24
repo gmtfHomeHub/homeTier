@@ -275,7 +275,7 @@ impl ServiceManager for LaunchdServiceManager {
     }
 
     fn is_installed(&self) -> bool {
-        self.get_plist_path().exists()
+        Self::get_plist_path().exists()
     }
 
     fn is_running(&self) -> bool {
