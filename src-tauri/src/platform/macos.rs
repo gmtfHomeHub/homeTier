@@ -26,7 +26,18 @@ impl PlatformAdapter for MacOSAdapter {
     }
 
     fn authorize_tun(&self) -> AuthResult {
-        // macOS utun 不需要 root 或额外授权，对所有用户可用
-        AuthResult { success: true, message: "macOS utun 无需额外授权".into(), needs_restart: false }
+        // macOS utun socket 创建不需要 root，但 ifconfig/route 网络配置需要 root
+        // 检测当前是否有 root 权限
+        if self.is_elevated() {
+            AuthResult { success: true, message: "macOS 管理员权限已就绪".into(), needs_restart: false }
+        } else {
+            AuthResult {
+                success: false,
+                message: "macOS 配置虚拟网卡需要管理员权限。请使用守护进程模式:\n\
+                    sudo hometier --daemon\n\
+                    或者以管理员身份运行: sudo hometier".into(),
+                needs_restart: false,
+            }
+        }
     }
 }

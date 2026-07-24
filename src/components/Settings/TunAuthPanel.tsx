@@ -74,7 +74,16 @@ export function TunAuthPanel() {
             虚拟网卡需要系统级权限才能创建。
             {status.platform === "linux" && " 将弹出系统授权对话框以设置 cap_net_admin 能力。"}
             {status.platform === "windows" && " 将弹出 UAC 对话框以管理员身份运行。"}
-            {status.platform === "macos" && " 将请求管理员权限。"}
+            {status.platform === "macos" && (
+              <>
+                macOS 配置虚拟网卡（ifconfig/route）需要 root 权限。
+                <br />
+                请使用守护进程模式：{" "}
+                <code className="text-xs bg-[var(--color-bg-secondary)] px-1 rounded">
+                  sudo hometier --daemon
+                </code>
+              </>
+            )}
           </Text>
           <Flex gap="2" align="center">
             <Button
