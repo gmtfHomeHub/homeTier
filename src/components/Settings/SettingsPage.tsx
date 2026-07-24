@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { LogViewer } from "../Log/LogViewer";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { TunAuthPanel } from "./TunAuthPanel";
+import { EasyTierVersionManager } from "./EasyTierVersionManager";
 import { Settings as SettingsIcon, Terminal, Network, Palette, Languages, HelpCircle, Shield } from "lucide-react";
 import { getSystemConfig, setSystemConfig, getRelayPrefix, setRelayPrefix, getWebappMode, setWebappMode } from "../../utils/api";
 import { useSettingsStore } from "../../stores/settingsStore";
@@ -184,6 +185,15 @@ export function SettingsPage() {
                   <Text size="2" weight="bold">虚拟网卡授权</Text>
                 </Flex>
                 <TunAuthPanel />
+              </section>
+
+              {/* EasyTier 引擎版本 */}
+              <section>
+                <Flex align="center" gap="2" mb="3">
+                  <Network size={16} />
+                  <Text size="2" weight="bold">EasyTier 引擎</Text>
+                </Flex>
+                <EasyTierVersionManager />
               </section>
 
               {/* WebView 模式 */}

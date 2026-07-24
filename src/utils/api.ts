@@ -54,6 +54,14 @@ export async function disconnectSpace(spaceId: string): Promise<void> {
   return invoke("disconnect_space", { spaceId });
 }
 
+export async function getSpaceStatus(spaceId: string): Promise<any> {
+  return invoke("get_space_status", { spaceId });
+}
+
+export async function patchSpaceConfig(spaceId: string, patch: Record<string, any>): Promise<void> {
+  return invoke("patch_space_config", { spaceId, patch });
+}
+
 export async function removeMember(spaceId: string, targetMemberId: string, callerId: string): Promise<void> {
   return invoke("remove_member", { spaceId, targetMemberId, callerId });
 }
@@ -356,4 +364,18 @@ export async function closeAppView(): Promise<void> {
 
 export async function resizeAppView(x: number, y: number, w: number, h: number): Promise<void> {
   return invoke("resize_app_view", { x, y, w, h });
+}
+
+// === EasyTier Version Management ===
+
+export async function getEasyTierVersion(): Promise<string> {
+  return invoke("get_easytier_version");
+}
+
+export async function checkEasyTierUpdate(): Promise<string[]> {
+  return invoke("check_easytier_update");
+}
+
+export async function upgradeEasyTier(version: string, sourcePath?: string): Promise<void> {
+  return invoke("upgrade_easytier", { version, sourcePath });
 }

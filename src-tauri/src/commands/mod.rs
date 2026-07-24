@@ -2,6 +2,7 @@ pub mod app;
 pub mod app_view;
 pub mod chat;
 pub mod daemon;
+pub mod easytier;
 pub mod file;
 pub mod hotkey;
 pub mod log;

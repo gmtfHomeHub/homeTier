@@ -75,11 +75,50 @@ pub fn run() -> std::process::ExitCode {
             let instance_manager = Arc::new(easytier::EasyTierManager::new(easytier_config_dir));
             app.manage(instance_manager.clone());
 
+            // Desktop: 启动 daemon 子进程并创建 IPC 客户端
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            {
+                // 检查 daemon 是否已在运行
+                if !daemon::ipc::is_daemon_running() {
+                    match spawn_daemon() {
+                        Ok(_child) => {
+                            crate::log_info!("[GUI] daemon 子进程已启动");
+                            // 等待 daemon 就绪（最多 5s）
+                            let client = daemon::client::IpcClient::default_port();
+                            let mut ready = false;
+                            for _ in 0..50 {
+                                if client.ping().await {
+                                    ready = true;
+                                    break;
+                                }
+                                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                            }
+                            if ready {
+                                crate::log_info!("[GUI] daemon 已就绪");
+                            } else {
+                                crate::log_warn!("[GUI] daemon 启动超时");
+                            }
+                        }
+                        Err(e) => {
+                            crate::log_error!(format!("[GUI] 启动 daemon 失败: {}", e));
+                        }
+                    }
+                } else {
+                    crate::log_info!("[GUI] daemon 已在运行");
+                }
+                // 创建 IPC 客户端供 Tauri 命令使用
+                let ipc_client = Arc::new(daemon::client::IpcClient::default_port());
+                app.manage(ipc_client);
+            }
+
             // 初始化空间管理器
-            let space_manager = Arc::new(space::manager::SpaceManager::new(
-                db,
-                instance_manager,
-            ));
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            let space_manager = {
+                let ipc_client = app.state::<Arc<daemon::client::IpcClient>>().inner().clone();
+                Arc::new(space::manager::SpaceManager::new(db, instance_manager, ipc_client))
+            };
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            let space_manager = Arc::new(space::manager::SpaceManager::new(db, instance_manager));
             app.manage(space_manager);
 
             // 初始化语音管理器
@@ -147,6 +186,8 @@ pub fn run() -> std::process::ExitCode {
             commands::space::parse_share_link,
             commands::space::connect_space,
             commands::space::disconnect_space,
+            commands::space::get_space_status,
+            commands::space::patch_space_config,
             // 网络管理
             commands::network::get_network_status,
             commands::network::get_network_stats,
@@ -221,10 +262,23 @@ pub fn run() -> std::process::ExitCode {
             commands::daemon::is_daemon_service_installed,
             commands::daemon::is_daemon_service_running,
             commands::daemon::shutdown_daemon,
+            // EasyTier 版本管理
+            commands::easytier::get_easytier_version,
+            commands::easytier::check_easytier_update,
+            commands::easytier::upgrade_easytier,
         ])
         .on_window_event(|_win, event| {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // 通知 daemon 关闭
+                {
+                    let ipc_client = _win.app_handle().state::<Arc<daemon::client::IpcClient>>();
+                    let client = ipc_client.inner().clone();
+                    tokio::spawn(async move {
+                        let _ = client.shutdown().await;
+                        crate::log_info!("[GUI] 已通知 daemon 关闭");
+                    });
+                }
                 let _ = _win.hide();
                 api.prevent_close();
             }
@@ -286,4 +340,31 @@ pub fn run_daemon() -> std::process::ExitCode {
             std::process::ExitCode::FAILURE
         }
     }
+}
+
+/// Desktop: 启动 daemon 子进程
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn spawn_daemon() -> Result<std::process::Child, String> {
+    use std::process::{Command, Stdio};
+
+    let current_exe = std::env::current_exe().map_err(|e| format!("获取当前可执行文件路径失败: {}", e))?;
+
+    crate::log_info!("[GUI] 启动 daemon 子进程");
+
+    let mut cmd = Command::new(current_exe);
+    cmd.arg("--daemon");
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    cmd.spawn().map_err(|e| {
+        let msg = format!("启动 daemon 失败: {}", e);
+        crate::log_error!(&msg);
+        msg
+    })
 }

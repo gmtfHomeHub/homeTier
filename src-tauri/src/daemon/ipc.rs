@@ -1,140 +1,143 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-/// IPC 命令
+/// 默认 RPC 端口
+pub const DEFAULT_RPC_PORT: u16 = 15888;
+
+/// IPC 请求
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
-pub enum IpcCommand {
-    /// 获取守护进程状态
+pub enum IpcRequest {
+    Ping,
     GetStatus,
-    /// 连接到空间
     ConnectSpace {
         space_id: String,
-        config: Option<SpaceConfig>,
+        config: serde_json::Value,
     },
-    /// 断开空间连接
     DisconnectSpace {
         space_id: String,
     },
-    /// 获取已连接的空间列表
-    ListSpaces,
-    /// 获取网络统计
-    GetNetworkStats {
+    GetSpaceStatus {
         space_id: String,
     },
-    /// 心跳检测
-    Ping,
-    /// 关闭守护进程
+    PatchConfig {
+        space_id: String,
+        patch: serde_json::Value,
+    },
+    ListSpaces,
+    GetVersion,
+    UpgradeVersion {
+        version: String,
+        source_path: Option<String>,
+    },
     Shutdown,
-}
-
-/// 空间配置（简化版，用于 IPC）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SpaceConfig {
-    pub name: Option<String>,
-    pub network_key: Option<String>,
-    pub subnet: Option<String>,
-    pub enable_relay: Option<bool>,
-    pub enable_internet: Option<bool>,
 }
 
 /// IPC 响应
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum IpcResponse {
-    /// 成功
     Ok { data: Option<serde_json::Value> },
-    /// 错误
     Error { message: String },
-    /// 状态更新（事件推送）
-    Event { event: IpcEvent },
 }
 
-/// IPC 事件（从守护进程推送到 GUI）
+/// Daemon 状态
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum IpcEvent {
-    /// 空间已连接
-    SpaceConnected { space_id: String },
-    /// 空间已断开
-    SpaceDisconnected { space_id: String },
-    /// 对等节点上线
-    PeerConnected { space_id: String, peer_id: String },
-    /// 对等节点下线
-    PeerDisconnected { space_id: String, peer_id: String },
-    /// 守护进程状态变化
-    StatusChanged { status: String },
+pub struct DaemonStatus {
+    pub running: bool,
+    pub pid: u32,
+    pub connected_spaces: Vec<String>,
+    pub version: String,
+    pub rpc_port: u16,
 }
 
-/// 获取守护进程 Unix socket 路径
-pub fn get_daemon_socket_path() -> PathBuf {
-    #[cfg(target_os = "linux")]
-    {
-        // Linux: ~/.cache/homeTier/daemon.sock 或 /tmp/homeTier-daemon.sock
-        std::env::var("XDG_RUNTIME_DIR")
-            .map(|p| PathBuf::from(p).join("hometier-daemon.sock"))
-            .unwrap_or_else(|_| PathBuf::from("/tmp").join("hometier-daemon.sock"))
-    }
-    #[cfg(target_os = "macos")]
-    {
-        // macOS: /tmp/homeTier-daemon.sock (macOS 没有 XDG_RUNTIME_DIR)
-        PathBuf::from("/tmp").join("hometier-daemon.sock")
-    }
-    #[cfg(target_os = "windows")]
-    {
-        // Windows: Named pipe, not Unix socket
-        // 使用 Windows named pipe: \\.\pipe\hometier-daemon
-        PathBuf::from(r"\\.\pipe\hometier-daemon")
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    {
-        PathBuf::from("/tmp").join("hometier-daemon.sock")
-    }
+/// 空间运行时状态（通过 RPC 查询）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpaceRuntimeStatus {
+    pub space_id: String,
+    pub is_running: bool,
+    pub virtual_ip: Option<String>,
+    pub connected_peers: u32,
+    pub rx_bytes: u64,
+    pub tx_bytes: u64,
+    pub avg_latency_ms: f64,
 }
 
-/// 检查守护进程是否正在运行
-pub fn is_daemon_running() -> bool {
-    let socket_path = get_daemon_socket_path();
-    if !socket_path.exists() {
-        return false;
-    }
+/// 获取 daemon 状态文件路径
+pub fn get_daemon_state_path() -> PathBuf {
+    let app_data = directories::BaseDirs::new()
+        .map(|d| d.data_dir().to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+    app_data.join("daemon_state.json")
+}
 
-    // 尝试连接并发送 Ping 命令
+/// 保存 daemon 状态（pid + rpc_port）到文件
+pub fn save_daemon_state(pid: u32, rpc_port: u16) -> Result<(), String> {
+    let state = serde_json::json!({ "pid": pid, "rpc_port": rpc_port });
+    let path = get_daemon_state_path();
+    std::fs::write(&path, serde_json::to_string_pretty(&state).unwrap_or_default())
+        .map_err(|e| format!("保存 daemon 状态失败: {}", e))
+}
+
+/// 读取 daemon 状态
+pub fn load_daemon_state() -> Option<(u32, u16)> {
+    let path = get_daemon_state_path();
+    let content = std::fs::read_to_string(&path).ok()?;
+    let val: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let pid = val.get("pid")?.as_u64()? as u32;
+    let port = val.get("rpc_port")?.as_u64()? as u16;
+    Some((pid, port))
+}
+
+/// 清除 daemon 状态文件
+pub fn clear_daemon_state() {
+    let path = get_daemon_state_path();
+    std::fs::remove_file(&path).ok();
+}
+
+/// 检查指定 pid 的进程是否存活
+pub fn is_process_alive(pid: u32) -> bool {
     #[cfg(unix)]
     {
-        use std::os::unix::net::UnixStream;
-        match UnixStream::connect(&socket_path) {
-            Ok(stream) => {
-                stream.set_read_timeout(Some(std::time::Duration::from_secs(1))).ok();
-                stream.set_write_timeout(Some(std::time::Duration::from_secs(1))).ok();
-
-                let cmd = IpcCommand::Ping;
-                let msg = serde_json::to_string(&cmd).unwrap_or_default();
-                let len = msg.len() as u32;
-                use std::io::Write;
-                let mut stream = stream;
-                stream.write_all(&len.to_le_bytes()).ok();
-                stream.write_all(msg.as_bytes()).ok();
-
-                // 读取响应
-                let mut len_buf = [0u8; 4];
-                use std::io::Read;
-                stream.read_exact(&mut len_buf).ok();
-                let resp_len = u32::from_le_bytes(len_buf) as usize;
-                let mut resp_buf = vec![0u8; resp_len];
-                stream.read_exact(&mut resp_buf).ok();
-
-                serde_json::from_slice::<IpcResponse>(&resp_buf)
-                    .map(|r| matches!(r, IpcResponse::Ok { .. }))
-                    .unwrap_or(false)
-            }
-            Err(_) => false,
-        }
+        unsafe { libc::kill(pid as i32, 0) == 0 }
     }
-
     #[cfg(windows)]
     {
-        // Windows: 尝试连接 Named Pipe
-        false // TODO: 实现 Windows Named Pipe 连接检查
+        use winapi::um::processthreadsapi::{OpenProcess, GetCurrentProcessId};
+        use winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION;
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if !handle.is_null() {
+                use winapi::um::handleapi::CloseHandle;
+                CloseHandle(handle);
+                true
+            } else {
+                false
+            }
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        false
+    }
+}
+
+/// 检查 daemon 是否正在运行
+pub fn is_daemon_running() -> bool {
+    if let Some((pid, _port)) = load_daemon_state() {
+        is_process_alive(pid)
+    } else {
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_daemon_state_path() {
+        let path = get_daemon_state_path();
+        assert!(path.to_string_lossy().contains("daemon_state.json"));
     }
 }

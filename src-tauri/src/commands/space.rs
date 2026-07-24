@@ -124,3 +124,20 @@ pub async fn disconnect_space(
     let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
     space_manager.disconnect(&id).await
 }
+
+#[tauri::command]
+pub async fn get_space_status(
+    space_id: String,
+    space_manager: State<'_, Arc<SpaceManager>>,
+) -> Result<Option<serde_json::Value>, String> {
+    space_manager.get_space_status(&space_id).await
+}
+
+#[tauri::command]
+pub async fn patch_space_config(
+    space_id: String,
+    patch: serde_json::Value,
+    space_manager: State<'_, Arc<SpaceManager>>,
+) -> Result<(), String> {
+    space_manager.patch_config(&space_id, patch).await
+}

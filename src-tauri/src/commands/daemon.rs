@@ -1,62 +1,56 @@
-use crate::daemon::{client::IpcClient, service::get_service_manager};
+use std::sync::Arc;
+use crate::daemon::{client::IpcClient, service::get_service_manager, ipc::IpcResponse};
 
 /// 检查守护进程是否正在运行
 #[tauri::command]
 pub async fn check_daemon_running() -> Result<bool, String> {
-    let client = IpcClient::new();
-    Ok(client.ping())
+    let client = IpcClient::default_port();
+    Ok(client.ping().await)
 }
 
 /// 获取守护进程状态
 #[tauri::command]
 pub async fn get_daemon_status() -> Result<serde_json::Value, String> {
-    let client = IpcClient::new();
-    match client.get_status() {
-        Ok(crate::daemon::ipc::IpcResponse::Ok { data }) => {
-            Ok(data.unwrap_or(serde_json::Value::Null))
-        }
-        Ok(crate::daemon::ipc::IpcResponse::Error { message }) => Err(message),
+    let client = IpcClient::default_port();
+    match client.get_status().await {
+        Ok(IpcResponse::Ok { data }) => Ok(data.unwrap_or(serde_json::Value::Null)),
+        Ok(IpcResponse::Error { message }) => Err(message),
         Err(e) => Err(e),
-        _ => Err("未知响应类型".into()),
     }
 }
 
 /// 连接到空间（通过守护进程）
 #[tauri::command]
 pub async fn daemon_connect_space(space_id: String) -> Result<(), String> {
-    let client = IpcClient::new();
-    match client.connect_space(&space_id) {
-        Ok(crate::daemon::ipc::IpcResponse::Ok { .. }) => Ok(()),
-        Ok(crate::daemon::ipc::IpcResponse::Error { message }) => Err(message),
+    let client = IpcClient::default_port();
+    match client.connect_space(&space_id, serde_json::json!({})).await {
+        Ok(IpcResponse::Ok { .. }) => Ok(()),
+        Ok(IpcResponse::Error { message }) => Err(message),
         Err(e) => Err(e),
-        _ => Err("未知响应类型".into()),
     }
 }
 
 /// 断开空间连接（通过守护进程）
 #[tauri::command]
 pub async fn daemon_disconnect_space(space_id: String) -> Result<(), String> {
-    let client = IpcClient::new();
-    match client.disconnect_space(&space_id) {
-        Ok(crate::daemon::ipc::IpcResponse::Ok { .. }) => Ok(()),
-        Ok(crate::daemon::ipc::IpcResponse::Error { message }) => Err(message),
+    let client = IpcClient::default_port();
+    match client.disconnect_space(&space_id).await {
+        Ok(IpcResponse::Ok { .. }) => Ok(()),
+        Ok(IpcResponse::Error { message }) => Err(message),
         Err(e) => Err(e),
-        _ => Err("未知响应类型".into()),
     }
 }
 
 /// 获取已连接的空间列表（通过守护进程）
 #[tauri::command]
 pub async fn daemon_list_spaces() -> Result<Vec<String>, String> {
-    let client = IpcClient::new();
-    match client.list_spaces() {
-        Ok(crate::daemon::ipc::IpcResponse::Ok { data }) => {
-            Ok(data.and_then(|v| serde_json::from_value(v).ok())
-                .unwrap_or_default())
+    let client = IpcClient::default_port();
+    match client.list_spaces().await {
+        Ok(IpcResponse::Ok { data }) => {
+            Ok(data.and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default())
         }
-        Ok(crate::daemon::ipc::IpcResponse::Error { message }) => Err(message),
+        Ok(IpcResponse::Error { message }) => Err(message),
         Err(e) => Err(e),
-        _ => Err("未知响应类型".into()),
     }
 }
 
@@ -105,23 +99,10 @@ pub async fn is_daemon_service_running() -> Result<bool, String> {
 /// 关闭守护进程
 #[tauri::command]
 pub async fn shutdown_daemon() -> Result<(), String> {
-    let client = IpcClient::new();
-    match client.shutdown() {
-        Ok(crate::daemon::ipc::IpcResponse::Ok { .. }) => Ok(()),
-        Ok(crate::daemon::ipc::IpcResponse::Error { message }) => Err(message),
+    let client = IpcClient::default_port();
+    match client.shutdown().await {
+        Ok(IpcResponse::Ok { .. }) => Ok(()),
+        Ok(IpcResponse::Error { message }) => Err(message),
         Err(e) => Err(e),
-        _ => Err("未知响应类型".into()),
     }
 }
-
-/// Trait for pipe-like syntax
-trait Pipe: Sized {
-    fn pipe<F, R>(self, f: F) -> R
-    where
-        F: FnOnce(Self) -> R,
-    {
-        f(self)
-    }
-}
-
-impl<T> Pipe for T {}
