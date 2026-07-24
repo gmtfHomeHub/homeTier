@@ -75,7 +75,7 @@ export interface ShareInfo {
   host_hint?: string;
 }
 
-export interface NetworkConfig extends EasyTierConfig {
+export interface EasyTierNetworkConfig extends EasyTierConfig {
   instance_id?: string;
   instance_name?: string;
 }
@@ -240,7 +240,7 @@ export interface PortForwardRule {
 }
 
 // 网络配置扩展
-export interface NetworkConfig {
+export interface NetworkConfigDetails {
   space_id: string;
   acl_rules?: AclRule[];
   port_forward_rules?: PortForwardRule[];

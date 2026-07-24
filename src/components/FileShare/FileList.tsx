@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { useFileStore } from "../../stores/fileStore";
 import { formatFileSize, formatTimestamp } from "../../utils/format";
 import * as api from "../../utils/api";
+import type { FileInfo } from "../../types";
 import { Button } from "@radix-ui/themes";
 import { Download, Lock, FileText, ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -59,7 +60,6 @@ export function FileList() {
       await api.receiveFile(file.id, file.file_name);
     } catch (err) {
       console.error("Download file failed:", err);
-      alert("下载失败: " + err);
     }
   };
 

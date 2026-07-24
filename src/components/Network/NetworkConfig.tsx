@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Button, Checkbox, Text, TextField, Select, Switch, Card, CardContent, CardHeader, CardTitle, CardDescription, ScrollArea, Flex, Table, TableBody, TableRow, TableCell, TableHead, TableHeader, AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogAction, Badge, Text as UIText } from "@radix-ui/themes";
+import { Button, Checkbox, Text, TextField, Switch, Card, ScrollArea, Flex, Badge } from "@radix-ui/themes";
+import { AlertDialog, Dialog, Select } from "@radix-ui/themes";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { useToast } from "../../hooks/useToast";
 import { Settings, Globe, Shield, Sliders, Plus, Trash2, Edit2, ExternalLink, Loader2 } from "lucide-react";
@@ -13,8 +14,6 @@ import {
   createPortForwardRule, 
   updatePortForwardRule, 
   deletePortForwardRule,
-  type AclRule,
-  type PortForwardRule
 } from "../../utils/api";
 
 export function NetworkConfig() {
@@ -142,11 +141,11 @@ export function NetworkConfig() {
         )}
 
         {activeTab === "acl" && (
-          <AclConfig spaceId={space.id} />
+          <AclConfig spaceId={space.id} showToast={showToast} />
         )}
 
         {activeTab === "forwarding" && (
-          <PortForwardingConfig spaceId={space.id} />
+          <PortForwardingConfig spaceId={space.id} showToast={showToast} />
         )}
       </div>
     </div>
@@ -154,14 +153,14 @@ export function NetworkConfig() {
 }
 
 // ACL 配置组件
-function AclConfig({ spaceId }: { spaceId: string }) {
-  const [rules, setRules] = useState<Rule[]>([
+function AclConfig({ spaceId, showToast }: { spaceId: string; showToast: any }) {
+  const [rules, setRules] = useState<Array<{id: string; action: "allow" | "deny"; source: string; dest: string; ports: string; description: string}>>([
     { id: "1", action: "allow", source: "any", dest: "192.168.100.0/24", ports: "1-65535", description: "允许本地子网访问" },
     { id: "2", action: "deny", source: "10.0.0.0/8", dest: "any", ports: "any", description: "拒绝内部网络访问" },
   ]);
   const [isAddingRule, setIsAddingRule] = useState(false);
-  const [editingRule, setEditingRule] = useState<Rule | null>(null);
-  const [newRule, setNewRule] = useState<Omit<Rule, "id">>({ action: "allow", source: "any", dest: "any", ports: "1-65535", description: "" });
+  const [editingRule, setEditingRule] = useState<{id: string; action: "allow" | "deny"; source: string; dest: string; ports: string; description: string} | null>(null);
+  const [newRule, setNewRule] = useState<{action: "allow" | "deny"; source: string; dest: string; ports: string; description: string}>({ action: "allow", source: "any", dest: "any", ports: "1-65535", description: "" });
 
   const handleSaveRule = () => {
     if (editingRule) {
@@ -180,7 +179,7 @@ function AclConfig({ spaceId }: { spaceId: string }) {
     showToast({ title: "ACL 规则已删除", variant: "success" });
   };
 
-  const handleEditRule = (rule: Rule) => {
+  const handleEditRule = (rule: {id: string; action: "allow" | "deny"; source: string; dest: string; ports: string; description: string}) => {
     setEditingRule(rule);
     setNewRule({
       action: rule.action,
@@ -202,79 +201,83 @@ function AclConfig({ spaceId }: { spaceId: string }) {
         </Button>
       </div>
 
-      <Table variant="surface">
-        <TableHeader>
-          <TableRow>
-            <TableHead>操作</TableHead>
-            <TableHead>来源</TableHead>
-            <TableHead>目标</TableHead>
-            <TableHead>端口</TableHead>
-            <TableHead>描述</TableHead>
-            <TableHead>操作</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rules.map((rule) => (
-            <TableRow key={rule.id}>
-              <TableCell>
-                <Badge variant={rule.action === "allow" ? "default" : "destructive"}>
-                  {rule.action === "allow" ? "允许" : "拒绝"}
-                </Badge>
-              </TableCell>
-              <TableCell className="font-mono text-sm">{rule.source}</TableCell>
-              <TableCell className="font-mono text-sm">{rule.dest}</TableCell>
-              <TableCell className="font-mono text-sm">{rule.ports}</TableCell>
-              <TableCell className="text-sm">{rule.description}</TableCell>
-              <TableCell>
-                <Flex gap="2">
-                  <Button size="1" variant="ghost" onClick={() => handleEditRule(rule)}>
-                    <Edit2 size={14} />
-                  </Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button size="1" variant="ghost" color="red">
-                        <Trash2 size={14} />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>删除规则</AlertDialogTitle>
-                        <AlertDialogDescription>
+      <div className="border rounded-lg">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b">
+              <th className="text-left p-3">操作</th>
+              <th className="text-left p-3">来源</th>
+              <th className="text-left p-3">目标</th>
+              <th className="text-left p-3">端口</th>
+              <th className="text-left p-3">描述</th>
+              <th className="text-left p-3">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rules.map((rule) => (
+              <tr key={rule.id} className="border-b">
+                <td className="p-3">
+                  <span className={`px-2 py-1 rounded text-xs ${
+                    rule.action === "allow" 
+                      ? "bg-green-100 text-green-800" 
+                      : "bg-red-100 text-red-800"
+                  }`}>
+                    {rule.action === "allow" ? "允许" : "拒绝"}
+                  </span>
+                </td>
+                <td className="p-3 font-mono text-sm">{rule.source}</td>
+                <td className="p-3 font-mono text-sm">{rule.dest}</td>
+                <td className="p-3 font-mono text-sm">{rule.ports}</td>
+                <td className="p-3 text-sm">{rule.description}</td>
+                <td className="p-3">
+                  <Flex gap="2">
+                    <Button size="1" variant="ghost" onClick={() => handleEditRule(rule)}>
+                      <Edit2 size={14} />
+                    </Button>
+                    <AlertDialog.Root>
+                      <AlertDialog.Trigger>
+                        <Button size="1" variant="ghost" color="red">
+                          <Trash2 size={14} />
+                        </Button>
+                      </AlertDialog.Trigger>
+                      <AlertDialog.Content>
+                        <AlertDialog.Title>删除规则</AlertDialog.Title>
+                        <AlertDialog.Description>
                           确定要删除这条 ACL 规则吗？
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogAction onClick={() => handleDeleteRule(rule.id)}>
-                        删除
-                      </AlertDialogAction>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </Flex>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+                        </AlertDialog.Description>
+                        <AlertDialog.Action onClick={() => handleDeleteRule(rule.id)}>
+                          删除
+                        </AlertDialog.Action>
+                      </AlertDialog.Content>
+                    </AlertDialog.Root>
+                  </Flex>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {(isAddingRule || editingRule) && (
         <Card>
-          <CardHeader>
-            <CardTitle>{editingRule ? "编辑 ACL 规则" : "添加 ACL 规则"}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          <div className="p-4 border-b border-[var(--color-border)]">
+            <Text size="2" weight="bold">{editingRule ? "编辑 ACL 规则" : "添加 ACL 规则"}</Text>
+          </div>
+          <div className="p-4 space-y-4">
             <Flex direction="column" gap="2">
               <label className="text-sm font-medium">操作</label>
-              <Select 
+              <Select.Root 
                 value={newRule.action} 
                 onValueChange={(value) => setNewRule({ ...newRule, action: value as "allow" | "deny" })}
               >
                 <Select.Trigger>
-                  <Select.Value />
+                  <div>{newRule.action === "allow" ? "允许" : "拒绝"}</div>
                 </Select.Trigger>
                 <Select.Content>
                   <Select.Item value="allow">允许 (Allow)</Select.Item>
                   <Select.Item value="deny">拒绝 (Deny)</Select.Item>
                 </Select.Content>
-              </Select>
+              </Select.Root>
             </Flex>
 
             <Flex direction="column" gap="2">
@@ -324,7 +327,7 @@ function AclConfig({ spaceId }: { spaceId: string }) {
                 保存
               </Button>
             </Flex>
-          </CardContent>
+          </div>
         </Card>
       )}
     </div>
@@ -332,14 +335,14 @@ function AclConfig({ spaceId }: { spaceId: string }) {
 }
 
 // 端口转发配置组件
-function PortForwardingConfig({ spaceId }: { spaceId: string }) {
-  const [rules, setRules] = useState<ForwardRule[]>([
+function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToast: any }) {
+  const [rules, setRules] = useState<Array<{id: string; name: string; protocol: "tcp" | "udp"; sourceIp: string; sourcePort: number; targetIp: string; targetPort: number; description: string}>>([
     { id: "1", name: "Web服务", protocol: "tcp", sourceIp: "any", sourcePort: 8080, targetIp: "192.168.100.10", targetPort: 80, description: "转发到内部Web服务器" },
     { id: "2", name: "数据库", protocol: "tcp", sourceIp: "192.168.100.0/24", sourcePort: 3306, targetIp: "192.168.100.20", targetPort: 3306, description: "MySQL数据库访问" },
   ]);
   const [isAddingRule, setIsAddingRule] = useState(false);
-  const [editingRule, setEditingRule] = useState<ForwardRule | null>(null);
-  const [newRule, setNewRule] = useState<Omit<ForwardRule, "id">>({ 
+  const [editingRule, setEditingRule] = useState<{id: string; name: string; protocol: "tcp" | "udp"; sourceIp: string; sourcePort: number; targetIp: string; targetPort: number; description: string} | null>(null);
+  const [newRule, setNewRule] = useState<{name: string; protocol: "tcp" | "udp"; sourceIp: string; sourcePort: number; targetIp: string; targetPort: number; description: string}>({ 
     name: "", 
     protocol: "tcp", 
     sourceIp: "any", 
@@ -374,7 +377,7 @@ function PortForwardingConfig({ spaceId }: { spaceId: string }) {
     showToast({ title: "端口转发规则已删除", variant: "success" });
   };
 
-  const handleEditRule = (rule: ForwardRule) => {
+  const handleEditRule = (rule: {id: string; name: string; protocol: "tcp" | "udp"; sourceIp: string; sourcePort: number; targetIp: string; targetPort: number; description: string}) => {
     setEditingRule(rule);
     setNewRule({
       name: rule.name,
@@ -398,73 +401,73 @@ function PortForwardingConfig({ spaceId }: { spaceId: string }) {
         </Button>
       </div>
 
-      <Table variant="surface">
-        <TableHeader>
-          <TableRow>
-            <TableHead>名称</TableHead>
-            <TableHead>协议</TableHead>
-            <TableHead>来源</TableHead>
-            <TableHead>目标</TableHead>
-            <TableHead>描述</TableHead>
-            <TableHead>操作</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rules.map((rule) => (
-            <TableRow key={rule.id}>
-              <TableCell>
-                <Text size="2" weight="medium">{rule.name}</Text>
-              </TableCell>
-              <TableCell>
-                <Badge variant="outline">{rule.protocol.toUpperCase()}</Badge>
-              </TableCell>
-              <TableCell>
-                <Text size="1">
-                  {rule.sourceIp}:{rule.sourcePort}
-                </Text>
-              </TableCell>
-              <TableCell>
-                <Text size="1">
-                  {rule.targetIp}:{rule.targetPort}
-                </Text>
-              </TableCell>
-              <TableCell className="text-sm">{rule.description}</TableCell>
-              <TableCell>
-                <Flex gap="2">
-                  <Button size="1" variant="ghost" onClick={() => handleEditRule(rule)}>
-                    <Edit2 size={14} />
-                  </Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button size="1" variant="ghost" color="red">
-                        <Trash2 size={14} />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>删除规则</AlertDialogTitle>
-                        <AlertDialogDescription>
+      <div className="border rounded-lg">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b">
+              <th className="text-left p-3">名称</th>
+              <th className="text-left p-3">协议</th>
+              <th className="text-left p-3">来源</th>
+              <th className="text-left p-3">目标</th>
+              <th className="text-left p-3">描述</th>
+              <th className="text-left p-3">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rules.map((rule) => (
+              <tr key={rule.id} className="border-b">
+                <td className="p-3">
+                  <Text size="2" weight="medium">{rule.name}</Text>
+                </td>
+                <td className="p-3">
+                  <Badge variant="outline">{rule.protocol.toUpperCase()}</Badge>
+                </td>
+                <td className="p-3">
+                  <Text size="1">
+                    {rule.sourceIp}:{rule.sourcePort}
+                  </Text>
+                </td>
+                <td className="p-3">
+                  <Text size="1">
+                    {rule.targetIp}:{rule.targetPort}
+                  </Text>
+                </td>
+                <td className="p-3 text-sm">{rule.description}</td>
+                <td className="p-3">
+                  <Flex gap="2">
+                    <Button size="1" variant="ghost" onClick={() => handleEditRule(rule)}>
+                      <Edit2 size={14} />
+                    </Button>
+                    <AlertDialog.Root>
+                      <AlertDialog.Trigger>
+                        <Button size="1" variant="ghost" color="red">
+                          <Trash2 size={14} />
+                        </Button>
+                      </AlertDialog.Trigger>
+                      <AlertDialog.Content>
+                        <AlertDialog.Title>删除规则</AlertDialog.Title>
+                        <AlertDialog.Description>
                           确定要删除这条端口转发规则吗？
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogAction onClick={() => handleDeleteRule(rule.id)}>
-                        删除
-                      </AlertDialogAction>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </Flex>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+                        </AlertDialog.Description>
+                        <AlertDialog.Action onClick={() => handleDeleteRule(rule.id)}>
+                          删除
+                        </AlertDialog.Action>
+                      </AlertDialog.Content>
+                    </AlertDialog.Root>
+                  </Flex>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {(isAddingRule || editingRule) && (
         <Card>
-          <CardHeader>
-            <CardTitle>{editingRule ? "编辑端口转发规则" : "添加端口转发规则"}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          <div className="p-4 border-b border-[var(--color-border)]">
+            <Text size="2" weight="bold">{editingRule ? "编辑端口转发规则" : "添加端口转发规则"}</Text>
+          </div>
+          <div className="p-4 space-y-4">
             <Flex direction="column" gap="2">
               <label className="text-sm font-medium">规则名称</label>
               <TextField.Root
@@ -476,18 +479,18 @@ function PortForwardingConfig({ spaceId }: { spaceId: string }) {
 
             <Flex direction="column" gap="2">
               <label className="text-sm font-medium">协议</label>
-              <Select 
+              <Select.Root 
                 value={newRule.protocol} 
                 onValueChange={(value) => setNewRule({ ...newRule, protocol: value as "tcp" | "udp" })}
               >
                 <Select.Trigger>
-                  <Select.Value />
+                  <div>{newRule.protocol.toUpperCase()}</div>
                 </Select.Trigger>
                 <Select.Content>
                   <Select.Item value="tcp">TCP</Select.Item>
                   <Select.Item value="udp">UDP</Select.Item>
                 </Select.Content>
-              </Select>
+              </Select.Root>
             </Flex>
 
             <Flex direction="column" gap="2">
@@ -506,7 +509,7 @@ function PortForwardingConfig({ spaceId }: { spaceId: string }) {
                   <TextField.Root
                     type="number"
                     value={newRule.sourcePort.toString()}
-                    onChange={(e) => setNewRule({ ...newRule, sourcePort: e.target.value.parse().unwrap_or(0) })}
+                    onChange={(e) => setNewRule({ ...newRule, sourcePort: parseInt(e.target.value) || 0 })}
                     placeholder="8080"
                   />
                 </Flex>
@@ -529,7 +532,7 @@ function PortForwardingConfig({ spaceId }: { spaceId: string }) {
                   <TextField.Root
                     type="number"
                     value={newRule.targetPort.toString()}
-                    onChange={(e) => setNewRule({ ...newRule, targetPort: e.target.value.parse().unwrap_or(0) })}
+                    onChange={(e) => setNewRule({ ...newRule, targetPort: parseInt(e.target.value) || 0 })}
                     placeholder="80"
                   />
                 </Flex>
@@ -553,36 +556,11 @@ function PortForwardingConfig({ spaceId }: { spaceId: string }) {
                 保存
               </Button>
             </Flex>
-          </CardContent>
+          </div>
         </Card>
       )}
     </div>
   );
 
-  // 类型定义
-  interface Rule {
-    id: string;
-    action: "allow" | "deny";
-    source: string;
-    dest: string;
-    ports: string;
-    description: string;
-  }
-
-  interface ForwardRule {
-    id: string;
-    name: string;
-    protocol: "tcp" | "udp";
-    sourceIp: string;
-    sourcePort: number;
-    targetIp: string;
-    targetPort: number;
-    description: string;
-  }
-
   return null; // 这个函数永远不会被调用，只是为了类型定义
-}
-      </div>
-    </div>
-  );
 }

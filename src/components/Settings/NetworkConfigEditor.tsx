@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Flex, Text, Button, TextField, Select, Switch, Tabs, TabsList, TabsTrigger, TabsContent, ScrollArea, Card, CardContent, CardHeader, CardTitle, CardDescription, Alert, AlertDescription, AlertTitle } from "@radix-ui/themes";
+import { Flex, Text, Button, TextField, Switch, ScrollArea, Card } from "@radix-ui/themes";
+import { AlertDialog, Select, Tabs } from "@radix-ui/themes";
 import { Network, Shield, Settings, HelpCircle, Check, X, Save, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSpace } from "../../hooks/useSpace";
 import { useToast } from "../../hooks/useToast";
-import { NetworkConfigDetails, NetworkConfig } from "../../types";
+import { NetworkConfigDetails } from "../../types";
 import { updateLocalConfig } from "../../utils/api";
 
 interface NetworkConfigEditorProps {
@@ -17,11 +18,17 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
   const { showToast } = useToast();
   
   const [config, setConfig] = useState<NetworkConfigDetails>({
+    space_id: spaceId,
     network_name: "",
     network_secret: "",
     dhcp: false,
     peers: [],
     listeners: [],
+    mapped_listeners: [],
+    proxy_networks: [],
+    routes: [],
+    exit_nodes: [],
+    port_forwards: [],
     flags: {},
   });
   
@@ -30,14 +37,20 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
 
   useEffect(() => {
     if (space) {
-      setConfig({
-        network_name: space.network_name,
-        network_secret: space.network_secret,
-        dhcp: false, // 从 space 对象中获取默认值
-        peers: [],
-        listeners: [],
-        flags: {},
-      });
+        setConfig({
+          space_id: spaceId,
+          network_name: space.network_name,
+          network_secret: space.network_secret,
+          dhcp: false, // 从 space 对象中获取默认值
+          peers: [],
+          listeners: [],
+          mapped_listeners: [],
+          proxy_networks: [],
+          routes: [],
+          exit_nodes: [],
+          port_forwards: [],
+          flags: {},
+        });
     }
   }, [space]);
 
@@ -65,11 +78,17 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
   const handleReset = () => {
     if (space) {
       setConfig({
+        space_id: spaceId,
         network_name: space.network_name,
         network_secret: space.network_secret,
         dhcp: false,
         peers: [],
         listeners: [],
+        mapped_listeners: [],
+        proxy_networks: [],
+        routes: [],
+        exit_nodes: [],
+        port_forwards: [],
         flags: {},
       });
     }
@@ -85,39 +104,32 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
 
   if (error) {
     return (
-      <Alert variant="error">
-        <AlertTitle>{t("settings.error")}</AlertTitle>
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="text-red-800 font-medium">{t("settings.error")}</div>
+        <div className="text-red-600 text-sm">{error}</div>
+      </div>
     );
   }
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Settings size={20} />
-          {t("settings.localConfig")}
-        </CardTitle>
-        <CardDescription>
-          {t("settings.localConfigDescription")}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+      <div className="flex items-center gap-2 p-4 border-b border-[var(--color-border)]">
+        <Text size="2" weight="bold">{t("settings.localConfig")}</Text>
+      </div>
+      <div className="p-4">
         {showSuccess && (
-          <Alert variant="success" className="mb-4">
-            <Check size={16} />
-            <AlertTitle>{t("settings.configSaved")}</AlertTitle>
-          </Alert>
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+            <Text size="1" weight="bold" className="text-green-800">{t("settings.configSaved")}</Text>
+          </div>
         )}
 
-        <Tabs defaultValue="basic">
-          <TabsList>
-            <TabsTrigger value="basic">{t("settings.basic")}</TabsTrigger>
-            <TabsTrigger value="advanced">{t("settings.advanced")}</TabsTrigger>
-          </TabsList>
+        <Tabs.Root defaultValue="basic">
+          <Tabs.List>
+            <Tabs.Trigger value="basic">{t("settings.basic")}</Tabs.Trigger>
+            <Tabs.Trigger value="advanced">{t("settings.advanced")}</Tabs.Trigger>
+          </Tabs.List>
 
-          <TabsContent value="basic" className="space-y-4">
+          <Tabs.Content value="basic" className="space-y-4">
             <Flex direction="column" gap="4">
               {/* 网络名称 */}
               <Flex direction="column" gap="2">
@@ -171,9 +183,9 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
                 </Button>
               </Flex>
             </Flex>
-          </TabsContent>
+          </Tabs.Content>
 
-          <TabsContent value="advanced" className="space-y-4">
+          <Tabs.Content value="advanced" className="space-y-4">
             <ScrollArea className="h-96">
               <Flex direction="column" gap="4">
                 {/* 高级配置项 */}
@@ -300,9 +312,9 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
                 {t("settings.save")}
               </Button>
             </Flex>
-          </TabsContent>
-        </Tabs>
-      </CardContent>
+          </Tabs.Content>
+        </Tabs.Root>
+      </div>
     </Card>
   );
 };

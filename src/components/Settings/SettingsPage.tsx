@@ -6,6 +6,7 @@ import { EasyTierVersionManager } from "./EasyTierVersionManager";
 import { Settings as SettingsIcon, Terminal, Network, Palette, Languages, HelpCircle, Shield } from "lucide-react";
 import { getSystemConfig, setSystemConfig, getRelayPrefix, setRelayPrefix, getWebappMode, setWebappMode } from "../../utils/api";
 import { useSettingsStore } from "../../stores/settingsStore";
+import { useSpaceStore } from "../../stores/spaceStore";
 import type { EasyTierConfig } from "../../types/config";
 import { useTranslation } from "react-i18next";
 import { Tabs, Tooltip, Button, TextField, Flex, Text } from "@radix-ui/themes";
@@ -22,6 +23,7 @@ export function SettingsPage() {
   const [relayPrefixLoaded, setRelayPrefixLoaded] = useState(false);
   const [webappMode, setWebappModeState] = useState<string | null>(null);
   const { theme, language, setTheme, setLanguage, relayPrefix: storePrefix, setRelayPrefix: setStorePrefix } = useSettingsStore();
+  const { currentSpaceId } = useSpaceStore();
   const { t, i18n } = useTranslation();
 
   useEffect(() => {
@@ -202,10 +204,10 @@ export function SettingsPage() {
               {/* 本地配置 */}
               <section>
                 <Flex align="center" gap="2" mb="3">
-                  <Settings size={16} />
+                  <SettingsIcon size={16} />
                   <Text size="2" weight="bold">本地配置</Text>
                 </Flex>
-                <NetworkConfigEditor />
+                {currentSpaceId && <NetworkConfigEditor spaceId={currentSpaceId} />}
               </section>
 
               {/* WebView 模式 */}

@@ -8,12 +8,15 @@ import type {
   TransferProgress,
   NetworkStatus,
   ShareInfo,
-  NetworkConfig,
+  NetworkConfigDetails,
   LogEntry,
   SpaceApp,
   AuthResult,
   TunStatus,
   TunDeviceInfo,
+  PeerInfo,
+  AclRule,
+  PortForwardRule,
 } from "../types";
 
 // === Space Commands ===
@@ -58,6 +61,10 @@ export async function getSpaceStatus(spaceId: string): Promise<never> {
   return invoke("get_space_status", { spaceId });
 }
 
+export async function getSpace(spaceId: string): Promise<Space> {
+  return invoke("get_space", { spaceId });
+}
+
 export async function patchSpaceConfig(spaceId: string, patch: Record<string, never>): Promise<void> {
   return invoke("patch_space_config", { spaceId, patch });
 }
@@ -76,12 +83,12 @@ export async function getNetworkStatus(spaceId: string): Promise<NetworkStatus> 
   return invoke("get_network_status", { spaceId });
 }
 
-export async function updateGroupConfig(spaceId: string, config: NetworkConfig): Promise<void> {
-  return invoke("update_group_config", { spaceId, config });
+export async function updateGroupConfig(spaceId: string, config: NetworkConfigDetails): Promise<void> {
+  return invoke("update_group_config", { spaceId, config: JSON.stringify(config) });
 }
 
-export async function updateLocalConfig(spaceId: string, config: NetworkConfig): Promise<void> {
-  return invoke("update_local_config", { spaceId, config });
+export async function updateLocalConfig(spaceId: string, config: NetworkConfigDetails): Promise<void> {
+  return invoke("update_local_config", { spaceId, config: JSON.stringify(config) });
 }
 
 // === Chat Commands ===
@@ -121,14 +128,15 @@ export async function toggleSpeaker(spaceId: string): Promise<boolean> {
 
 // === Space Configuration ===
 
-export async function updateLocalConfig(
-  spaceId: string,
-  config: NetworkConfig
-): Promise<void> {
-  return invoke("update_local_config", { spaceId, config: JSON.stringify(config) });
-}
-
 // === File Commands ===
+
+export async function receiveFile(
+  fileId: string,
+  savePath: string,
+  password?: string
+): Promise<void> {
+  return invoke("receive_file", { fileId, savePath, password });
+}
 
 export async function sendFile(
   spaceId: string,
@@ -229,9 +237,11 @@ export async function updateSpaceConfig(spaceId: string, configJson: string): Pr
 
 // === Peers ===
 
-export async function getSpacePeers(spaceId: string): Promise<never[]> {
-  return invoke("get_space_peers", { spaceId });
+export async function getSpacePeers(spaceId: string): Promise<PeerInfo[]> {
+  return invoke<PeerInfo[]>("get_space_peers", { spaceId });
 }
+
+// 这些类型从types导入
 
 // === TUN 授权 ===
 
@@ -390,4 +400,40 @@ export async function checkEasyTierUpdate(): Promise<string[]> {
 
 export async function upgradeEasyTier(version: string, sourcePath?: string): Promise<void> {
   return invoke("upgrade_easytier", { version, sourcePath });
+}
+
+// === ACL Rules ===
+
+export async function getAclRules(spaceId: string): Promise<AclRule[]> {
+  return invoke("get_acl_rules", { spaceId });
+}
+
+export async function createAclRule(spaceId: string, rule: Omit<AclRule, 'id'>): Promise<AclRule> {
+  return invoke("create_acl_rule", { spaceId, rule: JSON.stringify(rule) });
+}
+
+export async function updateAclRule(spaceId: string, ruleId: string, rule: Partial<AclRule>): Promise<AclRule> {
+  return invoke("update_acl_rule", { spaceId, ruleId, rule: JSON.stringify(rule) });
+}
+
+export async function deleteAclRule(spaceId: string, ruleId: string): Promise<void> {
+  return invoke("delete_acl_rule", { spaceId, ruleId });
+}
+
+// === Port Forward Rules ===
+
+export async function getPortForwardRules(spaceId: string): Promise<PortForwardRule[]> {
+  return invoke("get_port_forward_rules", { spaceId });
+}
+
+export async function createPortForwardRule(spaceId: string, rule: Omit<PortForwardRule, 'id'>): Promise<PortForwardRule> {
+  return invoke("create_port_forward_rule", { spaceId, rule: JSON.stringify(rule) });
+}
+
+export async function updatePortForwardRule(spaceId: string, ruleId: string, rule: Partial<PortForwardRule>): Promise<PortForwardRule> {
+  return invoke("update_port_forward_rule", { spaceId, ruleId, rule: JSON.stringify(rule) });
+}
+
+export async function deletePortForwardRule(spaceId: string, ruleId: string): Promise<void> {
+  return invoke("delete_port_forward_rule", { spaceId, ruleId });
 }

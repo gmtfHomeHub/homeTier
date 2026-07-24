@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, CardHeader, CardTitle, CardContent } from "@radix-ui/themes";
+import { Card, Text } from "@radix-ui/themes";
 import { useTranslation } from "react-i18next";
 import { Signal, Wifi, Activity } from "lucide-react";
 
@@ -66,28 +66,22 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
   if (loading) {
     return (
       <Card className="w-full">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Wifi size={16} />
-            {t('network.stats')}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-sm text-[var(--color-text-secondary)]">加载中...</div>
-        </CardContent>
+        <div className="p-4 border-b border-[var(--color-border)]">
+          <Text size="2" weight="bold">{t('network.stats')}</Text>
+        </div>
+        <div className="p-4">
+          <Text size="1" color="gray">加载中...</Text>
+        </div>
       </Card>
     );
   }
 
   return (
     <Card className="w-full">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Wifi size={16} />
-          {t('network.stats')}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
+      <div className="p-4 border-b border-[var(--color-border)]">
+        <Text size="2" weight="bold">{t('network.stats')}</Text>
+      </div>
+      <div className="p-4">
         <div className="grid grid-cols-2 gap-4">
           {/* 接收流量 */}
           <div className="space-y-1">
@@ -95,9 +89,9 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
               <Signal className="text-[var(--color-info)]" />
               <span className="font-medium">{t('network.downstream')}</span>
             </div>
-            <div className="text-lg font-semibold text-[var(--color-info)]">
+            <Text size="1" weight="bold" className="text-[var(--color-info)]">
               {formatBytes(stats.rx_bytes)}
-            </div>
+            </Text>
           </div>
 
           {/* 发送流量 */}
@@ -106,9 +100,9 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
               <Signal className="text-[var(--color-info)]" />
               <span className="font-medium">{t('network.upstream')}</span>
             </div>
-            <div className="text-lg font-semibold text-[var(--color-info)]">
+            <Text size="1" weight="bold" className="text-[var(--color-info)]">
               {formatBytes(stats.tx_bytes)}
-            </div>
+            </Text>
           </div>
 
           {/* 平均延迟 */}
@@ -117,9 +111,9 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
               <Activity className="text-[var(--color-success)]" />
               <span className="font-medium">{t('network.latency')}</span>
             </div>
-            <div className="text-lg font-semibold text-[var(--color-success)]">
+            <Text size="1" weight="bold" className="text-[var(--color-success)]">
               {formatLatency(stats.avg_latency_ms)}
-            </div>
+            </Text>
           </div>
 
           {/* 连接节点数 */}
@@ -128,9 +122,9 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
               <Wifi className="text-[var(--color-success)]" />
               <span className="font-medium">{t('network.peers')}</span>
             </div>
-            <div className="text-lg font-semibold text-[var(--color-success)]">
+            <Text size="1" weight="bold" className="text-[var(--color-success)]">
               {stats.connected_peers}
-            </div>
+            </Text>
           </div>
         </div>
 
@@ -141,7 +135,7 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
             <span>{t('network.lastUpdated')}</span>
           </div>
         </div>
-      </CardContent>
+      </div>
     </Card>
   );
 }
