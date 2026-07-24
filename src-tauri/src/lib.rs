@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use tokio::sync::RwLock;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 use commands::app_view::AppWebview;
 use proxy::plugins::*;
@@ -189,7 +189,7 @@ pub fn run() -> std::process::ExitCode {
                                 if let Some(space) = spaces.iter().find(|s| &s.id == space_id) {
                                     if msg.verify(&space.network_secret) {
                                         // 发送事件到前端
-                                        let _ = app_handle_clone.emit("new_message", serde_json::to_value(&msg).ok());
+                                        let _ = app_handle_clone.emit("new_message", serde_json::to_value(&msg).unwrap_or_default());
                                     }
                                 }
                             }
@@ -222,8 +222,6 @@ pub fn run() -> std::process::ExitCode {
             commands::network::get_network_status,
             commands::network::get_network_stats,
             commands::network::update_group_config,
-            commands::network::update_local_config,
-            commands::network::get_effective_config,
             commands::network::get_space_peers,
             // 聊天
             commands::chat::send_message,

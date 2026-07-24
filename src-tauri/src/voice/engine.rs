@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use webrtc::api::APIBuilder;
+use webrtc::peer_connection::configuration::RTCConfiguration;
+use webrtc::peer_connection::RTCPeerConnection;
 
 /// 语音频道状态
 #[derive(Debug, Clone, PartialEq)]
@@ -22,7 +25,7 @@ pub struct VoiceEngine {
     /// 信令服务器端口
     signal_port: u16,
     /// WebRTC PeerConnection
-    peer_connection: Option<webrtc::peerconnection::RTCPeerConnection>,
+    peer_connection: Option<RTCPeerConnection>,
 }
 
 #[derive(Clone)]
@@ -49,7 +52,7 @@ impl VoiceEngine {
         *self.status.write().await = VoiceStatus::Connecting;
 
         // 启动信令服务器
-        let mut signal_server = SignalServer::new(self.signal_port);
+        let mut signal_server = VoiceServer::new(self.signal_port);
         signal_server.start().await.map_err(|e| format!("启动信令服务器失败: {}", e))?;
 
         // 获取 peer 列表
@@ -61,16 +64,13 @@ impl VoiceEngine {
         // 建立 WebRTC 连接
         tokio::spawn(async move {
             // 创建 WebRTC PeerConnection
-            let config = webrtc::peerconnection::Configuration::new();
-            let peer_connection = webrtc::peerconnection::RTCPeerConnection::new(config)
+            let api = APIBuilder::new().build();
+            let config = RTCConfiguration::default();
+            let peer_connection = api
+                .new_peer_connection(config)
                 .await
                 .map_err(|e| format!("创建 PeerConnection 失败: {}", e))
                 .unwrap();
-
-            // 设置 ICE 事件处理
-            let mut ice_gathering_complete = peer_connection
-                .on_ice_gathering_complete()
-                .await;
 
             // 创建 SDP Offer
             let offer = peer_connection
@@ -88,20 +88,6 @@ impl VoiceEngine {
 
             // 发送 Offer 到信令服务器
             let _ = SignalHandler::send_offer("127.0.0.1", signal_port, &offer.sdp).await;
-
-            // 等待 ICE gathering 完成
-            ice_gathering_complete.await;
-
-            // 获取本地 ICE candidates
-            let ice_candidates = peer_connection
-                .get_ice_candidates()
-                .await
-                .unwrap_or_default();
-
-            // 发送 ICE candidates
-            for candidate in ice_candidates {
-                let _ = SignalHandler::send_ice("127.0.0.1", signal_port, &candidate.to_string()).await;
-            }
 
             // 设置远程描述（这里需要从信令服务器获取）
             // 在实际实现中，会从信令服务器获取远程 peer 的 SDP Answer

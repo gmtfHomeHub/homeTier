@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use webrtc::peerconnection::RTCPeerConnection;
+use webrtc::api::APIBuilder;
+use webrtc::peer_connection::configuration::RTCConfiguration;
+use webrtc::peer_connection::RTCPeerConnection;
 
 /// 屏幕共享状态
 pub struct ScreenShareEngine {
@@ -25,12 +27,14 @@ impl ScreenShareEngine {
     /// 开始屏幕共享
     pub async fn start(&self) -> Result<(), String> {
         // 启动信令服务器
-        let mut signal_server = SignalServer::new(self.signal_port);
+        let mut signal_server = crate::screen::server::ScreenShareSignalServer::new(self.signal_port);
         signal_server.start().await.map_err(|e| format!("启动信令服务器失败: {}", e))?;
 
         // 创建 WebRTC PeerConnection
-        let config = webrtc::peerconnection::Configuration::new();
-        let peer_connection = webrtc::peerconnection::RTCPeerConnection::new(config)
+        let api = APIBuilder::new().build();
+        let config = RTCConfiguration::default();
+        let peer_connection = api
+            .new_peer_connection(config)
             .await
             .map_err(|e| format!("创建 PeerConnection 失败: {}", e))?;
 

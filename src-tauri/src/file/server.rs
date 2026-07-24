@@ -128,10 +128,10 @@ async fn handle_connection(stream: tokio::net::TcpStream, storage_dir: PathBuf) 
                     Err(e) => format!("HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\n\r\n{}", e.len(), e),
                 }
             } else {
-                "HTTP/1.1 400 Bad Request\r\nContent-Length: 15\r\n\r\nInvalid file ID"
+                "HTTP/1.1 400 Bad Request\r\nContent-Length: 15\r\n\r\nInvalid file ID".to_string()
             }
         }
-        _ => "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nNot Found",
+        _ => "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nNot Found".to_string(),
     };
 
     let _ = tokio::io::AsyncWriteExt::write_all(&mut stream.into_inner(), response.as_bytes()).await;

@@ -20,9 +20,9 @@ pub struct SpaceManager {
     easytier: Arc<crate::easytier::EasyTierManager>,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     ipc_client: Arc<crate::daemon::client::IpcClient>,
-    spaces: Arc<RwLock<Vec<Space>>>,
+    pub(crate) spaces: Arc<RwLock<Vec<Space>>>,
     /// 聊天服务器映射: space_id -> ChatServer
-    chat_servers: Arc<RwLock<HashMap<Uuid, ChatServer>>>,
+    pub(crate) chat_servers: Arc<RwLock<HashMap<Uuid, ChatServer>>>,
     /// 聊天客户端映射: space_id -> ChatClient
     chat_clients: Arc<RwLock<HashMap<Uuid, ChatClient>>>,
     /// 语音服务器映射: space_id -> VoiceServer
@@ -428,7 +428,7 @@ Self {
     /// 启动文件服务器
     async fn start_file_server(&self, space_id: Uuid) -> Result<(), String> {
         let file_port = 19000 + (space_id.as_u128() % 1000) as u16;
-        let storage_dir = self.storage_dir.join(space_id.to_string());
+        let storage_dir = self.storage_dir.read().await.join(space_id.to_string());
 
         let mut server = FileServer::new(storage_dir);
         server.start(file_port).await.map_err(|e| format!("启动文件服务器失败: {}", e))?;
@@ -482,7 +482,7 @@ Self {
     }
 
     /// 获取 peer 列表（通过 RPC 查询）
-    async fn get_peers(&self, space_id: &Uuid) -> Result<Vec<crate::types::Peer>, String> {
+    async fn get_peers(&self, space_id: &Uuid) -> Result<Vec<crate::easytier::launcher::PeerInfo>, String> {
         match self.ipc_client.list_peers(&space_id.to_string()).await {
             Ok(crate::daemon::ipc::IpcResponse::Ok { data }) => {
                 if let Some(v) = data {

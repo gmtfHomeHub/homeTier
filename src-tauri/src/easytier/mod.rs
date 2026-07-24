@@ -276,26 +276,24 @@ impl EasyTierManager {
                 }
                 connected_peers = peer_infos.peer_infos.len() as u32;
 
-                // 计算平均延迟
+                // 计算平均延迟（从 PeerConnInfo.stats 聚合）
                 let mut total_latency = 0.0f64;
                 let mut latency_count = 0u32;
                 let mut total_rx_bytes = 0u64;
                 let mut total_tx_bytes = 0u64;
 
                 for peer in &peer_infos.peer_infos {
-                    if let Some(latency) = peer.latency_ms {
-                        total_latency += latency;
-                        latency_count += 1;
-                    }
-                    if let Some(rx) = peer.rx_bytes {
-                        total_rx_bytes += rx;
-                    }
-                    if let Some(tx) = peer.tx_bytes {
-                        total_tx_bytes += tx;
+                    for conn in &peer.conns {
+                        if let Some(stats) = &conn.stats {
+                            total_latency += stats.latency_us as f64;
+                            total_rx_bytes += stats.rx_bytes;
+                            total_tx_bytes += stats.tx_bytes;
+                            latency_count += 1;
+                        }
                     }
                 }
 
-                let avg_latency_ms = if latency_count > 0 { total_latency / latency_count as f64 } else { 0.0 };
+                let avg_latency_ms = if latency_count > 0 { total_latency / latency_count as f64 / 1000.0 } else { 0.0 };
 
                 Some(crate::daemon::ipc::SpaceRuntimeStatus {
                     space_id: instance_id.to_string(),
@@ -336,7 +334,7 @@ impl EasyTierManager {
     }
 
     /// 获取 peer 列表（通过 RPC 查询）
-    pub async fn get_peers(&self, instance_id: &Uuid) -> Result<Vec<crate::launcher::PeerInfo>, String> {
+    pub async fn get_peers(&self, instance_id: &Uuid) -> Result<Vec<crate::easytier::launcher::PeerInfo>, String> {
         let rpc_port = self.get_instance_rpc_port(instance_id)
             .ok_or_else(|| "未找到 RPC 端口".to_string())?;
 
@@ -345,7 +343,7 @@ impl EasyTierManager {
     }
 
     /// 通过 RPC 查询 peer 列表
-    async fn query_peer_list(&self, instance_id: &Uuid, rpc_port: u16) -> Option<Vec<crate::launcher::PeerInfo>> {
+    async fn query_peer_list(&self, instance_id: &Uuid, rpc_port: u16) -> Option<Vec<crate::easytier::launcher::PeerInfo>> {
         use easytier::proto::rpc_impl::standalone::StandAloneClient;
         use easytier::proto::rpc_types::controller::BaseController;
         use easytier::proto::api::instance::PeerManageRpcClientFactory;
@@ -362,23 +360,47 @@ impl EasyTierManager {
 
         match peer_service.list_peer(ctrl, easytier::proto::api::instance::ListPeerRequest::default()).await {
             Ok(resp) => {
-                let peers = resp.into_inner();
                 let mut peer_infos = Vec::new();
 
-                for peer in peers.peer_infos {
-                    peer_infos.push(crate::launcher::PeerInfo {
-                        peer_id: peer.peer_id as u32,
-                        virtual_ip: Some(peer.ipv4_addr),
-                        hostname: Some(peer.hostname),
-                        latency_ms: peer.latency_ms,
-                        loss_rate: peer.loss_rate,
-                        rx_bytes: peer.rx_bytes,
-                        tx_bytes: peer.tx_bytes,
-                        connected: peer.connected,
-                        is_local: peer.is_local,
-                        version: Some(peer.version),
-                        tunnel_proto: Some(peer.tunnel_type),
-                        nat_type: Some(peer.nat_type),
+                for peer in resp.peer_infos {
+                    // 从连接中聚合统计信息
+                    let mut total_rx = 0u64;
+                    let mut total_tx = 0u64;
+                    let mut total_latency_us = 0u64;
+                    let mut total_loss_rate = 0.0f32;
+                    let mut conn_count = 0u32;
+                    let mut tunnel_proto = None;
+
+                    for conn in &peer.conns {
+                        if let Some(stats) = &conn.stats {
+                            total_rx += stats.rx_bytes;
+                            total_tx += stats.tx_bytes;
+                            total_latency_us += stats.latency_us;
+                            total_loss_rate += conn.loss_rate;
+                            conn_count += 1;
+                        }
+                        if let Some(ref tunnel) = conn.tunnel {
+                            tunnel_proto = Some(tunnel.tunnel_type.clone());
+                        }
+                    }
+
+                    let avg_latency_ms = if conn_count > 0 { Some(total_latency_us as f64 / conn_count as f64 / 1000.0) } else { None };
+                    let avg_loss_rate = if conn_count > 0 { Some(total_loss_rate / conn_count as f32) } else { None };
+                    let any_connected = peer.conns.iter().any(|c| !c.is_closed);
+
+                    peer_infos.push(crate::easytier::launcher::PeerInfo {
+                        peer_id: peer.peer_id,
+                        virtual_ip: None,
+                        hostname: None,
+                        latency_ms: avg_latency_ms,
+                        loss_rate: avg_loss_rate.map(|f| f as f64),
+                        rx_bytes: Some(total_rx),
+                        tx_bytes: Some(total_tx),
+                        connected: any_connected,
+                        is_local: false,
+                        version: None,
+                        tunnel_proto,
+                        nat_type: None,
                     });
                 }
 

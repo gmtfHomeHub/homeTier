@@ -1,5 +1,6 @@
 pub mod app;
 pub mod app_view;
+pub mod config;
 pub mod chat;
 pub mod daemon;
 pub mod easytier;

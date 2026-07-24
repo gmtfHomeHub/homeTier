@@ -52,7 +52,7 @@ impl ScreenShareSignalServer {
 }
 
 /// 处理 HTTP 连接
-async fn handle_connection(stream: tokio::net::TcpStream, messages: Arc<RwLock<HashMap<String, Vec<String>>>) {
+async fn handle_connection(stream: tokio::net::TcpStream, messages: Arc<RwLock<HashMap<String, Vec<String>>>>) {
     use tokio::io::AsyncReadExt;
     use tokio::io::AsyncWriteExt;
 
