@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Button, Checkbox, Text, TextField, Switch, Card, ScrollArea, Flex, Badge } from "@radix-ui/themes";
 import { AlertDialog, Dialog, Select } from "@radix-ui/themes";
 import { useSpaceStore } from "../../stores/spaceStore";
-import { useToast } from "../../hooks/useToast";
+import { useToast, ToastHelpers } from "../../hooks/useToast";
 import { Settings, Globe, Shield, Sliders, Plus, Trash2, Edit2, ExternalLink, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { 
@@ -85,13 +85,13 @@ export function NetworkConfig() {
               <label className="text-xs font-medium text-[var(--color-text-secondary)]">
                 网络名称
               </label>
-              <div className="mt-1 text-sm font-mono">{space.network_name}</div>
+              <div className="mt-1 font-mono text-sm">{space.network_name}</div>
             </div>
             <div>
               <label className="text-xs font-medium text-[var(--color-text-secondary)]">
                 虚拟 IP
               </label>
-              <div className="mt-1 text-sm font-mono">
+              <div className="mt-1 font-mono text-sm">
                 {space.virtual_ip || "DHCP 自动分配"}
               </div>
             </div>
@@ -109,7 +109,7 @@ export function NetworkConfig() {
                       : "text-[var(--color-text-secondary)]"
                   }`}
                 >
-                  <span className="w-2 h-2 rounded-full bg-current" />
+                  <span className="w-2 h-2 bg-current rounded-full" />
                   {space.status === "connected"
                     ? "已连接"
                     : space.status === "connecting"
@@ -153,7 +153,7 @@ export function NetworkConfig() {
 }
 
 // ACL 配置组件
-function AclConfig({ spaceId, showToast }: { spaceId: string; showToast: any }) {
+function AclConfig({ spaceId, showToast }: { spaceId: string; showToast: ToastHelpers['showToast'] }) {
   const [rules, setRules] = useState<Array<{id: string; action: "allow" | "deny"; source: string; dest: string; ports: string; description: string}>>([
     { id: "1", action: "allow", source: "any", dest: "192.168.100.0/24", ports: "1-65535", description: "允许本地子网访问" },
     { id: "2", action: "deny", source: "10.0.0.0/8", dest: "any", ports: "any", description: "拒绝内部网络访问" },
@@ -193,7 +193,7 @@ function AclConfig({ spaceId, showToast }: { spaceId: string; showToast: any }) 
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">访问控制列表 (ACL)</h3>
         <Button onClick={() => setIsAddingRule(true)}>
           <Plus size={16} />
@@ -205,12 +205,12 @@ function AclConfig({ spaceId, showToast }: { spaceId: string; showToast: any }) 
         <table className="w-full">
           <thead>
             <tr className="border-b">
-              <th className="text-left p-3">操作</th>
-              <th className="text-left p-3">来源</th>
-              <th className="text-left p-3">目标</th>
-              <th className="text-left p-3">端口</th>
-              <th className="text-left p-3">描述</th>
-              <th className="text-left p-3">操作</th>
+              <th className="p-3 text-left">操作</th>
+              <th className="p-3 text-left">来源</th>
+              <th className="p-3 text-left">目标</th>
+              <th className="p-3 text-left">端口</th>
+              <th className="p-3 text-left">描述</th>
+              <th className="p-3 text-left">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -335,7 +335,7 @@ function AclConfig({ spaceId, showToast }: { spaceId: string; showToast: any }) 
 }
 
 // 端口转发配置组件
-function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToast: any }) {
+function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToast: ToastHelpers['showToast'] }) {
   const [rules, setRules] = useState<Array<{id: string; name: string; protocol: "tcp" | "udp"; sourceIp: string; sourcePort: number; targetIp: string; targetPort: number; description: string}>>([
     { id: "1", name: "Web服务", protocol: "tcp", sourceIp: "any", sourcePort: 8080, targetIp: "192.168.100.10", targetPort: 80, description: "转发到内部Web服务器" },
     { id: "2", name: "数据库", protocol: "tcp", sourceIp: "192.168.100.0/24", sourcePort: 3306, targetIp: "192.168.100.20", targetPort: 3306, description: "MySQL数据库访问" },
@@ -393,7 +393,7 @@ function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToa
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">端口转发</h3>
         <Button onClick={() => setIsAddingRule(true)}>
           <Plus size={16} />
@@ -405,12 +405,12 @@ function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToa
         <table className="w-full">
           <thead>
             <tr className="border-b">
-              <th className="text-left p-3">名称</th>
-              <th className="text-left p-3">协议</th>
-              <th className="text-left p-3">来源</th>
-              <th className="text-left p-3">目标</th>
-              <th className="text-left p-3">描述</th>
-              <th className="text-left p-3">操作</th>
+              <th className="p-3 text-left">名称</th>
+              <th className="p-3 text-left">协议</th>
+              <th className="p-3 text-left">来源</th>
+              <th className="p-3 text-left">目标</th>
+              <th className="p-3 text-left">描述</th>
+              <th className="p-3 text-left">操作</th>
             </tr>
           </thead>
           <tbody>

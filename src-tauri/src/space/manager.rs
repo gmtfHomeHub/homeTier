@@ -18,7 +18,7 @@ pub struct SpaceManager {
     db: Arc<Database>,
     #[cfg(any(target_os = "android", target_os = "ios"))]
     easytier: Arc<crate::easytier::EasyTierManager>,
-    #[cfg(not(any(target_os = "android", target_os = "ios"))]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     ipc_client: Arc<crate::daemon::client::IpcClient>,
     spaces: Arc<RwLock<Vec<Space>>>,
     /// 聊天服务器映射: space_id -> ChatServer
