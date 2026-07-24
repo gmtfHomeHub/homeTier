@@ -53,13 +53,19 @@ impl PlatformAdapter for WindowsAdapter {
             Ok(p) => p.to_string_lossy().to_string(),
             Err(e) => {
                 log_error!(format!("获取可执行路径失败: {}", e));
-                // crate::log::log_system("authorize_tun", &format!("获取可执行路径失败: {}", e));
                 return AuthResult { success: false, message: "获取可执行路径失败".into(), needs_restart: false };
             }
         };
 
-        log_error!(format!("Windows TUN 授权: 通过 runas 重启进程, exe={}", exe));
-        // crate::log::log_system("authorize_tun", &format!("Windows TUN 授权: 通过 runas 重启进程, exe={}", exe));
+        // 保留原始启动参数，并添加 --elevated 标记
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        let mut full_args = args;
+        if !full_args.iter().any(|a| a == "--elevated") {
+            full_args.push("--elevated".into());
+        }
+        let args_str = full_args.join(" ");
+
+        log_info!(format!("Windows TUN 授权: 通过 runas 重启进程, exe={}, args={}", exe, args_str));
 
         // 使用 ShellExecuteW 以管理员身份启动新进程
         let result = unsafe {
@@ -67,7 +73,7 @@ impl PlatformAdapter for WindowsAdapter {
                 None,
                 windows::core::w!("runas"),
                 &windows::core::HSTRING::from(&exe),
-                windows::core::w!(""),
+                &windows::core::HSTRING::from(&args_str),
                 None,
                 windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
             )

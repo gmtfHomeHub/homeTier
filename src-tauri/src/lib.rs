@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod chat;
+pub mod daemon;
 pub mod db;
 pub mod easytier;
 pub mod file;
@@ -25,6 +26,16 @@ use proxy::{ActiveOrigin, ProxyHandler, ProxyKeyMap};
 
 /// 全局代理服务器，用于应用退出时关闭
 static PROXY_SERVER: OnceLock<Arc<proxy::ProxyServer>> = OnceLock::new();
+
+/// Windows UAC 提权标记，用于检测当前进程是否通过 runas 启动
+#[cfg(target_os = "windows")]
+static ELEVATED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 检查当前进程是否以提权模式运行（Windows UAC）
+#[cfg(target_os = "windows")]
+pub fn is_elevated_process() -> bool {
+    ELEVATED.load(std::sync::atomic::Ordering::SeqCst)
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> std::process::ExitCode {
@@ -197,6 +208,19 @@ pub fn run() -> std::process::ExitCode {
             commands::app_view::open_app_view,
             commands::app_view::close_app_view,
             commands::app_view::resize_app_view,
+            // 守护进程管理
+            commands::daemon::check_daemon_running,
+            commands::daemon::get_daemon_status,
+            commands::daemon::daemon_connect_space,
+            commands::daemon::daemon_disconnect_space,
+            commands::daemon::daemon_list_spaces,
+            commands::daemon::install_daemon_service,
+            commands::daemon::uninstall_daemon_service,
+            commands::daemon::start_daemon_service,
+            commands::daemon::stop_daemon_service,
+            commands::daemon::is_daemon_service_installed,
+            commands::daemon::is_daemon_service_running,
+            commands::daemon::shutdown_daemon,
         ])
         .on_window_event(|_win, event| {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -229,4 +253,37 @@ pub fn run() -> std::process::ExitCode {
     log::clear();
 
     std::process::ExitCode::SUCCESS
+}
+
+/// 带参数的入口点，用于 Windows UAC 提权场景
+pub fn run_with_args(elevated: bool) -> std::process::ExitCode {
+    #[cfg(target_os = "windows")]
+    {
+        ELEVATED.store(elevated, std::sync::atomic::Ordering::SeqCst);
+        if elevated {
+            log_info!("Windows UAC 提权进程已启动");
+        }
+    }
+    run()
+}
+
+/// 守护进程入口点（--daemon 模式）
+pub fn run_daemon() -> std::process::ExitCode {
+    // 创建 tokio 运行时
+    let rt = tokio::runtime::Runtime::new()
+        .expect("创建 tokio 运行时失败");
+
+    // 运行守护进程
+    let result = rt.block_on(daemon::run_daemon_async());
+
+    match result {
+        Ok(()) => {
+            log_info!("守护进程正常退出");
+            std::process::ExitCode::SUCCESS
+        }
+        Err(e) => {
+            log_error!("守护进程异常退出: {}", e);
+            std::process::ExitCode::FAILURE
+        }
+    }
 }

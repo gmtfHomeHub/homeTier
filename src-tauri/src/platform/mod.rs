@@ -78,23 +78,40 @@ fn check_tun_available_inner() -> bool {
 
     #[cfg(target_os = "linux")]
     {
-        // Linux: 检查 CAP_NET_ADMIN 能力位
+        // 1. 检查进程 CapEff（包含 setcap 设置的文件能力）
         if let Ok(content) = std::fs::read_to_string("/proc/self/status") {
             for line in content.lines() {
                 if line.starts_with("CapEff:") {
                     if let Some(hex) = line.split_whitespace().nth(1) {
                         if let Ok(caps) = u64::from_str_radix(hex, 16) {
                             // CAP_NET_ADMIN = cap 12
-                            return (caps & (1 << 12)) != 0;
+                            if (caps & (1 << 12)) != 0 {
+                                return true;
+                            }
                         }
                     }
                 }
             }
         }
-        false
+
+        // 2. 回退：通过 getcap 检查文件能力（getcap 可用时）
+        if linux::LinuxAdapter::check_file_capabilities() {
+            // 文件有 cap_net_admin 能力，但当前进程未继承
+            // 可能是 capabilities 被 stripping 或内核限制
+            crate::log_warn!("文件具有 cap_net_admin 能力，但当前进程未继承，可能需要重启");
+            return false;
+        }
+
+        return false;
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    {
+        // macOS utun 不需要 root，对所有用户可用
+        true
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         adapter.is_elevated()
     }
