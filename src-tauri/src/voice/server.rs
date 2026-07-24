@@ -6,12 +6,12 @@ use tokio::task::spawn;
 use crate::voice::signal::SignalHandler;
 
 /// WebRTC 信令服务器
-pub struct SignalServer {
+pub struct VoiceServer {
     port: u16,
     messages: Arc<RwLock<HashMap<String, Vec<String>>>>,
 }
 
-impl SignalServer {
+impl VoiceServer {
     pub fn new(port: u16) -> Self {
         Self {
             port,

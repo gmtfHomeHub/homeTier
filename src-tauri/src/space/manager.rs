@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::path::PathBuf;
 use uuid::Uuid;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
@@ -28,6 +29,10 @@ pub struct SpaceManager {
     voice_servers: Arc<RwLock<HashMap<Uuid, VoiceServer>>>,
     /// 屏幕共享服务器映射: space_id -> ScreenShareSignalServer
     screen_servers: Arc<RwLock<HashMap<Uuid, ScreenShareSignalServer>>>,
+    /// 文件服务器映射: space_id -> FileServer
+    file_servers: Arc<RwLock<HashMap<Uuid, FileServer>>>,
+    /// 文件存储根目录
+    storage_dir: Arc<RwLock<PathBuf>>,
     /// 本地配置映射: space_id -> NetworkConfig
     local_configs: Arc<RwLock<HashMap<Uuid, NetworkConfig>>>,
 }
@@ -41,8 +46,11 @@ impl Clone for SpaceManager {
             spaces: self.spaces.clone(),
             chat_servers: self.chat_servers.clone(),
             chat_clients: self.chat_clients.clone(),
+            voice_servers: self.voice_servers.clone(),
+            screen_servers: self.screen_servers.clone(),
             file_servers: self.file_servers.clone(),
             storage_dir: self.storage_dir.clone(),
+            local_configs: self.local_configs.clone(),
         }
     }
 }
@@ -69,6 +77,7 @@ Self {
             chat_clients: Arc::new(RwLock::new(HashMap::new())),
             voice_servers: Arc::new(RwLock::new(HashMap::new())),
             screen_servers: Arc::new(RwLock::new(HashMap::new())),
+            file_servers: Arc::new(RwLock::new(HashMap::new())),
             storage_dir: Arc::new(RwLock::new(storage_dir)),
             local_configs: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -378,42 +387,6 @@ Self {
             Ok(crate::daemon::ipc::IpcResponse::Error { message }) => Err(message),
             Err(e) => Err(e),
         }
-    }
-
-    /// 更新本地配置（覆盖组配置）
-    pub async fn update_local_config(&self, space_id: &str, local_config: serde_json::Value) -> Result<(), String> {
-        // 保存到数据库
-        self.db.update_space_config(space_id, &local_config.to_string())?;
-        
-        // 通知 daemon 更新配置
-        self.patch_config(space_id, local_config).await
-    }
-
-    /// 获取有效配置（默认 → 组 → 本地）
-    pub async fn get_effective_config(&self, space_id: &str) -> Result<serde_json::Value, String> {
-        // 获取默认配置
-        let default_config = serde_json::json!({
-            "network_name": "",
-            "network_secret": "",
-            "dhcp": false,
-            "ipv4": null,
-            "ipv6": null,
-            "peers": [],
-            "listeners": [],
-            "flags": {}
-        });
-
-        // 获取组配置（来自数据库）
-        let group_config = self.db.get_space_config(space_id).ok().flatten()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_else(|| default_config.clone());
-
-        // 获取本地配置（覆盖组配置）
-        let local_config = self.db.get_space_config(space_id).ok().flatten()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_else(|| group_config.clone());
-
-        Ok(local_config)
     }
 
     /// 启动聊天服务器

@@ -1,24 +1,24 @@
 use tauri::State;
+use uuid::Uuid;
 use crate::types::NetworkConfig;
 use crate::space::manager::SpaceManager;
-use crate::db::Database;
 use std::sync::Arc;
-use serde_json::Value;
 
 #[tauri::command]
 pub async fn get_effective_config(
     space_id: String,
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<NetworkConfig, String> {
-    let config = space_manager.get_effective_config(&space_id).await?;
-    Ok(serde_json::from_value(config).map_err(|e| format!("配置解析失败: {}", e))?)
+    let uuid = Uuid::parse_str(&space_id).map_err(|e| format!("无效的空间ID: {}", e))?;
+    space_manager.get_effective_config(&uuid).await
 }
 
 #[tauri::command]
 pub async fn update_local_config(
     space_id: String,
-    local_config: Value,
+    config: NetworkConfig,
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<(), String> {
-    space_manager.update_local_config(&space_id, local_config).await
+    let uuid = Uuid::parse_str(&space_id).map_err(|e| format!("无效的空间ID: {}", e))?;
+    space_manager.update_local_config(&uuid, config).await
 }
