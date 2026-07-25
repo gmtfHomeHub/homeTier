@@ -14,7 +14,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-png", "image-ico"] }
+tauri = { version = "2", features = ["tray-icon", "image-png", "image-ico", "unstable"] }
 tauri-plugin-shell = "2"
 tauri-plugin-process = "2"
 tauri-plugin-clipboard-manager = "2"
@@ -71,7 +71,7 @@ webpki-roots = "0.26"
 tun-easytier = { git = "https://github.com/EasyTier/rust-tun", features = ["async"] }
 
 # EasyTier (本地引用)
-easytier = { path = "../third_libs/easytier/easytier", features = [
+easytier = { path = "./third_libs/easytier/easytier", features = [
     "wireguard",
     "websocket",
     "tun",
