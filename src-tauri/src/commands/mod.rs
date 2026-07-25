@@ -8,6 +8,8 @@ pub mod file;
 pub mod hotkey;
 pub mod log;
 pub mod network;
+pub mod network_acls;
+pub mod network_port_forwards;
 pub mod proxy;
 pub mod screen;
 pub mod space;

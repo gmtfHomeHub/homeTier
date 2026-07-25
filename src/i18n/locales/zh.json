@@ -253,7 +253,12 @@
     "portForwardDeleteTitle": "删除规则",
     "portForwardConfirmDelete": "确定要删除这条端口转发规则吗？",
     "portForwardNamePlaceholder": "如：Web服务、数据库",
-    "portForwardDescriptionPlaceholder": "转发规则说明"
+    "portForwardDescriptionPlaceholder": "转发规则说明",
+    "loadFailed": "加载失败",
+    "saveFailed": "保存失败",
+    "deleteFailed": "删除失败",
+    "aclEmpty": "暂无 ACL 规则，点击上方按钮添加",
+    "portForwardEmpty": "暂无端口转发规则，点击上方按钮添加"
   },
   "errors": {
     "selectSpace": "请先选择一个空间"

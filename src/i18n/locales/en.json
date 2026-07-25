@@ -253,7 +253,12 @@
     "portForwardDeleteTitle": "Delete Rule",
     "portForwardConfirmDelete": "Are you sure you want to delete this port forwarding rule?",
     "portForwardNamePlaceholder": "e.g. Web Server, Database",
-    "portForwardDescriptionPlaceholder": "Description of the forwarding rule"
+    "portForwardDescriptionPlaceholder": "Description of the forwarding rule",
+    "loadFailed": "Failed to load",
+    "saveFailed": "Failed to save",
+    "deleteFailed": "Failed to delete",
+    "aclEmpty": "No ACL rules yet. Click the add button above.",
+    "portForwardEmpty": "No port forwarding rules yet. Click the add button above."
   },
   "errors": {
     "selectSpace": "Please select a space first"

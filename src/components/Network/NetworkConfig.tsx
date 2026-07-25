@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { Button, Checkbox, Text, TextField, Switch, Card, ScrollArea, Flex, Badge } from "@radix-ui/themes";
-import { AlertDialog, Dialog, Select } from "@radix-ui/themes";
+import { Button, Checkbox, Text, TextField, Card, Flex, Badge } from "@radix-ui/themes";
+import { AlertDialog, Select } from "@radix-ui/themes";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { useToast, ToastHelpers } from "../../hooks/useToast";
-import { Settings, Globe, Shield, Sliders, Plus, Trash2, Edit2, ExternalLink, Loader2 } from "lucide-react";
+import { Globe, Shield, Sliders, Plus, Trash2, Edit2, ExternalLink, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import type { AclRule, PortForwardRule } from "../../types";
 import { 
   getAclRules, 
   createAclRule, 
@@ -155,35 +156,52 @@ export function NetworkConfig() {
 // ACL 配置组件
 function AclConfig({ spaceId, showToast }: { spaceId: string; showToast: ToastHelpers['showToast'] }) {
   const { t } = useTranslation();
-  const [rules, setRules] = useState<Array<{id: string; action: "allow" | "deny"; source: string; dest: string; ports: string; description: string}>>([
-    { id: "1", action: "allow", source: "any", dest: "192.168.100.0/24", ports: "1-65535", description: "允许本地子网访问" },
-    { id: "2", action: "deny", source: "10.0.0.0/8", dest: "any", ports: "any", description: "拒绝内部网络访问" },
-  ]);
+  const [rules, setRules] = useState<AclRule[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isAddingRule, setIsAddingRule] = useState(false);
-  const [editingRule, setEditingRule] = useState<{id: string; action: "allow" | "deny"; source: string; dest: string; ports: string; description: string} | null>(null);
+  const [editingRule, setEditingRule] = useState<AclRule | null>(null);
   const [newRule, setNewRule] = useState<{action: "allow" | "deny"; source: string; dest: string; ports: string; description: string}>({ action: "allow", source: "any", dest: "any", ports: "1-65535", description: "" });
 
-  const handleSaveRule = () => {
-    if (editingRule) {
-      setRules(rules.map(r => r.id === editingRule.id ? { ...newRule, id: editingRule.id } : r));
-      setEditingRule(null);
-    } else {
-      setRules([...rules, { ...newRule, id: Date.now().toString() }]);
+  useEffect(() => {
+    setLoading(true);
+    getAclRules(spaceId)
+      .then(setRules)
+      .catch((e) => showToast({ title: t("network.loadFailed"), variant: "error" }))
+      .finally(() => setLoading(false));
+  }, [spaceId]);
+
+  const handleSaveRule = async () => {
+    try {
+      if (editingRule) {
+        const updated = await updateAclRule(spaceId, editingRule.id, newRule.action, newRule.source, newRule.dest, newRule.ports, newRule.description);
+        setRules(rules.map(r => r.id === editingRule.id ? updated : r));
+        setEditingRule(null);
+      } else {
+        const created = await createAclRule(spaceId, newRule.action, newRule.source, newRule.dest, newRule.ports, newRule.description);
+        setRules([...rules, created]);
+      }
+      setNewRule({ action: "allow", source: "any", dest: "any", ports: "1-65535", description: "" });
+      setIsAddingRule(false);
+      showToast({ title: t("network.aclSaved"), variant: "success" });
+    } catch (e) {
+      showToast({ title: t("network.saveFailed"), variant: "error" });
     }
-    setNewRule({ action: "allow", source: "any", dest: "any", ports: "1-65535", description: "" });
-    setIsAddingRule(false);
-    showToast({ title: t("network.aclSaved"), variant: "success" });
   };
 
-  const handleDeleteRule = (id: string) => {
-    setRules(rules.filter(r => r.id !== id));
-    showToast({ title: t("network.aclDeleted"), variant: "success" });
+  const handleDeleteRule = async (id: string) => {
+    try {
+      await deleteAclRule(spaceId, id);
+      setRules(rules.filter(r => r.id !== id));
+      showToast({ title: t("network.aclDeleted"), variant: "success" });
+    } catch (e) {
+      showToast({ title: t("network.deleteFailed"), variant: "error" });
+    }
   };
 
-  const handleEditRule = (rule: {id: string; action: "allow" | "deny"; source: string; dest: string; ports: string; description: string}) => {
+  const handleEditRule = (rule: AclRule) => {
     setEditingRule(rule);
     setNewRule({
-      action: rule.action,
+      action: rule.action as "allow" | "deny",
       source: rule.source,
       dest: rule.dest,
       ports: rule.ports,
@@ -215,7 +233,20 @@ function AclConfig({ spaceId, showToast }: { spaceId: string; showToast: ToastHe
             </tr>
           </thead>
           <tbody>
-            {rules.map((rule) => (
+            {loading ? (
+              <tr>
+                <td colSpan={6} className="p-6 text-center">
+                  <Loader2 className="inline animate-spin mr-2" size={16} />
+                  {t("common.loading")}
+                </td>
+              </tr>
+            ) : rules.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="p-6 text-center text-sm text-[var(--color-text-secondary)]">
+                  {t("network.aclEmpty")}
+                </td>
+              </tr>
+            ) : rules.map((rule) => (
               <tr key={rule.id} className="border-b">
                 <td className="p-3">
                   <span className={`px-2 py-1 rounded text-xs ${
@@ -338,12 +369,10 @@ function AclConfig({ spaceId, showToast }: { spaceId: string; showToast: ToastHe
 // 端口转发配置组件
 function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToast: ToastHelpers['showToast'] }) {
   const { t } = useTranslation();
-  const [rules, setRules] = useState<Array<{id: string; name: string; protocol: "tcp" | "udp"; sourceIp: string; sourcePort: number; targetIp: string; targetPort: number; description: string}>>([
-    { id: "1", name: "Web服务", protocol: "tcp", sourceIp: "any", sourcePort: 8080, targetIp: "192.168.100.10", targetPort: 80, description: "转发到内部Web服务器" },
-    { id: "2", name: "数据库", protocol: "tcp", sourceIp: "192.168.100.0/24", sourcePort: 3306, targetIp: "192.168.100.20", targetPort: 3306, description: "MySQL数据库访问" },
-  ]);
+  const [rules, setRules] = useState<PortForwardRule[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isAddingRule, setIsAddingRule] = useState(false);
-  const [editingRule, setEditingRule] = useState<{id: string; name: string; protocol: "tcp" | "udp"; sourceIp: string; sourcePort: number; targetIp: string; targetPort: number; description: string} | null>(null);
+  const [editingRule, setEditingRule] = useState<PortForwardRule | null>(null);
   const [newRule, setNewRule] = useState<{name: string; protocol: "tcp" | "udp"; sourceIp: string; sourcePort: number; targetIp: string; targetPort: number; description: string}>({ 
     name: "", 
     protocol: "tcp", 
@@ -354,40 +383,59 @@ function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToa
     description: "" 
   });
 
-  const handleSaveRule = () => {
-    if (editingRule) {
-      setRules(rules.map(r => r.id === editingRule.id ? { ...newRule, id: editingRule.id } : r));
-      setEditingRule(null);
-    } else {
-      setRules([...rules, { ...newRule, id: Date.now().toString() }]);
+  useEffect(() => {
+    setLoading(true);
+    getPortForwardRules(spaceId)
+      .then(setRules)
+      .catch(() => showToast({ title: t("network.loadFailed"), variant: "error" }))
+      .finally(() => setLoading(false));
+  }, [spaceId]);
+
+  const handleSaveRule = async () => {
+    try {
+      if (editingRule) {
+        const updated = await updatePortForwardRule(spaceId, editingRule.id, newRule.name, newRule.protocol, newRule.sourceIp, newRule.sourcePort, newRule.targetIp, newRule.targetPort, newRule.description);
+        setRules(rules.map(r => r.id === editingRule.id ? updated : r));
+        setEditingRule(null);
+      } else {
+        const created = await createPortForwardRule(spaceId, newRule.name, newRule.protocol, newRule.sourceIp, newRule.sourcePort, newRule.targetIp, newRule.targetPort, newRule.description);
+        setRules([...rules, created]);
+      }
+      setNewRule({ 
+        name: "", 
+        protocol: "tcp", 
+        sourceIp: "any", 
+        sourcePort: 8080, 
+        targetIp: "192.168.100.1", 
+        targetPort: 80, 
+        description: "" 
+      });
+      setIsAddingRule(false);
+      showToast({ title: t("network.portForwardSaved"), variant: "success" });
+    } catch {
+      showToast({ title: t("network.saveFailed"), variant: "error" });
     }
-    setNewRule({ 
-      name: "", 
-      protocol: "tcp", 
-      sourceIp: "any", 
-      sourcePort: 8080, 
-      targetIp: "192.168.100.1", 
-      targetPort: 80, 
-      description: "" 
-    });
-    setIsAddingRule(false);
-    showToast({ title: t("network.portForwardSaved"), variant: "success" });
   };
 
-  const handleDeleteRule = (id: string) => {
-    setRules(rules.filter(r => r.id !== id));
-    showToast({ title: t("network.portForwardDeleted"), variant: "success" });
+  const handleDeleteRule = async (id: string) => {
+    try {
+      await deletePortForwardRule(spaceId, id);
+      setRules(rules.filter(r => r.id !== id));
+      showToast({ title: t("network.portForwardDeleted"), variant: "success" });
+    } catch {
+      showToast({ title: t("network.deleteFailed"), variant: "error" });
+    }
   };
 
-  const handleEditRule = (rule: {id: string; name: string; protocol: "tcp" | "udp"; sourceIp: string; sourcePort: number; targetIp: string; targetPort: number; description: string}) => {
+  const handleEditRule = (rule: PortForwardRule) => {
     setEditingRule(rule);
     setNewRule({
       name: rule.name,
-      protocol: rule.protocol,
-      sourceIp: rule.sourceIp,
-      sourcePort: rule.sourcePort,
-      targetIp: rule.targetIp,
-      targetPort: rule.targetPort,
+      protocol: rule.protocol as "tcp" | "udp",
+      sourceIp: rule.source_ip,
+      sourcePort: rule.source_port,
+      targetIp: rule.target_ip,
+      targetPort: rule.target_port,
       description: rule.description,
     });
     setIsAddingRule(true);
@@ -416,7 +464,20 @@ function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToa
             </tr>
           </thead>
           <tbody>
-            {rules.map((rule) => (
+            {loading ? (
+              <tr>
+                <td colSpan={6} className="p-6 text-center">
+                  <Loader2 className="inline animate-spin mr-2" size={16} />
+                  {t("common.loading")}
+                </td>
+              </tr>
+            ) : rules.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="p-6 text-center text-sm text-[var(--color-text-secondary)]">
+                  {t("network.portForwardEmpty")}
+                </td>
+              </tr>
+            ) : rules.map((rule) => (
               <tr key={rule.id} className="border-b">
                 <td className="p-3">
                   <Text size="2" weight="medium">{rule.name}</Text>
@@ -426,12 +487,12 @@ function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToa
                 </td>
                 <td className="p-3">
                   <Text size="1">
-                    {rule.sourceIp}:{rule.sourcePort}
+                    {rule.source_ip}:{rule.source_port}
                   </Text>
                 </td>
                 <td className="p-3">
                   <Text size="1">
-                    {rule.targetIp}:{rule.targetPort}
+                    {rule.target_ip}:{rule.target_port}
                   </Text>
                 </td>
                 <td className="p-3 text-sm">{rule.description}</td>
@@ -563,6 +624,4 @@ function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToa
       )}
     </div>
   );
-
-  return null; // 这个函数永远不会被调用，只是为了类型定义
 }

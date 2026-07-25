@@ -412,12 +412,12 @@ export async function getAclRules(spaceId: string): Promise<AclRule[]> {
   return invoke("get_acl_rules", { spaceId });
 }
 
-export async function createAclRule(spaceId: string, rule: Omit<AclRule, 'id'>): Promise<AclRule> {
-  return invoke("create_acl_rule", { spaceId, rule: JSON.stringify(rule) });
+export async function createAclRule(spaceId: string, action: string, source: string, dest: string, ports: string, description: string): Promise<AclRule> {
+  return invoke("create_acl_rule", { spaceId, action, source, dest, ports, description });
 }
 
-export async function updateAclRule(spaceId: string, ruleId: string, rule: Partial<AclRule>): Promise<AclRule> {
-  return invoke("update_acl_rule", { spaceId, ruleId, rule: JSON.stringify(rule) });
+export async function updateAclRule(spaceId: string, ruleId: string, action?: string, source?: string, dest?: string, ports?: string, description?: string): Promise<AclRule> {
+  return invoke("update_acl_rule", { spaceId, ruleId, action, source, dest, ports, description });
 }
 
 export async function deleteAclRule(spaceId: string, ruleId: string): Promise<void> {
@@ -430,12 +430,31 @@ export async function getPortForwardRules(spaceId: string): Promise<PortForwardR
   return invoke("get_port_forward_rules", { spaceId });
 }
 
-export async function createPortForwardRule(spaceId: string, rule: Omit<PortForwardRule, 'id'>): Promise<PortForwardRule> {
-  return invoke("create_port_forward_rule", { spaceId, rule: JSON.stringify(rule) });
+export async function createPortForwardRule(
+  spaceId: string,
+  name: string,
+  protocol: string,
+  sourceIp: string,
+  sourcePort: number,
+  targetIp: string,
+  targetPort: number,
+  description: string,
+): Promise<PortForwardRule> {
+  return invoke("create_port_forward_rule", { spaceId, name, protocol, sourceIp, sourcePort, targetIp, targetPort, description });
 }
 
-export async function updatePortForwardRule(spaceId: string, ruleId: string, rule: Partial<PortForwardRule>): Promise<PortForwardRule> {
-  return invoke("update_port_forward_rule", { spaceId, ruleId, rule: JSON.stringify(rule) });
+export async function updatePortForwardRule(
+  spaceId: string,
+  ruleId: string,
+  name?: string,
+  protocol?: string,
+  sourceIp?: string,
+  sourcePort?: number,
+  targetIp?: string,
+  targetPort?: number,
+  description?: string,
+): Promise<PortForwardRule> {
+  return invoke("update_port_forward_rule", { spaceId, ruleId, name, protocol, sourceIp, sourcePort, targetIp, targetPort, description });
 }
 
 export async function deletePortForwardRule(spaceId: string, ruleId: string): Promise<void> {

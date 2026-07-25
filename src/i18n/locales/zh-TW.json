@@ -253,7 +253,12 @@
     "portForwardDeleteTitle": "刪除規則",
     "portForwardConfirmDelete": "確定要刪除這條連接埠轉發規則嗎？",
     "portForwardNamePlaceholder": "如：Web服務、資料庫",
-    "portForwardDescriptionPlaceholder": "轉發規則說明"
+    "portForwardDescriptionPlaceholder": "轉發規則說明",
+    "loadFailed": "載入失敗",
+    "saveFailed": "儲存失敗",
+    "deleteFailed": "刪除失敗",
+    "aclEmpty": "暫無 ACL 規則，點擊上方按鈕新增",
+    "portForwardEmpty": "暫無連接埠轉發規則，點擊上方按鈕新增"
   },
   "errors": {
     "selectSpace": "請先選擇一個空間"

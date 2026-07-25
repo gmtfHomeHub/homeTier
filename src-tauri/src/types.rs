@@ -143,23 +143,34 @@ pub struct HotkeyInfo {
     pub enabled: bool,
 }
 
-/// 端口转发规则
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PortForwardRule {
-    pub bind_ip: String,
-    pub bind_port: u16,
-    pub dst_ip: String,
-    pub dst_port: u16,
-    pub proto: String,
-}
-
-/// ACL 规则
+/// ACL 规则（与 db/models.rs AclRuleRow 对齐）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AclRule {
-    pub action: String, // allow / deny
-    pub cidr: String,
-    pub port_range: Option<String>,
-    pub proto: Option<String>,
+    pub id: String,
+    pub space_id: String,
+    pub action: String,
+    pub source: String,
+    pub dest: String,
+    pub ports: String,
+    pub description: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// 端口转发规则（与 db/models.rs PortForwardRuleRow 对齐）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortForwardRule {
+    pub id: String,
+    pub space_id: String,
+    pub name: String,
+    pub protocol: String,
+    pub source_ip: String,
+    pub source_port: i32,
+    pub target_ip: String,
+    pub target_port: i32,
+    pub description: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 /// TUN 授权结果

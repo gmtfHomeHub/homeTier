@@ -300,6 +300,16 @@ pub fn run() -> std::process::ExitCode {
             commands::easytier::check_easytier_update,
             commands::easytier::upgrade_easytier,
             commands::easytier::build_easytier_from_source,
+            // ACL 规则
+            commands::network_acls::get_acl_rules,
+            commands::network_acls::create_acl_rule,
+            commands::network_acls::update_acl_rule,
+            commands::network_acls::delete_acl_rule,
+            // 端口转发规则
+            commands::network_port_forwards::get_port_forward_rules,
+            commands::network_port_forwards::create_port_forward_rule,
+            commands::network_port_forwards::update_port_forward_rule,
+            commands::network_port_forwards::delete_port_forward_rule,
         ])
         .on_window_event(|_win, event| {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
