@@ -177,7 +177,7 @@ pub fn run() -> std::process::ExitCode {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
                 let app_handle_clone = app.handle().clone();
-                tokio::spawn(async move {
+                app_handle_clone.spawn(async move {
                     let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
                     loop {
                         interval.tick().await;
