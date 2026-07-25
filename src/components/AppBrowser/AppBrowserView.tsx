@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { ArrowLeft, RefreshCw, ExternalLink, Loader2, Monitor } from "lucide-react";
 import { Button, Flex, Text } from "@radix-ui/themes";
 import { useSpaceStore } from "../../stores/spaceStore";
@@ -10,6 +11,7 @@ import type { SpaceApp } from "../../types";
 import { ProxyFrame, buildProxyUrl, ProxyErrorFallback } from "./ProxyFrame";
 
 export function AppBrowserView() {
+  const { t } = useTranslation();
   const { id, appId } = useParams<{ id: string; appId: string }>();
   const navigate = useNavigate();
   const { spaces } = useSpaceStore();
@@ -93,7 +95,7 @@ export function AppBrowserView() {
   if (!id || !space) {
     return (
       <div className="flex-1 flex items-center justify-center text-[var(--color-text-secondary)]">
-        空间不存在
+        {t("common.spaceNotFound")}
       </div>
     );
   }
@@ -101,7 +103,7 @@ export function AppBrowserView() {
   if (loading || !app) {
     return (
       <div className="flex-1 flex items-center justify-center text-[var(--color-text-secondary)]">
-        {loading ? "加载中..." : "应用不存在"}
+        {loading ? t("common.loading") : t("common.appNotFound")}
       </div>
     );
   }
@@ -110,10 +112,10 @@ export function AppBrowserView() {
     <div className="flex flex-col flex-1">
       {/* 顶部操作栏 */}
       <div className="h-12 flex items-center gap-3 px-4 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
-        <Button onClick={handleBack} variant="ghost" size="2" title="返回">
+        <Button onClick={handleBack} variant="ghost" size="2" title={t("common.back")}>
           <ArrowLeft size={18} />
         </Button>
-        <Button onClick={handleRefresh} variant="ghost" size="2" title="刷新">
+        <Button onClick={handleRefresh} variant="ghost" size="2" title={t("common.refresh")}>
           <RefreshCw size={18} />
         </Button>
         <Flex align="center" gap="2" className="flex-1 min-w-0">
@@ -122,7 +124,7 @@ export function AppBrowserView() {
             {appUrl}
           </Text>
         </Flex>
-        <Button onClick={handleOpenInBrowser} variant="ghost" size="2" title="在浏览器中打开">
+        <Button onClick={handleOpenInBrowser} variant="ghost" size="2" title={t("common.openInBrowser")}>
           <ExternalLink size={16} />
         </Button>
       </div>
@@ -135,10 +137,10 @@ export function AppBrowserView() {
               <Flex direction="column" align="center" gap="3">
                 <Monitor size={48} className="text-[var(--color-primary)]" />
                 <Text size="2" className="text-[var(--color-text-secondary)]">
-                  应用已在独立 WebView 窗口中打开
+                  {t("common.webviewOpened")}
                 </Text>
                 <Button onClick={handleRefresh} variant="outline" size="2">
-                  刷新窗口
+                  {t("common.refreshWindow")}
                 </Button>
               </Flex>
             </div>
@@ -160,7 +162,7 @@ export function AppBrowserView() {
           <ProxyErrorFallback onOpenBrowser={handleOpenInBrowser} onBack={handleBack} />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-[var(--color-text-secondary)]">
-            应用 URL 无效
+            {t("common.invalidUrl")}
           </div>
         )}
       </div>

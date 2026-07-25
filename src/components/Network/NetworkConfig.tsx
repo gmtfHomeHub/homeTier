@@ -83,21 +83,21 @@ export function NetworkConfig() {
           <div className="space-y-3">
             <div>
               <label className="text-xs font-medium text-[var(--color-text-secondary)]">
-                网络名称
+                {t("network.networkName")}
               </label>
               <div className="mt-1 font-mono text-sm">{space.network_name}</div>
             </div>
             <div>
               <label className="text-xs font-medium text-[var(--color-text-secondary)]">
-                虚拟 IP
+                {t("network.virtualIp")}
               </label>
               <div className="mt-1 font-mono text-sm">
-                {space.virtual_ip || "DHCP 自动分配"}
+                {space.virtual_ip || t("network.dhcpAutoAssign")}
               </div>
             </div>
             <div>
               <label className="text-xs font-medium text-[var(--color-text-secondary)]">
-                连接状态
+                {t("network.connectionStatus")}
               </label>
               <div className="mt-1 text-sm">
                 <span
@@ -111,10 +111,10 @@ export function NetworkConfig() {
                 >
                   <span className="w-2 h-2 bg-current rounded-full" />
                   {space.status === "connected"
-                    ? "已连接"
+                    ? t("network.connected")
                     : space.status === "connecting"
-                    ? "连接中"
-                    : "未连接"}
+                    ? t("network.connecting")
+                    : t("network.disconnected")}
                 </span>
               </div>
             </div>
@@ -125,15 +125,15 @@ export function NetworkConfig() {
           <div className="text-sm text-[var(--color-text-secondary)]">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Text size="2">KCP 代理</Text>
+                <Text size="2">{t("network.kcpProxy")}</Text>
                 <Checkbox />
               </div>
               <div className="flex items-center justify-between">
-                <Text size="2">QUIC 代理</Text>
+                <Text size="2">{t("network.quicProxy")}</Text>
                 <Checkbox />
               </div>
               <div className="flex items-center justify-between">
-                <Text size="2">延迟优先模式</Text>
+                <Text size="2">{t("network.latencyFirst")}</Text>
                 <Checkbox />
               </div>
             </div>
@@ -154,6 +154,7 @@ export function NetworkConfig() {
 
 // ACL 配置组件
 function AclConfig({ spaceId, showToast }: { spaceId: string; showToast: ToastHelpers['showToast'] }) {
+  const { t } = useTranslation();
   const [rules, setRules] = useState<Array<{id: string; action: "allow" | "deny"; source: string; dest: string; ports: string; description: string}>>([
     { id: "1", action: "allow", source: "any", dest: "192.168.100.0/24", ports: "1-65535", description: "允许本地子网访问" },
     { id: "2", action: "deny", source: "10.0.0.0/8", dest: "any", ports: "any", description: "拒绝内部网络访问" },
@@ -171,12 +172,12 @@ function AclConfig({ spaceId, showToast }: { spaceId: string; showToast: ToastHe
     }
     setNewRule({ action: "allow", source: "any", dest: "any", ports: "1-65535", description: "" });
     setIsAddingRule(false);
-    showToast({ title: "ACL 规则已保存", variant: "success" });
+    showToast({ title: t("network.aclSaved"), variant: "success" });
   };
 
   const handleDeleteRule = (id: string) => {
     setRules(rules.filter(r => r.id !== id));
-    showToast({ title: "ACL 规则已删除", variant: "success" });
+    showToast({ title: t("network.aclDeleted"), variant: "success" });
   };
 
   const handleEditRule = (rule: {id: string; action: "allow" | "deny"; source: string; dest: string; ports: string; description: string}) => {
@@ -194,10 +195,10 @@ function AclConfig({ spaceId, showToast }: { spaceId: string; showToast: ToastHe
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">访问控制列表 (ACL)</h3>
+        <h3 className="text-lg font-semibold">{t("network.aclTitle")}</h3>
         <Button onClick={() => setIsAddingRule(true)}>
           <Plus size={16} />
-          添加规则
+          {t("network.addRule")}
         </Button>
       </div>
 
@@ -205,12 +206,12 @@ function AclConfig({ spaceId, showToast }: { spaceId: string; showToast: ToastHe
         <table className="w-full">
           <thead>
             <tr className="border-b">
-              <th className="p-3 text-left">操作</th>
-              <th className="p-3 text-left">来源</th>
-              <th className="p-3 text-left">目标</th>
-              <th className="p-3 text-left">端口</th>
-              <th className="p-3 text-left">描述</th>
-              <th className="p-3 text-left">操作</th>
+              <th className="p-3 text-left">{t("network.aclTableAction")}</th>
+              <th className="p-3 text-left">{t("network.aclTableSource")}</th>
+              <th className="p-3 text-left">{t("network.aclTableDest")}</th>
+              <th className="p-3 text-left">{t("network.aclTablePort")}</th>
+              <th className="p-3 text-left">{t("network.aclTableDescription")}</th>
+              <th className="p-3 text-left">{t("network.aclTableAction")}</th>
             </tr>
           </thead>
           <tbody>
@@ -222,7 +223,7 @@ function AclConfig({ spaceId, showToast }: { spaceId: string; showToast: ToastHe
                       ? "bg-green-100 text-green-800" 
                       : "bg-red-100 text-red-800"
                   }`}>
-                    {rule.action === "allow" ? "允许" : "拒绝"}
+                    {rule.action === "allow" ? t("network.aclActionAllow") : t("network.aclActionDeny")}
                   </span>
                 </td>
                 <td className="p-3 font-mono text-sm">{rule.source}</td>
@@ -241,12 +242,12 @@ function AclConfig({ spaceId, showToast }: { spaceId: string; showToast: ToastHe
                         </Button>
                       </AlertDialog.Trigger>
                       <AlertDialog.Content>
-                        <AlertDialog.Title>删除规则</AlertDialog.Title>
+                        <AlertDialog.Title>{t("network.aclDeleteTitle")}</AlertDialog.Title>
                         <AlertDialog.Description>
-                          确定要删除这条 ACL 规则吗？
+                          {t("network.aclConfirmDelete")}
                         </AlertDialog.Description>
                         <AlertDialog.Action onClick={() => handleDeleteRule(rule.id)}>
-                          删除
+                          {t("common.delete")}
                         </AlertDialog.Action>
                       </AlertDialog.Content>
                     </AlertDialog.Root>
@@ -261,70 +262,70 @@ function AclConfig({ spaceId, showToast }: { spaceId: string; showToast: ToastHe
       {(isAddingRule || editingRule) && (
         <Card>
           <div className="p-4 border-b border-[var(--color-border)]">
-            <Text size="2" weight="bold">{editingRule ? "编辑 ACL 规则" : "添加 ACL 规则"}</Text>
+            <Text size="2" weight="bold">{editingRule ? t("network.aclEditRule") : t("network.aclAddRuleForm")}</Text>
           </div>
           <div className="p-4 space-y-4">
             <Flex direction="column" gap="2">
-              <label className="text-sm font-medium">操作</label>
+              <label className="text-sm font-medium">{t("network.aclTableAction")}</label>
               <Select.Root 
                 value={newRule.action} 
                 onValueChange={(value) => setNewRule({ ...newRule, action: value as "allow" | "deny" })}
               >
                 <Select.Trigger>
-                  <div>{newRule.action === "allow" ? "允许" : "拒绝"}</div>
+                  <div>{newRule.action === "allow" ? t("network.aclActionAllow") : t("network.aclActionDeny")}</div>
                 </Select.Trigger>
                 <Select.Content>
-                  <Select.Item value="allow">允许 (Allow)</Select.Item>
-                  <Select.Item value="deny">拒绝 (Deny)</Select.Item>
+                  <Select.Item value="allow">{t("network.aclActionAllow")}</Select.Item>
+                  <Select.Item value="deny">{t("network.aclActionDeny")}</Select.Item>
                 </Select.Content>
               </Select.Root>
             </Flex>
 
             <Flex direction="column" gap="2">
-              <label className="text-sm font-medium">来源 IP</label>
+              <label className="text-sm font-medium">{t("network.aclSourceIp")}</label>
               <TextField.Root
                 value={newRule.source}
                 onChange={(e) => setNewRule({ ...newRule, source: e.target.value })}
                 placeholder="any, 192.168.1.0/24, 10.0.0.1"
               />
-              <Text size="1" color="gray">支持 CIDR 格式，使用 "any" 表示所有 IP</Text>
+              <Text size="1" color="gray">{t("network.aclCidrHelp")}</Text>
             </Flex>
 
             <Flex direction="column" gap="2">
-              <label className="text-sm font-medium">目标 IP</label>
+              <label className="text-sm font-medium">{t("network.aclDestIp")}</label>
               <TextField.Root
                 value={newRule.dest}
                 onChange={(e) => setNewRule({ ...newRule, dest: e.target.value })}
                 placeholder="any, 192.168.100.10, 10.0.0.0/8"
               />
-              <Text size="1" color="gray">支持 CIDR 格式，使用 "any" 表示所有 IP</Text>
+              <Text size="1" color="gray">{t("network.aclCidrHelp")}</Text>
             </Flex>
 
             <Flex direction="column" gap="2">
-              <label className="text-sm font-medium">端口</label>
+              <label className="text-sm font-medium">{t("network.port")}</label>
               <TextField.Root
                 value={newRule.ports}
                 onChange={(e) => setNewRule({ ...newRule, ports: e.target.value })}
                 placeholder="any, 80, 443, 1000-2000"
               />
-              <Text size="1" color="gray">单个端口、端口范围或 "any"</Text>
+              <Text size="1" color="gray">{t("network.portHelp")}</Text>
             </Flex>
 
             <Flex direction="column" gap="2">
-              <label className="text-sm font-medium">描述</label>
+              <label className="text-sm font-medium">{t("network.description")}</label>
               <TextField.Root
                 value={newRule.description}
                 onChange={(e) => setNewRule({ ...newRule, description: e.target.value })}
-                placeholder="规则的用途说明"
+                placeholder={t("network.aclDescriptionPlaceholder")}
               />
             </Flex>
 
             <Flex gap="2" justify="end">
               <Button variant="outline" onClick={() => { setIsAddingRule(false); setEditingRule(null); }}>
-                取消
+                {t("common.cancel")}
               </Button>
               <Button onClick={handleSaveRule}>
-                保存
+                {t("common.save")}
               </Button>
             </Flex>
           </div>
@@ -336,6 +337,7 @@ function AclConfig({ spaceId, showToast }: { spaceId: string; showToast: ToastHe
 
 // 端口转发配置组件
 function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToast: ToastHelpers['showToast'] }) {
+  const { t } = useTranslation();
   const [rules, setRules] = useState<Array<{id: string; name: string; protocol: "tcp" | "udp"; sourceIp: string; sourcePort: number; targetIp: string; targetPort: number; description: string}>>([
     { id: "1", name: "Web服务", protocol: "tcp", sourceIp: "any", sourcePort: 8080, targetIp: "192.168.100.10", targetPort: 80, description: "转发到内部Web服务器" },
     { id: "2", name: "数据库", protocol: "tcp", sourceIp: "192.168.100.0/24", sourcePort: 3306, targetIp: "192.168.100.20", targetPort: 3306, description: "MySQL数据库访问" },
@@ -369,12 +371,12 @@ function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToa
       description: "" 
     });
     setIsAddingRule(false);
-    showToast({ title: "端口转发规则已保存", variant: "success" });
+    showToast({ title: t("network.portForwardSaved"), variant: "success" });
   };
 
   const handleDeleteRule = (id: string) => {
     setRules(rules.filter(r => r.id !== id));
-    showToast({ title: "端口转发规则已删除", variant: "success" });
+    showToast({ title: t("network.portForwardDeleted"), variant: "success" });
   };
 
   const handleEditRule = (rule: {id: string; name: string; protocol: "tcp" | "udp"; sourceIp: string; sourcePort: number; targetIp: string; targetPort: number; description: string}) => {
@@ -394,10 +396,10 @@ function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToa
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">端口转发</h3>
+        <h3 className="text-lg font-semibold">{t("network.portForwardTitle")}</h3>
         <Button onClick={() => setIsAddingRule(true)}>
           <Plus size={16} />
-          添加规则
+          {t("network.portForwardAddRule")}
         </Button>
       </div>
 
@@ -405,12 +407,12 @@ function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToa
         <table className="w-full">
           <thead>
             <tr className="border-b">
-              <th className="p-3 text-left">名称</th>
-              <th className="p-3 text-left">协议</th>
-              <th className="p-3 text-left">来源</th>
-              <th className="p-3 text-left">目标</th>
-              <th className="p-3 text-left">描述</th>
-              <th className="p-3 text-left">操作</th>
+              <th className="p-3 text-left">{t("network.name")}</th>
+              <th className="p-3 text-left">{t("network.protocol")}</th>
+              <th className="p-3 text-left">{t("network.source")}</th>
+              <th className="p-3 text-left">{t("network.destination")}</th>
+              <th className="p-3 text-left">{t("network.description")}</th>
+              <th className="p-3 text-left">{t("network.aclTableAction")}</th>
             </tr>
           </thead>
           <tbody>
@@ -445,12 +447,12 @@ function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToa
                         </Button>
                       </AlertDialog.Trigger>
                       <AlertDialog.Content>
-                        <AlertDialog.Title>删除规则</AlertDialog.Title>
+                        <AlertDialog.Title>{t("network.portForwardDeleteTitle")}</AlertDialog.Title>
                         <AlertDialog.Description>
-                          确定要删除这条端口转发规则吗？
+                          {t("network.portForwardConfirmDelete")}
                         </AlertDialog.Description>
                         <AlertDialog.Action onClick={() => handleDeleteRule(rule.id)}>
-                          删除
+                          {t("common.delete")}
                         </AlertDialog.Action>
                       </AlertDialog.Content>
                     </AlertDialog.Root>
@@ -465,20 +467,20 @@ function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToa
       {(isAddingRule || editingRule) && (
         <Card>
           <div className="p-4 border-b border-[var(--color-border)]">
-            <Text size="2" weight="bold">{editingRule ? "编辑端口转发规则" : "添加端口转发规则"}</Text>
+            <Text size="2" weight="bold">{editingRule ? t("network.portForwardEditRule") : t("network.portForwardAddRuleForm")}</Text>
           </div>
           <div className="p-4 space-y-4">
             <Flex direction="column" gap="2">
-              <label className="text-sm font-medium">规则名称</label>
+              <label className="text-sm font-medium">{t("network.ruleName")}</label>
               <TextField.Root
                 value={newRule.name}
                 onChange={(e) => setNewRule({ ...newRule, name: e.target.value })}
-                placeholder="如：Web服务、数据库"
+                placeholder={t("network.portForwardNamePlaceholder")}
               />
             </Flex>
 
             <Flex direction="column" gap="2">
-              <label className="text-sm font-medium">协议</label>
+              <label className="text-sm font-medium">{t("network.protocol")}</label>
               <Select.Root 
                 value={newRule.protocol} 
                 onValueChange={(value) => setNewRule({ ...newRule, protocol: value as "tcp" | "udp" })}
@@ -487,17 +489,17 @@ function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToa
                   <div>{newRule.protocol.toUpperCase()}</div>
                 </Select.Trigger>
                 <Select.Content>
-                  <Select.Item value="tcp">TCP</Select.Item>
-                  <Select.Item value="udp">UDP</Select.Item>
+                  <Select.Item value="tcp">{t("network.tcp")}</Select.Item>
+                  <Select.Item value="udp">{t("network.udp")}</Select.Item>
                 </Select.Content>
               </Select.Root>
             </Flex>
 
             <Flex direction="column" gap="2">
-              <label className="text-sm font-medium">来源监听</label>
+              <label className="text-sm font-medium">{t("network.portForwardSourceListen")}</label>
               <Flex gap="2">
                 <Flex direction="column" gap="1" className="flex-1">
-                  <Text size="1" color="gray">IP</Text>
+                  <Text size="1" color="gray">{t("network.source")}</Text>
                   <TextField.Root
                     value={newRule.sourceIp}
                     onChange={(e) => setNewRule({ ...newRule, sourceIp: e.target.value })}
@@ -505,7 +507,7 @@ function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToa
                   />
                 </Flex>
                 <Flex direction="column" gap="1" className="w-20">
-                  <Text size="1" color="gray">端口</Text>
+                  <Text size="1" color="gray">{t("network.port")}</Text>
                   <TextField.Root
                     type="number"
                     value={newRule.sourcePort.toString()}
@@ -517,10 +519,10 @@ function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToa
             </Flex>
 
             <Flex direction="column" gap="2">
-              <label className="text-sm font-medium">目标地址</label>
+              <label className="text-sm font-medium">{t("network.portForwardTargetAddr")}</label>
               <Flex gap="2">
                 <Flex direction="column" gap="1" className="flex-1">
-                  <Text size="1" color="gray">IP</Text>
+                  <Text size="1" color="gray">{t("network.destination")}</Text>
                   <TextField.Root
                     value={newRule.targetIp}
                     onChange={(e) => setNewRule({ ...newRule, targetIp: e.target.value })}
@@ -528,7 +530,7 @@ function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToa
                   />
                 </Flex>
                 <Flex direction="column" gap="1" className="w-20">
-                  <Text size="1" color="gray">端口</Text>
+                  <Text size="1" color="gray">{t("network.port")}</Text>
                   <TextField.Root
                     type="number"
                     value={newRule.targetPort.toString()}
@@ -540,20 +542,20 @@ function PortForwardingConfig({ spaceId, showToast }: { spaceId: string; showToa
             </Flex>
 
             <Flex direction="column" gap="2">
-              <label className="text-sm font-medium">描述</label>
+              <label className="text-sm font-medium">{t("network.description")}</label>
               <TextField.Root
                 value={newRule.description}
                 onChange={(e) => setNewRule({ ...newRule, description: e.target.value })}
-                placeholder="转发规则说明"
+                placeholder={t("network.portForwardDescriptionPlaceholder")}
               />
             </Flex>
 
             <Flex gap="2" justify="end">
               <Button variant="outline" onClick={() => { setIsAddingRule(false); setEditingRule(null); }}>
-                取消
+                {t("common.cancel")}
               </Button>
               <Button onClick={handleSaveRule}>
-                保存
+                {t("common.save")}
               </Button>
             </Flex>
           </div>

@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { ShieldAlert } from "lucide-react";
 import { Button, Flex, Text, Card } from "@radix-ui/themes";
 
@@ -43,22 +44,23 @@ interface ErrorFallbackProps {
 }
 
 export function ProxyErrorFallback({ onOpenBrowser, onBack }: ErrorFallbackProps) {
+  const { t } = useTranslation();
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg)]">
       <Card className="max-w-md p-6 text-center">
         <ShieldAlert size={48} className="mx-auto mb-4 text-[var(--color-text-secondary)]" />
         <Text size="3" weight="bold" className="block mb-2">
-          无法在内部加载
+          {t("common.proxyLoadError")}
         </Text>
         <Text size="2" className="text-[var(--color-text-secondary)] block mb-4">
-          该网站无法通过代理加载。请点击下方按钮在系统浏览器中打开。
+          {t("common.proxyLoadErrorDescription")}
         </Text>
         <Flex gap="3" justify="center">
           <Button onClick={onOpenBrowser} variant="solid" color="blue" size="2">
-            在浏览器中打开
+            {t("common.openInBrowser")}
           </Button>
           <Button onClick={onBack} variant="outline" size="2">
-            返回
+            {t("common.back")}
           </Button>
         </Flex>
       </Card>

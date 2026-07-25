@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { EasyTierConfig, PeerConfig, ProxyNetworkConfig, PortForwardConfig, LogConfig } from "../../types/config";
 import { Eye, EyeOff } from "lucide-react";
 import { Button, TextField, Checkbox, Text } from "@radix-ui/themes";
@@ -14,6 +15,7 @@ const SECTION_CLASS = "border border-[var(--color-border)] rounded-lg p-4 space-
 const LABEL_CLASS = "block text-xs font-medium text-[var(--color-text-secondary)] mb-1";
 
 export function EasyTierConfigEditor({ value, onChange, title, showNetworkIdentity }: Props) {
+  const { t } = useTranslation();
   const [showSecret, setShowSecret] = useState(false);
   const set = (patch: Partial<EasyTierConfig>) => onChange({ ...value, ...patch });
   const setFlags = (patch: Record<string, string | number | boolean>) =>
@@ -35,42 +37,42 @@ export function EasyTierConfigEditor({ value, onChange, title, showNetworkIdenti
 
       {/* Basic */}
       <fieldset className={SECTION_CLASS}>
-        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">基本设置</legend>
+        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">{t("network.basicSettings")}</legend>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={LABEL_CLASS}>实例名</label>
+            <label className={LABEL_CLASS}>{t("settings.instanceName")}</label>
             <TextField.Root size="1" value={value.instance_name ?? ""} onChange={e => set({ instance_name: e.target.value || undefined })} />
           </div>
           <div>
-            <label className={LABEL_CLASS}>主机名</label>
+            <label className={LABEL_CLASS}>{t("settings.hostname")}</label>
             <TextField.Root size="1" value={value.hostname ?? ""} onChange={e => set({ hostname: e.target.value || undefined })} />
           </div>
           <div>
-            <label className={LABEL_CLASS}>IPv4</label>
+            <label className={LABEL_CLASS}>{t("settings.ipv4")}</label>
             <TextField.Root size="1" value={value.ipv4 ?? ""} onChange={e => set({ ipv4: e.target.value || undefined })} />
           </div>
           <div>
-            <label className={LABEL_CLASS}>IPv6</label>
+            <label className={LABEL_CLASS}>{t("settings.ipv6")}</label>
             <TextField.Root size="1" value={value.ipv6 ?? ""} onChange={e => set({ ipv6: e.target.value || undefined })} />
           </div>
         </div>
         <Text as="label" size="1" className="flex items-center gap-2">
           <Checkbox checked={value.dhcp ?? false} onCheckedChange={(c) => set({ dhcp: c === true })} />
-          DHCP（自动分配 IP）
+          {t("network.dhcpAuto")}
         </Text>
       </fieldset>
 
       {/* Network Identity */}
       {showNetworkIdentity && (
         <fieldset className={SECTION_CLASS}>
-          <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">网络标识</legend>
+          <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">{t("network.networkIdentity")}</legend>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={LABEL_CLASS}>网络名称</label>
+              <label className={LABEL_CLASS}>{t("settings.networkName")}</label>
               <TextField.Root size="1" value={value.network_identity?.network_name ?? ""} onChange={e => setNetworkIdentity({ network_name: e.target.value })} />
             </div>
             <div>
-              <label className={LABEL_CLASS}>网络密钥</label>
+              <label className={LABEL_CLASS}>{t("settings.networkSecret")}</label>
               <TextField.Root size="1" type={showSecret ? "text" : "password"} value={value.network_identity?.network_secret ?? ""} onChange={e => setNetworkIdentity({ network_secret: e.target.value })}>
                 <TextField.Slot side="right">
                   <Button type="button" onClick={() => setShowSecret(!showSecret)} variant="ghost" size="1">
@@ -85,7 +87,7 @@ export function EasyTierConfigEditor({ value, onChange, title, showNetworkIdenti
 
       {/* Peers */}
       <fieldset className={SECTION_CLASS}>
-        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">节点 (Peers)</legend>
+        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">{t("network.peersTitle")}</legend>
         {(value.peers ?? []).map((p, i) => (
           <div key={i} className="flex items-start gap-2">
             <TextField.Root size="1" className="flex-1" placeholder="URI" value={p.uri} onChange={e => {
@@ -99,12 +101,12 @@ export function EasyTierConfigEditor({ value, onChange, title, showNetworkIdenti
             }}>×</Button>
           </div>
         ))}
-        <Button variant="ghost" color="blue" size="1" onClick={() => set({ peers: [...(value.peers ?? []), { uri: "" }] })}>+ 添加节点</Button>
+        <Button variant="ghost" color="blue" size="1" onClick={() => set({ peers: [...(value.peers ?? []), { uri: "" }] })}>{t("network.addPeer")}</Button>
       </fieldset>
 
       {/* Listeners */}
       <fieldset className={SECTION_CLASS}>
-        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">监听地址</legend>
+        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">{t("network.listenersTitle")}</legend>
         {(value.listeners ?? []).map((l, i) => (
           <div key={i} className="flex items-start gap-2">
             <TextField.Root size="1" className="flex-1" placeholder="tcp://0.0.0.0:11000" value={l} onChange={e => {
@@ -118,12 +120,12 @@ export function EasyTierConfigEditor({ value, onChange, title, showNetworkIdenti
             }}>×</Button>
           </div>
         ))}
-        <Button variant="ghost" color="blue" size="1" onClick={() => set({ listeners: [...(value.listeners ?? []), ""] })}>+ 添加监听地址</Button>
+        <Button variant="ghost" color="blue" size="1" onClick={() => set({ listeners: [...(value.listeners ?? []), ""] })}>{t("network.addListener")}</Button>
       </fieldset>
 
       {/* Proxy Networks */}
       <fieldset className={SECTION_CLASS}>
-        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">子网代理</legend>
+        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">{t("network.subnetProxy")}</legend>
         {(value.proxy_networks ?? []).map((pn, i) => (
           <div key={i} className="flex items-start gap-2">
             <TextField.Root size="1" className="flex-1" placeholder="CIDR" value={pn.cidr} onChange={e => {
@@ -137,19 +139,19 @@ export function EasyTierConfigEditor({ value, onChange, title, showNetworkIdenti
             }}>×</Button>
           </div>
         ))}
-        <Button variant="ghost" color="blue" size="1" onClick={() => set({ proxy_networks: [...(value.proxy_networks ?? []), { cidr: "" }] })}>+ 添加子网代理</Button>
+        <Button variant="ghost" color="blue" size="1" onClick={() => set({ proxy_networks: [...(value.proxy_networks ?? []), { cidr: "" }] })}>{t("network.addSubnetProxy")}</Button>
       </fieldset>
 
       {/* Routes & Exit Nodes */}
       <fieldset className={SECTION_CLASS}>
-        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">路由 & 出口</legend>
+        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">{t("network.routesAndExit")}</legend>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={LABEL_CLASS}>路由</label>
+            <label className={LABEL_CLASS}>{t("network.routes")}</label>
             <TextField.Root size="1" value={(value.routes ?? []).join(", ")} onChange={e => set({ routes: e.target.value ? e.target.value.split(",").map(s => s.trim()) : undefined })} placeholder="用逗号分隔" />
           </div>
           <div>
-            <label className={LABEL_CLASS}>出口节点</label>
+            <label className={LABEL_CLASS}>{t("network.exitNodes")}</label>
             <TextField.Root size="1" value={(value.exit_nodes ?? []).join(", ")} onChange={e => set({ exit_nodes: e.target.value ? e.target.value.split(",").map(s => s.trim()) : undefined })} placeholder="用逗号分隔" />
           </div>
         </div>
@@ -157,22 +159,22 @@ export function EasyTierConfigEditor({ value, onChange, title, showNetworkIdenti
 
       {/* Flags */}
       <fieldset className={SECTION_CLASS}>
-        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">高级标志</legend>
+        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">{t("network.advancedFlags")}</legend>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
           {[
-            { key: "mtu", label: "MTU", type: "number" },
-            { key: "latency_first", label: "低延迟优先", type: "checkbox" },
-            { key: "enable_kcp_proxy", label: "启用 KCP", type: "checkbox" },
-            { key: "enable_quic_proxy", label: "启用 QUIC", type: "checkbox" },
-            { key: "encryption_algorithm", label: "加密算法", type: "text" },
-            { key: "no_tun", label: "无 TUN 模式", type: "checkbox" },
-            { key: "disable_p2p", label: "禁用 P2P", type: "checkbox" },
-            { key: "multi_thread", label: "多线程", type: "checkbox" },
-            { key: "bind_device", label: "绑定设备", type: "checkbox" },
-            { key: "default_protocol", label: "默认协议", type: "text" },
-            { key: "dev_name", label: "设备名", type: "text" },
-            { key: "enable_encryption", label: "启用加密", type: "checkbox" },
-            { key: "enable_ipv6", label: "启用 IPv6", type: "checkbox" },
+            { key: "mtu", label: t("network.flagMtu"), type: "number" },
+            { key: "latency_first", label: t("network.flagLatencyFirst"), type: "checkbox" },
+            { key: "enable_kcp_proxy", label: t("network.flagEnableKcp"), type: "checkbox" },
+            { key: "enable_quic_proxy", label: t("network.flagEnableQuic"), type: "checkbox" },
+            { key: "encryption_algorithm", label: t("network.flagEncryptionAlgorithm"), type: "text" },
+            { key: "no_tun", label: t("network.flagNoTun"), type: "checkbox" },
+            { key: "disable_p2p", label: t("network.flagDisableP2P"), type: "checkbox" },
+            { key: "multi_thread", label: t("network.flagMultiThread"), type: "checkbox" },
+            { key: "bind_device", label: t("network.flagBindDevice"), type: "checkbox" },
+            { key: "default_protocol", label: t("network.flagDefaultProtocol"), type: "text" },
+            { key: "dev_name", label: t("network.flagDevName"), type: "text" },
+            { key: "enable_encryption", label: t("network.flagEnableEncryption"), type: "checkbox" },
+            { key: "enable_ipv6", label: t("network.flagEnableIPv6"), type: "checkbox" },
           ].map(({ key, label, type }) => (
             <div key={key}>
               {type === "checkbox" ? (

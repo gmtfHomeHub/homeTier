@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { getEasyTierVersion, checkEasyTierUpdate, upgradeEasyTier } from "../../utils/api";
 import { Button, Text, Flex } from "@radix-ui/themes";
 import { Cpu, RefreshCw, ArrowUpCircle, CheckCircle } from "lucide-react";
 
 export function EasyTierVersionManager() {
+  const { t } = useTranslation();
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
   const [availableVersions, setAvailableVersions] = useState<string[]>([]);
   const [checking, setChecking] = useState(false);
@@ -43,7 +45,7 @@ export function EasyTierVersionManager() {
     setLastResult(null);
     try {
       await upgradeEasyTier(version);
-      setLastResult({ success: true, message: `已升级到版本 ${version}` });
+      setLastResult({ success: true, message: t("settings.upgradedTo", { version }) });
       await loadVersion();
     } catch (e) {
       setLastResult({ success: false, message: String(e) });
@@ -57,12 +59,12 @@ export function EasyTierVersionManager() {
     <section className="border border-[var(--color-border)] rounded-lg p-4 space-y-3">
       <Flex align="center" gap="2">
         <Cpu size={16} className="text-[var(--color-primary)]" />
-        <Text size="2" weight="bold">EasyTier 引擎</Text>
+        <Text size="2" weight="bold">{t("settings.easytierEngine")}</Text>
       </Flex>
 
       <div className="grid grid-cols-2 gap-2 text-xs">
-        <Text className="text-[var(--color-text-secondary)]">当前版本</Text>
-        <Text>{currentVersion ?? "未安装"}</Text>
+        <Text className="text-[var(--color-text-secondary)]">{t("settings.currentVersion")}</Text>
+        <Text>{currentVersion ?? t("settings.notInstalled")}</Text>
       </div>
 
       <Flex gap="2">
@@ -74,14 +76,14 @@ export function EasyTierVersionManager() {
           loading={checking}
         >
           <RefreshCw size={14} />
-          检查更新
+          {t("settings.checkUpdate")}
         </Button>
       </Flex>
 
       {availableVersions.length > 0 && (
         <div className="space-y-2">
           <Text size="1" className="text-[var(--color-text-secondary)]">
-            可用版本:
+            {t("settings.availableVersions")}
           </Text>
           <div className="flex flex-wrap gap-2">
             {availableVersions.map((version) => (
@@ -95,9 +97,9 @@ export function EasyTierVersionManager() {
                 loading={upgrading && selectedVersion === version}
               >
                 {version === currentVersion ? (
-                  <><CheckCircle size={12} /> 当前</>
+                  <><CheckCircle size={12} /> {t("settings.current")}</>
                 ) : (
-                  <><ArrowUpCircle size={12} /> 升级</>
+                  <><ArrowUpCircle size={12} /> {t("settings.upgrade")}</>
                 )}
               </Button>
             ))}

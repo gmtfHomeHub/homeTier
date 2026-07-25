@@ -1,4 +1,5 @@
 import { useEffect, useState, Fragment } from "react";
+import { useTranslation } from "react-i18next";
 import { Plus, Edit3, Trash2 } from "lucide-react";
 import { Button, Flex, Card, Text, Box } from "@radix-ui/themes";
 import { Icon } from "@iconify/react";
@@ -14,6 +15,7 @@ interface AppNavPageProps {
 }
 
 export function AppNavPage({ space, isOwner, callerId }: AppNavPageProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [apps, setApps] = useState<SpaceApp[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,10 +52,10 @@ export function AppNavPage({ space, isOwner, callerId }: AppNavPageProps) {
   const handleDelete = async (appId: string) => {
     const effectiveCallerId = callerId || space.owner_id || "";
     if (!effectiveCallerId) {
-      alert("无法获取权限信息");
+      alert(t("common.permissionError"));
       return;
     }
-    if (!confirm("确定要删除此应用吗？")) return;
+    if (!confirm(t("common.confirmDeleteApp"))) return;
     try {
       await api.deleteApp(appId, effectiveCallerId);
       loadApps();

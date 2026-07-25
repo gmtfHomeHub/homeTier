@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { getTunStatus, authorizeTun, refreshTunStatus } from "../../utils/api";
 import type { TunStatus, AuthResult } from "../../types";
 import { Button, Text, Flex } from "@radix-ui/themes";
 import { Shield, ShieldOff, RotateCw } from "lucide-react";
 
 export function TunAuthPanel() {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<TunStatus | null>(null);
   const [authorizing, setAuthorizing] = useState(false);
   const [lastResult, setLastResult] = useState<AuthResult | null>(null);
@@ -49,36 +51,34 @@ export function TunAuthPanel() {
           ? <Shield size={16} className="text-green-500" />
           : <ShieldOff size={16} className="text-red-500" />
         }
-        <Text size="2" weight="bold">虚拟网卡 (TUN) 状态</Text>
+        <Text size="2" weight="bold">{t("settings.tunStatus")}</Text>
         <Flex gap="1" ml="auto">
-          <Button variant="ghost" size="1" onClick={load} title="刷新">
+          <Button variant="ghost" size="1" onClick={load} title={t("settings.refresh")}>
             <RotateCw size={14} />
           </Button>
         </Flex>
       </Flex>
 
       <div className="grid grid-cols-2 gap-2 text-xs">
-        <Text className="text-[var(--color-text-secondary)]">平台</Text>
+        <Text className="text-[var(--color-text-secondary)]">{t("settings.platform")}</Text>
         <Text>{platformLabels[status.platform] ?? status.platform}</Text>
-        <Text className="text-[var(--color-text-secondary)]">TUN 可用</Text>
+        <Text className="text-[var(--color-text-secondary)]">{t("settings.tunAvailable")}</Text>
         <Text className={status.tun_available ? "text-green-500" : "text-red-500"}>
-          {status.tun_available ? "是 ✓" : "否 ✗"}
+          {status.tun_available ? `${t("settings.yes")} ✓` : `${t("settings.no")} ✗`}
         </Text>
-        <Text className="text-[var(--color-text-secondary)]">提权状态</Text>
-        <Text>{status.elevated ? "已提权" : "未提权"}</Text>
+        <Text className="text-[var(--color-text-secondary)]">{t("settings.elevationStatus")}</Text>
+        <Text>{status.elevated ? t("settings.elevated") : t("settings.notElevated")}</Text>
       </div>
 
       {!status.tun_available && (
         <div className="space-y-2">
           <Text size="1" className="text-[var(--color-text-secondary)]">
-            虚拟网卡需要系统级权限才能创建。
-            {status.platform === "linux" && " 将弹出系统授权对话框以设置 cap_net_admin 能力。"}
-            {status.platform === "windows" && " 将弹出 UAC 对话框以管理员身份运行。"}
+            {t("settings.tunNotAvailable")}
+            {status.platform === "linux" && ` ${t("settings.tunHelpLinux")}`}
+            {status.platform === "windows" && ` ${t("settings.tunHelpWindows")}`}
             {status.platform === "macos" && (
               <>
-                macOS 配置虚拟网卡（ifconfig/route）需要 root 权限。
-                <br />
-                请使用守护进程模式：{" "}
+                {t("settings.tunHelpMacOS")}{" "}
                 <code className="text-xs bg-[var(--color-bg-secondary)] px-1 rounded">
                   sudo hometier --daemon
                 </code>
@@ -94,12 +94,12 @@ export function TunAuthPanel() {
               size="2"
               loading={authorizing}
             >
-              {authorizing ? "授权中..." : "🔒 授权"}
+              {authorizing ? t("settings.authorizing") : `🔒 ${t("settings.authorize")}`}
             </Button>
             {lastResult && (
               <Text size="1" className={lastResult.success ? "text-green-500" : "text-red-500"}>
                 {lastResult.message}
-                {lastResult.success && lastResult.needs_restart && "（重启后生效）"}
+                {lastResult.success && lastResult.needs_restart && t("settings.restartToApply")}
               </Text>
             )}
           </Flex>
@@ -108,7 +108,7 @@ export function TunAuthPanel() {
 
       {status.tun_available && (
         <Text size="1" className="text-green-500">
-          TUN 设备已就绪，可以创建虚拟网卡
+          {t("settings.tunReady")}
         </Text>
       )}
     </section>

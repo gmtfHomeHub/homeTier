@@ -160,8 +160,8 @@ export function SettingsPage() {
               <section>
                 <Flex align="center" gap="2" mb="3">
                   <Network size={16} />
-                  <Text size="2" weight="bold">中继网络前缀</Text>
-                  <Tooltip content="用于配合easytier配置转发白名单网络，详情见easytier中 --relay-network-whitelist 字段说明">
+                  <Text size="2" weight="bold">{t("settings.relayPrefix")}</Text>
+                  <Tooltip content={t("settings.relayPrefixHelp")}>
                     <span className="inline-flex items-center cursor-pointer text-[var(--color-text-secondary)]">
                       <HelpCircle size={14} />
                     </span>
@@ -187,7 +187,7 @@ export function SettingsPage() {
               <section>
                 <Flex align="center" gap="2" mb="3">
                   <Shield size={16} />
-                  <Text size="2" weight="bold">虚拟网卡授权</Text>
+                  <Text size="2" weight="bold">{t("settings.tunAuth")}</Text>
                 </Flex>
                 <TunAuthPanel />
               </section>
@@ -196,7 +196,7 @@ export function SettingsPage() {
               <section>
                 <Flex align="center" gap="2" mb="3">
                   <Network size={16} />
-                  <Text size="2" weight="bold">EasyTier 引擎</Text>
+                  <Text size="2" weight="bold">{t("settings.easytierEngine")}</Text>
                 </Flex>
                 <EasyTierVersionManager />
               </section>
@@ -205,7 +205,7 @@ export function SettingsPage() {
               <section>
                 <Flex align="center" gap="2" mb="3">
                   <SettingsIcon size={16} />
-                  <Text size="2" weight="bold">本地配置</Text>
+                  <Text size="2" weight="bold">{t("settings.localConfig")}</Text>
                 </Flex>
                 {currentSpaceId && <NetworkConfigEditor spaceId={currentSpaceId} />}
               </section>
@@ -214,12 +214,12 @@ export function SettingsPage() {
               {webappMode !== null && (
                 <section>
                   <Flex align="center" gap="2" mb="3">
-                    <Text size="2" weight="bold">Web 应用打开方式</Text>
+                    <Text size="2" weight="bold">{t("settings.webappMode")}</Text>
                   </Flex>
                   <Flex gap="2">
                     {([
-                      { value: "iframe", label: "内嵌窗口 (iframe)" },
-                      { value: "webview", label: "独立窗口 (WebView)" },
+                      { value: "iframe", label: t("settings.webappModeIframe") },
+                      { value: "webview", label: t("settings.webappModeWebview") },
                     ] as const).map((opt) => (
                       <Button
                         key={opt.value}
@@ -250,7 +250,7 @@ export function SettingsPage() {
               <EasyTierConfigEditor
                 value={easytierConfig}
                 onChange={setEasytierConfig}
-                title="系统级 EasyTier 配置"
+                title={t("settings.systemConfig")}
               />
               <Flex justify="end" gap="2" pt="2" pb="8">
                 <Button
