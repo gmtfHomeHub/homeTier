@@ -61,7 +61,7 @@ pub fn run() -> std::process::ExitCode {
                 let _ = std::fs::create_dir_all(parent);
             }
             let db = Arc::new(
-                db::Database::new(&db_path).expect("Failed to initialize database"),
+                db::Database::new(&db_path).map_err(|e| format!("初始化数据库失败: {}", e))?,
             );
             app.manage(db.clone());
 
@@ -114,7 +114,10 @@ pub fn run() -> std::process::ExitCode {
             // 初始化空间管理器
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             let space_manager = {
-                let ipc_client = app.state::<Arc<daemon::client::IpcClient>>().inner().clone();
+                let ipc_client = app
+                    .try_state::<Arc<daemon::client::IpcClient>>()
+                    .map(|s| s.inner().clone())
+                    .ok_or_else(|| "IpcClient state not registered".to_string())?;
                 Arc::new(space::manager::SpaceManager::new(db, instance_manager, ipc_client))
             };
             #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -321,9 +324,10 @@ pub fn run() -> std::process::ExitCode {
         }
     }));
 
-    builder
-        .run(tauri::generate_context!())
-        .expect("error while running homeTier");
+    if let Err(e) = builder.run(tauri::generate_context!()) {
+        log_error!(format!("应用运行失败: {}", e));
+        return std::process::ExitCode::FAILURE;
+    }
 
     // 应用退出时关闭代理服务
     if let Some(proxy) = PROXY_SERVER.get() {
