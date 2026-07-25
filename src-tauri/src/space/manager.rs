@@ -510,9 +510,30 @@ Self {
             ..Default::default()
         };
 
-        // 获取本地配置（如果有）
-        let local_configs = self.local_configs.read().await;
-        if let Some(local_config) = local_configs.get(space_id) {
+        // 获取本地配置（优先使用内存缓存，未命中则从 DB 加载）
+        let local_config = {
+            let local_configs = self.local_configs.read().await;
+            local_configs.get(space_id).cloned()
+        };
+
+        let local_config = match local_config {
+            Some(cfg) => Some(cfg),
+            None => {
+                // 从 DB 加载并缓存
+                let db_config = self.db.get_local_config_json(&space_id.to_string())
+                    .ok()
+                    .flatten()
+                    .and_then(|json| serde_json::from_str::<NetworkConfig>(&json).ok());
+                if let Some(ref cfg) = db_config {
+                    let mut local_configs = self.local_configs.write().await;
+                    local_configs.insert(*space_id, cfg.clone());
+                    crate::log_info!("get_effective_config: 从 DB 恢复本地配置", &space_id.to_string());
+                }
+                db_config
+            }
+        };
+
+        if let Some(local_config) = local_config.as_ref() {
             // 合并本地配置到组配置
             // 网络标识
             if !local_config.network_name.is_empty() {
@@ -608,10 +629,13 @@ Self {
         Ok(config)
     }
 
-    /// 更新本地配置
+    /// 更新本地配置（同时持久化到 DB）
     pub async fn update_local_config(&self, space_id: &Uuid, config: NetworkConfig) -> Result<(), String> {
+        let config_json = serde_json::to_string(&config).map_err(|e| format!("序列化本地配置失败: {}", e))?;
+        self.db.update_local_config_json(&space_id.to_string(), &config_json)?;
         let mut local_configs = self.local_configs.write().await;
         local_configs.insert(*space_id, config);
+        crate::log_info!("本地配置已保存到 DB", &space_id.to_string());
         Ok(())
     }
 

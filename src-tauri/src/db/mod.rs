@@ -168,6 +168,29 @@ impl Database {
         }
     }
 
+    /// 获取空间的本地配置（local_config_json）
+    pub fn get_local_config_json(&self, space_id: &str) -> Result<Option<String>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare("SELECT local_config_json FROM spaces WHERE id=?1")
+            .map_err(|e| format!("Query error: {}", e))?;
+        let result = stmt.query_row(params![space_id], |row| row.get::<_, Option<String>>(0));
+        match result {
+            Ok(val) => Ok(val),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("Query error: {}", e)),
+        }
+    }
+
+    /// 更新空间的本地配置（local_config_json）
+    pub fn update_local_config_json(&self, space_id: &str, config_json: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE spaces SET local_config_json=?1 WHERE id=?2",
+            params![config_json, space_id],
+        ).map_err(|e| format!("Update local config error: {}", e))?;
+        Ok(())
+    }
+
     /// 更新空间的 EasyTier 配置（config_json）
     pub fn update_space_config(&self, space_id: &str, config_json: &str) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
