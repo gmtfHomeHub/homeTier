@@ -78,6 +78,8 @@
     "current": "目前",
     "upgrade": "升級",
     "upgradedTo": "已升級到版本 {{version}}",
+    "buildFromSource": "從原始碼編譯",
+    "builtFromSource": "已從原始碼編譯版本 {{version}}",
     "tunStatus": "虛擬網卡 (TUN) 狀態",
     "platform": "平台",
     "tunAvailable": "TUN 可用",

@@ -299,6 +299,7 @@ pub fn run() -> std::process::ExitCode {
             commands::easytier::get_easytier_version,
             commands::easytier::check_easytier_update,
             commands::easytier::upgrade_easytier,
+            commands::easytier::build_easytier_from_source,
         ])
         .on_window_event(|_win, event| {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]

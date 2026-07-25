@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { getEasyTierVersion, checkEasyTierUpdate, upgradeEasyTier } from "../../utils/api";
+import { getEasyTierVersion, checkEasyTierUpdate, upgradeEasyTier, buildEasyTierFromSource } from "../../utils/api";
 import { Button, Text, Flex } from "@radix-ui/themes";
-import { Cpu, RefreshCw, ArrowUpCircle, CheckCircle } from "lucide-react";
+import { Cpu, RefreshCw, ArrowUpCircle, CheckCircle, Hammer } from "lucide-react";
 
 export function EasyTierVersionManager() {
   const { t } = useTranslation();
@@ -10,6 +10,7 @@ export function EasyTierVersionManager() {
   const [availableVersions, setAvailableVersions] = useState<string[]>([]);
   const [checking, setChecking] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
+  const [building, setBuilding] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -55,6 +56,20 @@ export function EasyTierVersionManager() {
     }
   };
 
+  const handleBuildFromSource = async () => {
+    setBuilding(true);
+    setLastResult(null);
+    try {
+      const version = await buildEasyTierFromSource();
+      setLastResult({ success: true, message: t("settings.builtFromSource", { version }) });
+      await loadVersion();
+    } catch (e) {
+      setLastResult({ success: false, message: String(e) });
+    } finally {
+      setBuilding(false);
+    }
+  };
+
   return (
     <section className="border border-[var(--color-border)] rounded-lg p-4 space-y-3">
       <Flex align="center" gap="2">
@@ -67,7 +82,7 @@ export function EasyTierVersionManager() {
         <Text>{currentVersion ?? t("settings.notInstalled")}</Text>
       </div>
 
-      <Flex gap="2">
+      <Flex gap="2" wrap="wrap">
         <Button
           onClick={handleCheckUpdate}
           disabled={checking}
@@ -77,6 +92,16 @@ export function EasyTierVersionManager() {
         >
           <RefreshCw size={14} />
           {t("settings.checkUpdate")}
+        </Button>
+        <Button
+          onClick={handleBuildFromSource}
+          disabled={building}
+          variant="surface"
+          size="2"
+          loading={building}
+        >
+          <Hammer size={14} />
+          {t("settings.buildFromSource")}
         </Button>
       </Flex>
 

@@ -279,11 +279,7 @@ impl Daemon {
             }
             ipc::IpcRequest::UpgradeVersion { version, source_path } => {
                 crate::log_info!(format!("[Daemon] 升级版本: {}", version));
-                let source = if let Some(path) = source_path {
-                    crate::easytier::BinarySource::LocalBinary(std::path::PathBuf::from(path))
-                } else {
-                    return ipc::IpcResponse::Error { message: "未指定二进制来源".into() };
-                };
+                let source = source_path.map(|path| crate::easytier::BinarySource::LocalBinary(std::path::PathBuf::from(path)));
                 match easytier.upgrade(&version, source).await {
                     Ok(()) => ipc::IpcResponse::Ok { data: None },
                     Err(e) => ipc::IpcResponse::Error { message: format!("升级失败: {}", e) },

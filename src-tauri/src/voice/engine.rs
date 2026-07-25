@@ -86,6 +86,7 @@ impl VoiceEngine {
                 return;
             }
 
+            crate::log_info!(format!("语音频道已加入: space_id={}", space_id));
             *status.write().await = VoiceStatus::Connected;
         });
 
@@ -101,6 +102,7 @@ impl VoiceEngine {
 
     /// 离开语音频道
     pub async fn leave(&self) -> Result<(), String> {
+        crate::log_info!(format!("离开语音频道: space_id={}", self.space_id));
         // 关闭所有 WebRTC PeerConnection
         let mut peers = self.peers.write().await;
         for (_, peer) in peers.iter_mut() {
@@ -115,6 +117,7 @@ impl VoiceEngine {
 
     /// 添加 WebRTC peer
     pub async fn add_peer(&self, peer_id: String) {
+        crate::log_info!(format!("添加语音 peer: space_id={}, peer_id={}", self.space_id, peer_id));
         let mut peers = self.peers.write().await;
         peers.insert(peer_id.clone(), WebRtcPeer {
             peer_id: peer_id.clone(),
@@ -124,6 +127,7 @@ impl VoiceEngine {
 
     /// 移除 WebRTC peer
     pub async fn remove_peer(&self, peer_id: &str) {
+        crate::log_info!(format!("移除语音 peer: space_id={}, peer_id={}", self.space_id, peer_id));
         let mut peers = self.peers.write().await;
         peers.remove(peer_id);
     }
@@ -132,6 +136,7 @@ impl VoiceEngine {
     pub async fn toggle_mic(&self) -> bool {
         let mut muted = self.mic_muted.write().await;
         *muted = !*muted;
+        crate::log_info!(format!("切换麦克风: space_id={}, muted={}", self.space_id, *muted));
         *muted
     }
 
@@ -139,6 +144,7 @@ impl VoiceEngine {
     pub async fn toggle_speaker(&self) -> bool {
         let mut muted = self.speaker_muted.write().await;
         *muted = !*muted;
+        crate::log_info!(format!("切换扬声器: space_id={}, muted={}", self.space_id, *muted));
         *muted
     }
 

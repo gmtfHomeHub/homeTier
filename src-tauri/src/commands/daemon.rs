@@ -4,6 +4,7 @@ use crate::daemon::{client::IpcClient, service::get_service_manager, ipc::IpcRes
 /// 检查守护进程是否正在运行
 #[tauri::command]
 pub async fn check_daemon_running() -> Result<bool, String> {
+    crate::log_debug!("检查守护进程运行状态");
     let client = IpcClient::default_port();
     Ok(client.ping().await)
 }
@@ -11,6 +12,7 @@ pub async fn check_daemon_running() -> Result<bool, String> {
 /// 获取守护进程状态
 #[tauri::command]
 pub async fn get_daemon_status() -> Result<serde_json::Value, String> {
+    crate::log_debug!("获取守护进程状态");
     let client = IpcClient::default_port();
     match client.get_status().await {
         Ok(IpcResponse::Ok { data }) => Ok(data.unwrap_or(serde_json::Value::Null)),
@@ -22,6 +24,7 @@ pub async fn get_daemon_status() -> Result<serde_json::Value, String> {
 /// 连接到空间（通过守护进程）
 #[tauri::command]
 pub async fn daemon_connect_space(space_id: String) -> Result<(), String> {
+    crate::log_info!(format!("守护进程连接空间: {}", space_id));
     let client = IpcClient::default_port();
     match client.connect_space(&space_id, serde_json::json!({})).await {
         Ok(IpcResponse::Ok { .. }) => Ok(()),
@@ -33,6 +36,7 @@ pub async fn daemon_connect_space(space_id: String) -> Result<(), String> {
 /// 断开空间连接（通过守护进程）
 #[tauri::command]
 pub async fn daemon_disconnect_space(space_id: String) -> Result<(), String> {
+    crate::log_info!(format!("守护进程断开空间: {}", space_id));
     let client = IpcClient::default_port();
     match client.disconnect_space(&space_id).await {
         Ok(IpcResponse::Ok { .. }) => Ok(()),
@@ -44,6 +48,7 @@ pub async fn daemon_disconnect_space(space_id: String) -> Result<(), String> {
 /// 获取已连接的空间列表（通过守护进程）
 #[tauri::command]
 pub async fn daemon_list_spaces() -> Result<Vec<String>, String> {
+    crate::log_debug!("守护进程获取空间列表");
     let client = IpcClient::default_port();
     match client.list_spaces().await {
         Ok(IpcResponse::Ok { data }) => {
@@ -57,6 +62,7 @@ pub async fn daemon_list_spaces() -> Result<Vec<String>, String> {
 /// 安装守护进程服务
 #[tauri::command]
 pub async fn install_daemon_service() -> Result<(), String> {
+    crate::log_info!("安装守护进程服务");
     let manager = get_service_manager();
     manager.install()
 }
@@ -64,6 +70,7 @@ pub async fn install_daemon_service() -> Result<(), String> {
 /// 卸载守护进程服务
 #[tauri::command]
 pub async fn uninstall_daemon_service() -> Result<(), String> {
+    crate::log_info!("卸载守护进程服务");
     let manager = get_service_manager();
     manager.uninstall()
 }
@@ -71,6 +78,7 @@ pub async fn uninstall_daemon_service() -> Result<(), String> {
 /// 启动守护进程服务
 #[tauri::command]
 pub async fn start_daemon_service() -> Result<(), String> {
+    crate::log_info!("启动守护进程服务");
     let manager = get_service_manager();
     manager.start()
 }
@@ -78,6 +86,7 @@ pub async fn start_daemon_service() -> Result<(), String> {
 /// 停止守护进程服务
 #[tauri::command]
 pub async fn stop_daemon_service() -> Result<(), String> {
+    crate::log_info!("停止守护进程服务");
     let manager = get_service_manager();
     manager.stop()
 }
@@ -99,6 +108,7 @@ pub async fn is_daemon_service_running() -> Result<bool, String> {
 /// 关闭守护进程
 #[tauri::command]
 pub async fn shutdown_daemon() -> Result<(), String> {
+    crate::log_info!("关闭守护进程");
     let client = IpcClient::default_port();
     match client.shutdown().await {
         Ok(IpcResponse::Ok { .. }) => Ok(()),

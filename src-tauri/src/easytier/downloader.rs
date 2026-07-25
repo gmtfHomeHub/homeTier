@@ -123,7 +123,7 @@ impl EasyTierDownloader {
     }
 
     /// 设置当前版本
-    fn set_current_version(&self, version: &str) -> Result<(), String> {
+    pub(crate) fn set_current_version(&self, version: &str) -> Result<(), String> {
         let metadata = BinaryMetadata {
             current_version: version.to_string(),
             binary_dir: self.binary_path(version).parent().unwrap_or(&self.bin_dir).to_path_buf(),
@@ -210,6 +210,99 @@ impl EasyTierDownloader {
             }
         }
         total
+    }
+
+    /// 从源码编译并安装
+    pub async fn build_from_source(&self, source_dir: &std::path::Path) -> Result<String, String> {
+        let cargo_toml = source_dir.join("easytier").join("Cargo.toml");
+        if !cargo_toml.exists() {
+            return Err(format!("EasyTier 库 Cargo.toml 未找到: {}", cargo_toml.display()));
+        }
+
+        let content = std::fs::read_to_string(&cargo_toml)
+            .map_err(|e| format!("读取 Cargo.toml 失败: {}", e))?;
+        let version = content
+            .lines()
+            .find(|l| l.trim().starts_with("version"))
+            .and_then(|l| l.split('=').nth(1))
+            .map(|s| s.trim().trim_matches('"').trim().to_string())
+            .ok_or_else(|| "无法从 Cargo.toml 解析版本号".to_string())?;
+
+        crate::log_info!(format!("[EasyTierDownloader] 开始源码编译: version={}, dir={}", version, source_dir.display()));
+
+        let status = tokio::process::Command::new("cargo")
+            .args(["build", "--package", "easytier-core", "--release"])
+            .current_dir(source_dir)
+            .status()
+            .await
+            .map_err(|e| format!("执行 cargo build 失败: {}", e))?;
+
+        if !status.success() {
+            return Err("cargo build 编译失败，请检查编译错误".into());
+        }
+
+        let binary_name = if cfg!(target_os = "windows") { "easytier-core.exe" } else { "easytier-core" };
+        let built_binary = source_dir.join("target").join("release").join(binary_name);
+        if !built_binary.exists() {
+            return Err(format!("编译产物未找到: {}", built_binary.display()));
+        }
+
+        let target_dir = self.binary_path(&version).parent().unwrap().to_path_buf();
+        std::fs::create_dir_all(&target_dir).map_err(|e| format!("创建目标目录失败: {}", e))?;
+        std::fs::copy(&built_binary, self.binary_path(&version))
+            .map_err(|e| format!("复制二进制失败: {}", e))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&self.binary_path(&version), std::fs::Permissions::from_mode(0o755))
+                .map_err(|e| format!("设置权限失败: {}", e))?;
+        }
+
+        self.set_current_version(&version)?;
+
+        crate::log_info!(format!("[EasyTierDownloader] 源码编译完成: version={}", version));
+        Ok(version)
+    }
+
+    /// 从 GitHub Releases 下载并安装指定版本
+    pub async fn download_from_github(&self, version: &str) -> Result<PathBuf, String> {
+        let url = crate::easytier::github::download_url(version, &self.platform);
+
+        crate::log_info!(format!("[EasyTierDownloader] 正在从 GitHub 下载: version={}, url={}", version, url));
+
+        let client = reqwest::Client::builder()
+            .user_agent("homeTier/0.1.0")
+            .build()
+            .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+
+        let resp = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("下载失败: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("下载返回错误: {}", resp.status()));
+        }
+
+        let temp_dir = std::env::temp_dir().join(format!("easytier-dl-{}", version));
+        std::fs::create_dir_all(&temp_dir).map_err(|e| format!("创建临时目录失败: {}", e))?;
+        let archive_path = temp_dir.join(format!("easytier-{}-v{}.zip", self.platform, version));
+
+        let bytes = resp.bytes().await.map_err(|e| format!("读取下载数据失败: {}", e))?;
+        tokio::fs::write(&archive_path, &bytes)
+            .await
+            .map_err(|e| format!("写入临时文件失败: {}", e))?;
+
+        crate::log_info!("[EasyTierDownloader] 下载完成，开始安装");
+
+        let result = self
+            .install(version, BinarySource::LocalArchive(archive_path.clone()))
+            .await;
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        result
     }
 }
 

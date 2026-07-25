@@ -78,6 +78,8 @@
     "current": "Current",
     "upgrade": "Upgrade",
     "upgradedTo": "Upgraded to version {{version}}",
+    "buildFromSource": "Build from Source",
+    "builtFromSource": "Built version {{version}} from source",
     "tunStatus": "Virtual NIC (TUN) Status",
     "platform": "Platform",
     "tunAvailable": "TUN Available",

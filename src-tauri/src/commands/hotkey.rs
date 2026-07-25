@@ -6,6 +6,7 @@ pub async fn register_hotkey(
     action: String,
     hotkey_manager: tauri::State<'_, HotkeyManager>,
 ) -> Result<(), String> {
+    crate::log_info!(format!("注册快捷键: key={}, action={}", key, action));
     hotkey_manager.register(&key, &action).await
 }
 
@@ -14,6 +15,7 @@ pub async fn unregister_hotkey(
     key: String,
     hotkey_manager: tauri::State<'_, HotkeyManager>,
 ) -> Result<(), String> {
+    crate::log_info!(format!("注销快捷键: key={}", key));
     hotkey_manager.unregister(&key).await
 }
 

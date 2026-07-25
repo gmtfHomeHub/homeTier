@@ -39,6 +39,7 @@ pub async fn join_space(
     network_secret: String,
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<Space, String> {
+    crate::log_info!(format!("加入空间: name={}", network_name));
     space_manager.join(network_name, network_secret).await
 }
 
@@ -48,6 +49,7 @@ pub async fn leave_space(
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<(), String> {
     let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
+    crate::log_info!(format!("离开空间: {}", space_id));
     space_manager.leave(&id).await
 }
 
@@ -58,6 +60,7 @@ pub async fn delete_space(
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<(), String> {
     let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
+    crate::log_info!(format!("删除空间: {}, caller={}", space_id, caller_id));
     space_manager.delete(&id, &caller_id).await
 }
 
@@ -76,6 +79,7 @@ pub async fn remove_member(
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<(), String> {
     let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
+    crate::log_info!(format!("移除成员: target={}, space={}, caller={}", target_member_id, space_id, caller_id));
     space_manager.remove_member(&id, &target_member_id, &caller_id).await
 }
 
@@ -113,6 +117,7 @@ pub async fn connect_space(
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<(), String> {
     let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
+    crate::log_info!(format!("连接空间: {}", space_id));
     space_manager.connect(&id).await
 }
 
@@ -122,6 +127,7 @@ pub async fn disconnect_space(
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<(), String> {
     let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
+    crate::log_info!(format!("断开空间: {}", space_id));
     space_manager.disconnect(&id).await
 }
 
@@ -151,5 +157,6 @@ pub async fn update_local_config(
     let config: crate::easytier::config::NetworkConfig = serde_json::from_str(&config_json)
         .map_err(|e| format!("解析配置失败: {}", e))?;
     let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
+    crate::log_info!(format!("更新本地配置: {}", space_id));
     space_manager.update_local_config(&id, config).await
 }

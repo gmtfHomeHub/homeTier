@@ -402,6 +402,10 @@ export async function upgradeEasyTier(version: string, sourcePath?: string): Pro
   return invoke("upgrade_easytier", { version, sourcePath });
 }
 
+export async function buildEasyTierFromSource(): Promise<string> {
+  return invoke("build_easytier_from_source");
+}
+
 // === ACL Rules ===
 
 export async function getAclRules(spaceId: string): Promise<AclRule[]> {

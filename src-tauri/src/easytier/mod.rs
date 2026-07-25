@@ -1,5 +1,6 @@
 pub mod config;
 pub mod downloader;
+pub mod github;
 pub mod process;
 
 pub mod launcher {
@@ -551,10 +552,19 @@ impl EasyTierManager {
             .ok_or_else(|| "EasyTier 未安装".into())
     }
 
-    /// 升级版本
-    pub async fn upgrade(&self, version: &str, source: BinarySource) -> Result<(), String> {
-        self.downloader.install(version, source).await?;
-        // 重启所有运行中的实例
+    /// 升级版本（source 为 None 时自动从 GitHub 下载）
+    pub async fn upgrade(&self, version: &str, source: Option<BinarySource>) -> Result<(), String> {
+        if let Some(source) = source {
+            self.downloader.install(version, source).await?;
+        } else {
+            self.downloader.download_from_github(version).await?;
+        }
+        self.restart_all_instances().await;
+        Ok(())
+    }
+
+    /// 重启所有运行中的实例（升级后调用）
+    async fn restart_all_instances(&self) {
         for entry in self.processes.iter() {
             let space_id = *entry.key();
             if entry.value().is_running() {
@@ -568,7 +578,6 @@ impl EasyTierManager {
                 }
             }
         }
-        Ok(())
     }
 
     /// 获取配置路径
