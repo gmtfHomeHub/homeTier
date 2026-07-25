@@ -64,10 +64,12 @@ pub async fn update_group_config(
     Ok(())
 }
 
-/// 获取空间 peer 列表（暂不支持）
+/// 获取空间 peer 列表
 #[tauri::command]
 pub async fn get_space_peers(
-    _space_id: String,
+    space_id: String,
+    space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<Vec<PeerInfo>, String> {
-    Err("get_space_peers 暂不支持".to_string())
+    let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
+    space_manager.get_peers(&id).await
 }

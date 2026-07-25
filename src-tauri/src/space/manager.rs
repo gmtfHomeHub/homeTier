@@ -350,6 +350,12 @@ Self {
     /// 断开空间
     pub async fn disconnect(&self, space_id: &Uuid) -> Result<(), String> {
         crate::log_info!(format!("断开空间: {}", space_id), &space_id.to_string());
+
+        // 关闭信号服务器
+        if let Some(mut server) = self.screen_servers.write().await.remove(space_id) {
+            server.shutdown();
+        }
+
         match self.ipc_client.disconnect_space(&space_id.to_string()).await {
             Ok(crate::daemon::ipc::IpcResponse::Ok { .. }) => Ok(()),
             Ok(crate::daemon::ipc::IpcResponse::Error { message }) => Err(message),

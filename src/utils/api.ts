@@ -61,10 +61,6 @@ export async function getSpaceStatus(spaceId: string): Promise<Record<string, un
   return invoke("get_space_status", { spaceId });
 }
 
-export async function getSpace(spaceId: string): Promise<Space> {
-  return invoke("get_space", { spaceId });
-}
-
 export async function patchSpaceConfig(spaceId: string, patch: Record<string, never>): Promise<void> {
   return invoke("patch_space_config", { spaceId, patch });
 }
@@ -167,6 +163,14 @@ export async function startScreenShare(): Promise<void> {
 
 export async function stopScreenShare(): Promise<void> {
   return invoke("stop_screen_share");
+}
+
+export async function isScreenSharing(): Promise<boolean> {
+  return invoke("is_screen_sharing");
+}
+
+export async function getScreenShareViewers(): Promise<string[]> {
+  return invoke("get_screen_share_viewers");
 }
 
 // === Hotkey Commands ===

@@ -1,6 +1,5 @@
-use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::oneshot;
 use tokio::net::TcpListener;
 use tokio::task::spawn;
 use crate::voice::signal::SignalHandler;
@@ -8,14 +7,14 @@ use crate::voice::signal::SignalHandler;
 /// 屏幕共享信令服务器
 pub struct ScreenShareSignalServer {
     port: u16,
-    messages: Arc<RwLock<HashMap<String, Vec<String>>>>,
+    shutdown_tx: Option<oneshot::Sender<()>>,
 }
 
 impl ScreenShareSignalServer {
     pub fn new(port: u16) -> Self {
         Self {
             port,
-            messages: Arc::new(RwLock::new(HashMap::new())),
+            shutdown_tx: None,
         }
     }
 
@@ -25,24 +24,39 @@ impl ScreenShareSignalServer {
             .await
             .map_err(|e| format!("监听信令端口失败: {}", e))?;
 
-        let messages = self.messages.clone();
+        let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
+        self.shutdown_tx = Some(shutdown_tx);
+
         spawn(async move {
             loop {
-                match listener.accept().await {
-                    Ok((stream, _addr)) => {
-                        let messages = messages.clone();
-                        spawn(async move {
-                            handle_connection(stream, messages).await;
-                        });
+                tokio::select! {
+                    result = listener.accept() => {
+                        match result {
+                            Ok((stream, _addr)) => {
+                                spawn(async move {
+                                    handle_connection(stream).await;
+                                });
+                            }
+                            Err(e) => {
+                                crate::log_warn!(format!("屏幕共享信令服务器接受连接失败: {}", e));
+                            }
+                        }
                     }
-                    Err(e) => {
-                        eprintln!("屏幕共享信令服务器接受连接失败: {}", e);
+                    _ = &mut shutdown_rx => {
+                        break;
                     }
                 }
             }
         });
 
         Ok(())
+    }
+
+    /// 停止信令服务器
+    pub fn shutdown(&mut self) {
+        if let Some(tx) = self.shutdown_tx.take() {
+            let _ = tx.send(());
+        }
     }
 
     /// 获取信令端口
@@ -52,7 +66,7 @@ impl ScreenShareSignalServer {
 }
 
 /// 处理 HTTP 连接
-async fn handle_connection(stream: tokio::net::TcpStream, messages: Arc<RwLock<HashMap<String, Vec<String>>>>) {
+async fn handle_connection(stream: tokio::net::TcpStream) {
     use tokio::io::AsyncReadExt;
     use tokio::io::AsyncWriteExt;
 
@@ -66,26 +80,27 @@ async fn handle_connection(stream: tokio::net::TcpStream, messages: Arc<RwLock<H
 
     let request = String::from_utf8_lossy(&buffer[..n]);
 
-    // 解析 HTTP 请求路径和 body
     if let Some(body_start) = request.find("\r\n\r\n") {
         let body = &request[body_start + 4..];
         let path = request.split_whitespace().nth(1).unwrap_or("/");
 
         match path {
             "/signal/offer" => {
-                // 处理 SDP Offer
                 let _ = SignalHandler::send_offer("127.0.0.1", 18200, body).await;
+                let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
+                let _ = stream.into_inner().write_all(response.as_bytes()).await;
             }
             "/signal/answer" => {
-                // 处理 SDP Answer
                 let _ = SignalHandler::send_answer("127.0.0.1", 18200, body).await;
+                let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
+                let _ = stream.into_inner().write_all(response.as_bytes()).await;
             }
             "/signal/ice" => {
-                // 处理 ICE Candidate
                 let _ = SignalHandler::send_ice("127.0.0.1", 18200, body).await;
+                let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
+                let _ = stream.into_inner().write_all(response.as_bytes()).await;
             }
             _ => {
-                // 返回 404
                 let response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
                 let _ = stream.into_inner().write_all(response.as_bytes()).await;
             }

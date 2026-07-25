@@ -22,7 +22,7 @@ export function CreateSpaceDialog({ onClose }: CreateSpaceDialogProps) {
     setLoading(true);
     setError(null);
     try {
-      const ownerId = `${name.trim()}-${Date.now()}`;
+      const ownerId = crypto.randomUUID();
       await createSpace(name.trim(), networkSecret.trim(), ownerId, description.trim() || undefined);
       onClose();
     } catch (e) {

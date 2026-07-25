@@ -3,13 +3,47 @@ use hyper::body::Incoming;
 use hyper::{Method, Request, Response, StatusCode};
 use http_body_util::Full;
 use hyper::body::Bytes;
+use hyper::upgrade::OnUpgrade;
+use hyper_util::rt::TokioIo;
+use tokio::io::AsyncWriteExt;
 
 use crate::proxy::plugin::{ProxyHandler, ProxyResponse, RequestContext};
 
 /// HTTPS CONNECT tunnel plugin.
-/// Handles CONNECT requests by establishing a TCP tunnel
-/// between the client and the target host:port.
 pub struct HttpsTunnelPlugin;
+
+fn parse_host_port(uri: &hyper::Uri, host_header: Option<&str>) -> Option<(String, u16)> {
+    let authority = uri
+        .authority()
+        .map(|a| a.to_string())
+        .or_else(|| host_header.map(|h| h.to_string()));
+
+    let authority = authority?;
+    let mut parts = authority.rsplitn(2, ':');
+    let port_str = parts.next()?;
+    let host = parts.next().unwrap_or(&authority);
+
+    let (host, port) = if port_str == host {
+        (host, 443u16)
+    } else {
+        (host, port_str.parse::<u16>().unwrap_or(443))
+    };
+
+    let host = host.trim_matches(|c| c == '[' || c == ']');
+    if host.is_empty() {
+        return None;
+    }
+
+    Some((host.to_string(), port))
+}
+
+fn build_response(status: StatusCode) -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(status)
+        .header("content-type", "text/plain; charset=utf-8")
+        .body(Full::new(Bytes::new()))
+        .unwrap()
+}
 
 #[async_trait]
 impl ProxyHandler for HttpsTunnelPlugin {
@@ -23,27 +57,50 @@ impl ProxyHandler for HttpsTunnelPlugin {
 
     async fn handle(
         &self,
-        _req: Request<Incoming>,
-        _ctx: RequestContext,
+        req: Request<Incoming>,
+        _ctx: crate::proxy::plugin::RequestContext,
     ) -> Result<ProxyResponse, Box<dyn std::error::Error + Send + Sync>> {
-        // CONNECT tunnel is not yet fully implemented as a plugin.
-        // The HTTP forward handler can still proxy HTTPS URLs by forwarding
-        // the request through reqwest (which handles TLS to upstream).
-        //
-        // TODO: Implement CONNECT tunnel:
-        //   1. Parse host:port from URI (or Host header)
-        //   2. Establish TCP connection to target
-        //   3. Send "200 Connection Established" to client
-        //   4. Bidirectional byte copy between client TCP and target TCP
-        //   5. This requires access to the underlying TCP stream, which in hyper
-        //      is done via http1::Builder's preserve_header_case() + on_incoming().
-        //   6. Alternative: use hyper's low-level connection API.
-        Ok(Response::builder()
-            .status(StatusCode::BAD_GATEWAY)
-            .header("content-type", "text/plain; charset=utf-8")
-            .body(Full::new(Bytes::from(
-                "CONNECT tunnel not yet implemented",
-            )))
-            .unwrap())
+        let host_header = req
+            .headers()
+            .get("host")
+            .and_then(|v| v.to_str().ok());
+
+        let (host, port) = match parse_host_port(req.uri(), host_header) {
+            Some(hp) => hp,
+            None => {
+                return Ok(Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .header("content-type", "text/plain; charset=utf-8")
+                    .body(Full::new(Bytes::from("Invalid CONNECT target")))
+                    .unwrap());
+            }
+        };
+
+        match tokio::net::TcpStream::connect(format!("{}:{}", host, port)).await {
+            Ok(upstream) => {
+                let on_upgrade: OnUpgrade = hyper::upgrade::on(&req);
+
+                tokio::spawn(async move {
+                    if let Ok(upgraded) = on_upgrade.await {
+                        let mut client_io = TokioIo::new(upgraded);
+                        let mut upstream_io = TokioIo::new(upstream);
+                        let _ = tokio::io::copy_bidirectional(
+                            &mut client_io,
+                            &mut upstream_io,
+                        ).await;
+                    }
+                });
+
+                Ok(build_response(StatusCode::OK))
+            }
+            Err(e) => {
+                crate::log_warn!(format!("CONNECT tunnel failed: {}:{} -> {}", host, port, e));
+                Ok(Response::builder()
+                    .status(StatusCode::BAD_GATEWAY)
+                    .header("content-type", "text/plain; charset=utf-8")
+                    .body(Full::new(Bytes::from(format!("Failed to connect to {}:{}", host, port))))
+                    .unwrap())
+            }
+        }
     }
 }

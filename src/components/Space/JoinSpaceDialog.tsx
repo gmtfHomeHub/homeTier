@@ -11,15 +11,19 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
   const [networkName, setNetworkName] = useState("");
   const [networkSecret, setNetworkSecret] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const joinSpace = useSpaceStore((s) => s.joinSpace);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!networkName.trim() || !networkSecret.trim()) return;
     setLoading(true);
+    setError(null);
     try {
       await joinSpace(networkName.trim(), networkSecret.trim());
       onClose();
+    } catch (e) {
+      setError(String(e));
     } finally {
       setLoading(false);
     }
@@ -73,6 +77,9 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
           <Button type="button" onClick={handlePasteLink} variant="ghost" color="blue" size="1">
             从剪贴板粘贴分享链接
           </Button>
+          {error && (
+            <p className="text-xs text-[var(--color-danger)]">{error}</p>
+          )}
           <Flex justify="end" gap="2" pt="2">
             <Button type="button" onClick={onClose} variant="outline" size="2">
               取消

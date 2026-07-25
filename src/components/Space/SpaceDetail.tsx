@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, MessageSquare, MoreHorizontal, Terminal, Trash2 } from "lucide-react";
+import { Users, ArrowLeft, MessageSquare, MoreHorizontal, Terminal, Trash2 } from "lucide-react";
 import { Button, Flex, DropdownMenu } from "@radix-ui/themes";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { MemberCount } from "../Common/MemberCount";
+import { MemberManager } from "./MemberManager";
 import { ConfirmDialog } from "../Common/ConfirmDialog";
+import { ScreenShareView } from "../ScreenShare/ScreenShareView";
 import { AppNavPage } from "../AppNav/AppNavPage";
 import { NetworkStatsPanel } from "../Common/NetworkStatsPanel";
 import { useLayoutStore } from "../../stores/layoutStore";
@@ -12,9 +14,10 @@ import { useLayoutStore } from "../../stores/layoutStore";
 export function SpaceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { spaces, deleteSpace, loadSpaces, connectSpace } = useSpaceStore();
+  const { spaces, deleteSpace, loadSpaces, connectSpace, disconnectSpace } = useSpaceStore();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showMemberManager, setShowMemberManager] = useState(false);
   const { setSidebarOpen } = useLayoutStore();
 
   const space = spaces.find((s) => s.id === id);
@@ -72,6 +75,24 @@ export function SpaceDetail() {
             }`}
           />
           <span className="font-semibold">{space.name}</span>
+          {space.status === "disconnected" && (
+            <Button
+              onClick={() => connectSpace(space.id)}
+              variant="soft"
+              size="1"
+            >
+              连接
+            </Button>
+          )}
+          {space.status === "connected" && (
+            <Button
+              onClick={() => disconnectSpace(space.id)}
+              variant="outline"
+              size="1"
+            >
+              断开
+            </Button>
+          )}
           {space.virtual_ip && (
             <span className="text-xs text-[var(--color-text-secondary)] font-mono">
               {space.virtual_ip}
@@ -105,6 +126,12 @@ export function SpaceDetail() {
                 日志
               </DropdownMenu.Item>
               {isOwner && (
+                <DropdownMenu.Item onClick={() => setShowMemberManager(true)}>
+                  <Users size={16} />
+                  成员管理
+                </DropdownMenu.Item>
+              )}
+              {isOwner && (
                 <DropdownMenu.Item color="red" onClick={() => setShowDeleteConfirm(true)}>
                   <Trash2 size={16} />
                   删除空间
@@ -120,8 +147,23 @@ export function SpaceDetail() {
          <NetworkStatsPanel spaceId={id} />
        </div>
 
-       {/* 中下区域 — 应用导航页 */}
-       <AppNavPage space={space} isOwner={isOwner} callerId={callerId} />
+{/* 屏幕共享 */}
+       {space.status === "connected" && (
+         <div className="px-4 py-2">
+           <ScreenShareView />
+         </div>
+       )}
+
+      {/* 中下区域 — 应用导航页 */}
+      <AppNavPage space={space} isOwner={isOwner} callerId={callerId} />
+
+      {showMemberManager && (
+        <MemberManager
+          spaceId={id}
+          callerId={callerId}
+          onClose={() => setShowMemberManager(false)}
+        />
+      )}
 
       <ConfirmDialog
         open={showDeleteConfirm}

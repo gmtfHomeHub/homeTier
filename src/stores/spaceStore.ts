@@ -71,6 +71,12 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
 
   removeMember: async (spaceId, targetMemberId, callerId) => {
     await api.removeMember(spaceId, targetMemberId, callerId);
+    const updated = await api.listMembers(spaceId);
+    set((state) => ({
+      spaces: state.spaces.map((s) =>
+        s.id === spaceId ? { ...s, member_count: updated.length } : s
+      ),
+    }));
   },
 
   setCurrentSpace: (id) => set({ currentSpaceId: id }),

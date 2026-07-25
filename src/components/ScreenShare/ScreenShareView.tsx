@@ -1,11 +1,37 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@radix-ui/themes";
 import { Monitor, MonitorOff, Eye } from "lucide-react";
 import * as api from "../../utils/api";
 
 export function ScreenShareView() {
   const [isSharing, setIsSharing] = useState(false);
-  const [viewers] = useState<string[]>([]);
+  const [viewers, setViewers] = useState<string[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const sharing = await api.isScreenSharing();
+        if (!cancelled) {
+          setIsSharing(sharing);
+          if (sharing) {
+            const v = await api.getScreenShareViewers();
+            if (!cancelled) setViewers(v);
+          } else {
+            setViewers([]);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+    poll();
+    const timer = setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
 
   const handleStart = async () => {
     try {
@@ -20,6 +46,7 @@ export function ScreenShareView() {
     try {
       await api.stopScreenShare();
       setIsSharing(false);
+      setViewers([]);
     } catch (e) {
       console.error("Screen share stop failed:", e);
     }

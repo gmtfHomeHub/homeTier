@@ -9,7 +9,7 @@ pub struct ScreenShareEngine {
     pub is_sharing: Arc<RwLock<bool>>,
     pub viewers: Arc<RwLock<Vec<String>>>,
     /// WebRTC PeerConnection
-    pub peer_connection: Option<RTCPeerConnection>,
+    pub peer_connection: Arc<RwLock<Option<RTCPeerConnection>>>,
     /// 信令服务器端口
     pub signal_port: u16,
 }
@@ -19,17 +19,13 @@ impl ScreenShareEngine {
         Self {
             is_sharing: Arc::new(RwLock::new(false)),
             viewers: Arc::new(RwLock::new(Vec::new())),
-            peer_connection: None,
+            peer_connection: Arc::new(RwLock::new(None)),
             signal_port: 18200,
         }
     }
 
     /// 开始屏幕共享
     pub async fn start(&self) -> Result<(), String> {
-        // 启动信令服务器
-        let mut signal_server = crate::screen::server::ScreenShareSignalServer::new(self.signal_port);
-        signal_server.start().await.map_err(|e| format!("启动信令服务器失败: {}", e))?;
-
         // 创建 WebRTC PeerConnection
         let api = APIBuilder::new().build();
         let config = RTCConfiguration::default();
@@ -38,25 +34,20 @@ impl ScreenShareEngine {
             .await
             .map_err(|e| format!("创建 PeerConnection 失败: {}", e))?;
 
-        // TODO: 使用 Arc<RwLock<Option<RTCPeerConnection>>> 存储 peer_connection
-        // self.peer_connection = Some(peer_connection);
+        *self.peer_connection.write().await = Some(peer_connection);
 
         #[cfg(target_os = "macos")]
         {
-            // macOS: 使用 CGDisplayStream 或 SCStream 采集屏幕
-            // 通过 CoreMedia 编码为视频帧，通过 WebRTC 视频轨发送
             crate::log_info!("macOS 屏幕共享: 初始化 CGDisplayStream");
         }
 
         #[cfg(target_os = "windows")]
         {
-            // Windows: 使用 DXGI Desktop Duplication API
             crate::log_info!("Windows 屏幕共享: 初始化 DXGI");
         }
 
         #[cfg(target_os = "linux")]
         {
-            // Linux: 使用 PipeWire 或 X11 采集
             crate::log_info!("Linux 屏幕共享: 初始化 PipeWire");
         }
 
@@ -67,6 +58,12 @@ impl ScreenShareEngine {
 
     /// 停止屏幕共享
     pub async fn stop(&self) -> Result<(), String> {
+        // 关闭 PeerConnection
+        let mut pc = self.peer_connection.write().await;
+        if let Some(conn) = pc.take() {
+            let _ = conn.close().await;
+        }
+
         *self.is_sharing.write().await = false;
         self.viewers.write().await.clear();
         crate::log_info!("屏幕共享已停止");

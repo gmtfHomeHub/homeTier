@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Share2, Trash2, Settings, X, Users } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { ShareSpaceDialog } from "../Common/ShareSpaceDialog";
 import { ConfirmDialog } from "../Common/ConfirmDialog";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { MemberCount } from "../Common/MemberCount";
@@ -19,6 +20,7 @@ export function SpaceList() {
   const [spaceConfig, setSpaceConfig] = useState<Partial<EasyTierConfig>>({});
   const [savingConfig, setSavingConfig] = useState(false);
   const [connectingId, setConnectingId] = useState<string | null>(null);
+  const [shareTarget, setShareTarget] = useState<string | null>(null);
 
   const configSpace = spaces.find(s => s.id === configTarget);
 
@@ -183,7 +185,7 @@ export function SpaceList() {
                 </Button>
               )}
               <Button
-                onClick={() => navigate(`/space/${space.id}`)}
+                onClick={() => setShareTarget(space.id)}
                 variant="ghost"
                 size="2"
                 title="分享"
@@ -252,6 +254,10 @@ export function SpaceList() {
             </Flex>
           </div>
         </div>
+      )}
+
+      {shareTarget && (
+        <ShareSpaceDialog spaceId={shareTarget} onClose={() => setShareTarget(null)} />
       )}
 
       {/* 在线成员列表弹窗 */}

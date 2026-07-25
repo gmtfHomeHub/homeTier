@@ -22,3 +22,10 @@ pub async fn is_screen_sharing(
 ) -> Result<bool, String> {
     Ok(screen_share.is_active().await)
 }
+
+#[tauri::command]
+pub async fn get_screen_share_viewers(
+    screen_share: State<'_, Arc<ScreenShareEngine>>,
+) -> Result<Vec<String>, String> {
+    Ok(screen_share.viewers.read().await.clone())
+}

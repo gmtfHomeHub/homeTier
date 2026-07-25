@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
 import { Space } from "../types";
-import { getSpace, getSpaceConfig } from "../utils/api";
+import { useSpaceStore } from "../stores/spaceStore";
 
 interface SpaceHook {
   space: Space | null;
@@ -9,27 +8,8 @@ interface SpaceHook {
 }
 
 export const useSpace = (spaceId: string): SpaceHook => {
-  const [space, setSpace] = useState<Space | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const spaces = useSpaceStore((s) => s.spaces);
+  const space = spaces.find((s) => s.id === spaceId) || null;
 
-  useEffect(() => {
-    const fetchSpace = async () => {
-      try {
-        setLoading(true);
-        const spaceData = await getSpace(spaceId);
-        setSpace(spaceData);
-        setError(null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to fetch space");
-        setSpace(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchSpace();
-  }, [spaceId]);
-
-  return { space, loading, error };
+  return { space, loading: false, error: null };
 };

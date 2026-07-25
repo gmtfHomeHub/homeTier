@@ -154,7 +154,6 @@ pub fn run() -> std::process::ExitCode {
             ).map_err(|e| format!("创建 HttpForwardPlugin 失败: {}", e))?);
             let handlers: Vec<Arc<dyn ProxyHandler>> = vec![
                 Arc::new(HttpsTunnelPlugin),
-                Arc::new(WebSocketPlugin),
                 http_forward,
             ];
 
@@ -243,6 +242,7 @@ pub fn run() -> std::process::ExitCode {
             commands::screen::start_screen_share,
             commands::screen::stop_screen_share,
             commands::screen::is_screen_sharing,
+            commands::screen::get_screen_share_viewers,
             // 快捷键
             commands::hotkey::register_hotkey,
             commands::hotkey::unregister_hotkey,

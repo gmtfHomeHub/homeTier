@@ -5,10 +5,8 @@ use std::sync::Arc;
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
-use hyper::{Request, Response, StatusCode};
+use hyper::Request;
 use hyper_util::rt::TokioIo;
-use http_body_util::Full;
-use hyper::body::Bytes;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{oneshot, Mutex};
@@ -214,32 +212,15 @@ async fn serve_http(
     let service = service_fn(move |req: Request<Incoming>| {
         let chain = chain.clone();
         async move {
-            if ws_proxy::is_ws_upgrade(&req) {
-                // WS 请求通过 hyper 返回 101 响应（无 upgrade 处理）
-                let ws_key = req
-                    .headers()
-                    .get("sec-websocket-key")
-                    .and_then(|v| v.to_str().ok())
-                    .unwrap_or("");
-                Ok::<_, std::convert::Infallible>(
-                    Response::builder()
-                        .status(101)
-                        .header("upgrade", "websocket")
-                        .header("connection", "upgrade")
-                        .header("sec-websocket-accept", compute_accept(ws_key))
-                        .body(Full::new(Bytes::new()))
-                        .unwrap(),
-                )
-            } else {
-                let ctx = RequestContext::new();
-                Ok::<_, std::convert::Infallible>(
-                    chain.process(req, ctx).await,
-                )
-            }
+            let ctx = RequestContext::new();
+            Ok::<_, std::convert::Infallible>(
+                chain.process(req, ctx).await,
+            )
         }
     });
     let conn = http1::Builder::new()
-        .serve_connection(io, service);
+        .serve_connection(io, service)
+        .with_upgrades();
     tokio::select! {
         _ = conn => {}
         _ = async {
@@ -251,15 +232,4 @@ async fn serve_http(
             }
         } => {}
     }
-}
-
-/// 计算 WebSocket Accept 值 (RFC 6455)
-fn compute_accept(key: &str) -> String {
-    use sha1::{Sha1, Digest};
-    const WS_GUID: &str = "258EAFA5-E914-47DA-95CA-5AB9B8A4C3CF";
-    let mut hasher = Sha1::new();
-    hasher.update(key.as_bytes());
-    hasher.update(WS_GUID.as_bytes());
-    let result = hasher.finalize();
-    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, result)
 }

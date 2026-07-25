@@ -18,7 +18,6 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
   const { showToast } = useToast();
   
   const [config, setConfig] = useState<NetworkConfigDetails>({
-    space_id: spaceId,
     network_name: "",
     network_secret: "",
     dhcp: false,
@@ -38,10 +37,9 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
   useEffect(() => {
     if (space) {
         setConfig({
-          space_id: spaceId,
           network_name: space.network_name,
           network_secret: space.network_secret,
-          dhcp: false, // 从 space 对象中获取默认值
+          dhcp: false,
           peers: [],
           listeners: [],
           mapped_listeners: [],
@@ -78,7 +76,6 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
   const handleReset = () => {
     if (space) {
       setConfig({
-        space_id: spaceId,
         network_name: space.network_name,
         network_secret: space.network_secret,
         dhcp: false,
