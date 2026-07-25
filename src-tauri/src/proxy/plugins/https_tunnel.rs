@@ -4,7 +4,7 @@ use hyper::{Method, Request, Response, StatusCode};
 use http_body_util::Full;
 use hyper::body::Bytes;
 use hyper::upgrade::OnUpgrade;
-use tokio::io::AsyncWriteExt;
+use hyper_util::rt::TokioIo;
 
 use crate::proxy::plugin::{ProxyHandler, ProxyResponse, RequestContext};
 
@@ -83,14 +83,14 @@ impl ProxyHandler for HttpsTunnelPlugin {
             Ok(upstream) => {
                 let on_upgrade: OnUpgrade = hyper::upgrade::on(req);
 
-                tokio::spawn(async move {
+tokio::spawn(async move {
                     if let Ok(upgraded) = on_upgrade.await {
-                        let (mut client_recv, mut client_send) = tokio::io::split(upgraded);
-                        let (mut upstream_recv, mut upstream_send) = tokio::io::split(upstream);
-                        let _ = tokio::join!(
-                            tokio::io::copy(&mut client_recv, &mut upstream_send),
-                            tokio::io::copy(&mut upstream_recv, &mut client_send),
-                        );
+                        let mut client_io = TokioIo::new(upgraded);
+                        let mut upstream_io = TokioIo::new(upstream);
+                        let _ = tokio::io::copy_bidirectional(
+                            &mut client_io,
+                            &mut upstream_io,
+                        ).await;
                     }
                 });
 
