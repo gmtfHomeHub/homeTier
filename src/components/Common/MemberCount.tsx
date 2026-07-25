@@ -3,7 +3,6 @@ import { Users, X } from "lucide-react";
 import { getSpacePeers } from "../../utils/api";
 import { formatBytes } from "../../utils/format";
 import { Button, Badge, Dialog, ScrollArea, Text } from "@radix-ui/themes";
-import { Table } from "@radix-ui/themes";
 import type { PeerInfo } from "../../types";
 
 interface MemberCountProps {

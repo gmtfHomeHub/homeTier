@@ -7,7 +7,7 @@ import { MessageInput } from "./MessageInput";
 import { ArrowLeft, Mic, Monitor, FileUp, MoreHorizontal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Button, Flex, DropdownMenu } from "@radix-ui/themes";
+import { Button, DropdownMenu } from "@radix-ui/themes";
 
 export function ChatView() {
   const { id } = useParams<{ id: string }>();

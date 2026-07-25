@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Flex, Text, Button, TextField, Switch, ScrollArea, Card } from "@radix-ui/themes";
-import { AlertDialog, Select, Tabs } from "@radix-ui/themes";
+import { Tabs } from "@radix-ui/themes";
 import { Network, Shield, Settings, HelpCircle, Check, X, Save, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSpace } from "../../hooks/useSpace";

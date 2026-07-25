@@ -57,7 +57,7 @@ export async function disconnectSpace(spaceId: string): Promise<void> {
   return invoke("disconnect_space", { spaceId });
 }
 
-export async function getSpaceStatus(spaceId: string): Promise<never> {
+export async function getSpaceStatus(spaceId: string): Promise<Record<string, unknown> | null> {
   return invoke("get_space_status", { spaceId });
 }
 

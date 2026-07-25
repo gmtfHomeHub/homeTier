@@ -4,6 +4,7 @@ use tokio::sync::RwLock;
 use webrtc::api::APIBuilder;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::RTCPeerConnection;
+use crate::voice::server::VoiceServer;
 
 /// 语音频道状态
 #[derive(Debug, Clone, PartialEq)]
@@ -15,6 +16,7 @@ pub enum VoiceStatus {
 }
 
 /// WebRTC 语音引擎
+#[derive(Clone)]
 pub struct VoiceEngine {
     pub space_id: String,
     pub status: Arc<RwLock<VoiceStatus>>,
@@ -48,15 +50,14 @@ impl VoiceEngine {
     pub async fn join(&self) -> Result<(), String> {
         *self.status.write().await = VoiceStatus::Connecting;
 
-        // 启动信令服务器（TODO: 实现 VoiceServer）
-        // let mut signal_server = VoiceServer::new(self.signal_port);
-        // signal_server.start().await.map_err(|e| format!("启动信令服务器失败: {}", e))?;
+        // 启动信令服务器
+        let mut signal_server = VoiceServer::new(self.signal_port);
+        signal_server.start().await.map_err(|e| format!("启动信令服务器失败: {}", e))?;
 
         // 获取 peer 列表
         let peers = self.peers.clone();
         let status = self.status.clone();
         let space_id = self.space_id.clone();
-        let signal_port = self.signal_port;
 
         // 建立 WebRTC 连接
         tokio::spawn(async move {
@@ -89,13 +90,6 @@ impl VoiceEngine {
             crate::log_info!(format!("语音频道已加入: space_id={}", space_id));
             *status.write().await = VoiceStatus::Connected;
         });
-
-        // 等待连接建立
-        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
-
-        if *self.status.read().await != VoiceStatus::Connected {
-            *self.status.write().await = VoiceStatus::Connected;
-        }
 
         Ok(())
     }
@@ -172,11 +166,15 @@ impl VoiceManager {
     }
 
     pub fn get(&self, space_id: &str) -> Option<VoiceEngine> {
-        None // TODO: 重新实现 VoiceManager::get（VoiceEngine 不再 Clone）
+        self.channels.get(space_id).map(|c| c.value().clone())
     }
 
     pub fn get_or_create(&self, space_id: &str) -> VoiceEngine {
-        VoiceEngine::new(space_id.to_string())
+        self.channels
+            .entry(space_id.to_string())
+            .or_insert_with(|| VoiceEngine::new(space_id.to_string()))
+            .value()
+            .clone()
     }
 
     pub fn remove(&self, space_id: &str) {

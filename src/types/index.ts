@@ -239,10 +239,5 @@ export interface PortForwardRule {
   updated_at: string;
 }
 
-// 网络配置扩展
-export interface NetworkConfigDetails {
-  space_id: string;
-  acl_rules?: AclRule[];
-  port_forward_rules?: PortForwardRule[];
-}
+
 
