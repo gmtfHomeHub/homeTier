@@ -300,9 +300,8 @@ pub fn run() -> std::process::ExitCode {
         .on_window_event(|_win, event| {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                // 通知 daemon 关闭
-                {
-                    let ipc_client = _win.app_handle().state::<Arc<daemon::client::IpcClient>>();
+                // 通知 daemon 关闭（setup 未完成时 ipc_client 可能未注册）
+                if let Some(ipc_client) = _win.app_handle().try_state::<Arc<daemon::client::IpcClient>>() {
                     let client = ipc_client.inner().clone();
                     tokio::spawn(async move {
                         let _ = client.shutdown().await;

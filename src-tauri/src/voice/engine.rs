@@ -60,37 +60,32 @@ impl VoiceEngine {
 
         // 建立 WebRTC 连接
         tokio::spawn(async move {
-            // 创建 WebRTC PeerConnection
             let api = APIBuilder::new().build();
             let config = RTCConfiguration::default();
-            let peer_connection = api
-                .new_peer_connection(config)
-                .await
-                .map_err(|e| format!("创建 PeerConnection 失败: {}", e))
-                .unwrap();
+            let peer_connection = match api.new_peer_connection(config).await {
+                Ok(pc) => pc,
+                Err(e) => {
+                    crate::log_error!(format!("创建 PeerConnection 失败: {}", e));
+                    *status.write().await = VoiceStatus::Disconnected;
+                    return;
+                }
+            };
 
-            // 创建 SDP Offer
-            let offer = peer_connection
-                .create_offer(None)
-                .await
-                .map_err(|e| format!("创建 Offer 失败: {}", e))
-                .unwrap();
+            let offer = match peer_connection.create_offer(None).await {
+                Ok(o) => o,
+                Err(e) => {
+                    crate::log_error!(format!("创建 Offer 失败: {}", e));
+                    *status.write().await = VoiceStatus::Disconnected;
+                    return;
+                }
+            };
 
-            // 设置本地描述
-            peer_connection
-                .set_local_description(offer.clone())
-                .await
-                .map_err(|e| format!("设置本地描述失败: {}", e))
-                .unwrap();
+            if let Err(e) = peer_connection.set_local_description(offer.clone()).await {
+                crate::log_error!(format!("设置本地描述失败: {}", e));
+                *status.write().await = VoiceStatus::Disconnected;
+                return;
+            }
 
-            // 发送 Offer 到信令服务器（TODO: 实现 SignalHandler）
-            // let _ = SignalHandler::send_offer("127.0.0.1", signal_port, &offer.sdp).await;
-
-            // 设置远程描述（这里需要从信令服务器获取）
-            // 在实际实现中，会从信令服务器获取远程 peer 的 SDP Answer
-            // 并设置到 peer_connection 中
-
-            // 标记为已连接
             *status.write().await = VoiceStatus::Connected;
         });
 
