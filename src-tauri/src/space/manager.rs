@@ -489,7 +489,7 @@ Self {
     }
 
     /// 获取 peer 列表（通过 RPC 查询）
-    async fn get_peers(&self, space_id: &Uuid) -> Result<Vec<crate::easytier::launcher::PeerInfo>, String> {
+    pub async fn get_peers(&self, space_id: &Uuid) -> Result<Vec<crate::easytier::launcher::PeerInfo>, String> {
         match self.ipc_client.list_peers(&space_id.to_string()).await {
             Ok(crate::daemon::ipc::IpcResponse::Ok { data }) => {
                 if let Some(v) = data {

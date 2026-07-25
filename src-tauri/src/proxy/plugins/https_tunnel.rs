@@ -4,7 +4,6 @@ use hyper::{Method, Request, Response, StatusCode};
 use http_body_util::Full;
 use hyper::body::Bytes;
 use hyper::upgrade::OnUpgrade;
-use hyper_util::rt::TokioIo;
 use tokio::io::AsyncWriteExt;
 
 use crate::proxy::plugin::{ProxyHandler, ProxyResponse, RequestContext};
@@ -60,12 +59,16 @@ impl ProxyHandler for HttpsTunnelPlugin {
         req: Request<Incoming>,
         _ctx: crate::proxy::plugin::RequestContext,
     ) -> Result<ProxyResponse, Box<dyn std::error::Error + Send + Sync>> {
+        let uri = req.uri().clone();
         let host_header = req
             .headers()
             .get("host")
-            .and_then(|v| v.to_str().ok());
+            .and_then(|v| v.to_str().ok().map(|s| s.to_string()));
 
-        let (host, port) = match parse_host_port(req.uri(), host_header) {
+        let (host, port) = match parse_host_port(
+            &uri,
+            host_header.as_deref(),
+        ) {
             Some(hp) => hp,
             None => {
                 return Ok(Response::builder()
@@ -78,16 +81,16 @@ impl ProxyHandler for HttpsTunnelPlugin {
 
         match tokio::net::TcpStream::connect(format!("{}:{}", host, port)).await {
             Ok(upstream) => {
-                let on_upgrade: OnUpgrade = hyper::upgrade::on(&req);
+                let on_upgrade: OnUpgrade = hyper::upgrade::on(req);
 
                 tokio::spawn(async move {
                     if let Ok(upgraded) = on_upgrade.await {
-                        let mut client_io = TokioIo::new(upgraded);
-                        let mut upstream_io = TokioIo::new(upstream);
-                        let _ = tokio::io::copy_bidirectional(
-                            &mut client_io,
-                            &mut upstream_io,
-                        ).await;
+                        let (mut client_recv, mut client_send) = tokio::io::split(upgraded);
+                        let (mut upstream_recv, mut upstream_send) = tokio::io::split(upstream);
+                        let _ = tokio::join!(
+                            tokio::io::copy(&mut client_recv, &mut upstream_send),
+                            tokio::io::copy(&mut upstream_recv, &mut client_send),
+                        );
                     }
                 });
 
