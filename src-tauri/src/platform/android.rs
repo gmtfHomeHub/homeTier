@@ -22,6 +22,10 @@ impl PlatformAdapter for AndroidAdapter {
     }
 
     fn authorize_tun(&self) -> AuthResult {
-        AuthResult { success: false, message: "Android 暂不支持 TUN 模式".into(), needs_restart: false }
+        AuthResult {
+            success: false,
+            message: "Android TUN 模式需要系统级VPN权限。请在系统设置中开启VPN服务，当前版本暂未适配Android VPN框架。".into(),
+            needs_restart: false,
+        }
     }
 }

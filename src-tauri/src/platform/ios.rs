@@ -22,6 +22,10 @@ impl PlatformAdapter for IOSAdapter {
     }
 
     fn authorize_tun(&self) -> AuthResult {
-        AuthResult { success: false, message: "iOS 暂不支持 TUN 模式".into(), needs_restart: false }
+        AuthResult {
+            success: false,
+            message: "iOS TUN 模式需要在Xcode中配置NetworkExtension权限。请添加Packet Tunnel Provider target并申请Network Extension entitlement。".into(),
+            needs_restart: false,
+        }
     }
 }
