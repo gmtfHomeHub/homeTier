@@ -293,15 +293,20 @@ Self {
 
     /// 连接空间（通过 IPC 通知 daemon）
     pub async fn connect(&self, space_id: &Uuid) -> Result<(), String> {
+        crate::log_info!(format!("connect: 开始连接空间, space_id={}", space_id), &space_id.to_string());
+
         // 断开所有其他已连接的空间
+        crate::log_debug!(format!("connect: 查询当前运行中的空间"), &space_id.to_string());
         let running_spaces: Vec<String> = match self.ipc_client.list_spaces().await {
             Ok(crate::daemon::ipc::IpcResponse::Ok { data }) => {
                 data.and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default()
             }
             _ => Vec::new(),
         };
+        crate::log_info!(format!("connect: 当前运行中空间: {:?}", running_spaces), &space_id.to_string());
         for running_id in &running_spaces {
             if running_id != &space_id.to_string() {
+                crate::log_info!(format!("connect: 断开其他空间: {}", running_id), &space_id.to_string());
                 let _ = self.ipc_client.disconnect_space(running_id).await;
             }
         }
@@ -314,23 +319,32 @@ Self {
         let existing_config = self.db.get_space_config(&space_id.to_string()).ok().flatten();
         if let Some(ref cfg) = existing_config {
             crate::log_info!("connect: 从 DB 加载历史配置", &space_id.to_string());
+        } else {
+            crate::log_info!("connect: 无历史配置，使用默认配置", &space_id.to_string());
         }
 
         // 获取有效配置（合并本地配置和组配置）
+        crate::log_debug!(format!("connect: 调用 get_effective_config"), &space_id.to_string());
         let cfg = self.get_effective_config(space_id).await?;
+        crate::log_info!(format!("connect: 有效配置生成完成, network_name={}, dhcp={}", cfg.network_name, cfg.dhcp), &space_id.to_string());
 
         // 通过 IPC 连接
         let config_value = serde_json::to_value(&cfg).map_err(|e| format!("序列化配置失败: {}", e))?;
+        crate::log_info!(format!("connect: 发送 IPC ConnectSpace 请求, config_keys={:?}", config_value.as_object().map(|o| o.keys().collect::<Vec<_>>())), &space_id.to_string());
         match self.ipc_client.connect_space(&space_id.to_string(), config_value).await {
             Ok(crate::daemon::ipc::IpcResponse::Ok { .. }) => {
-                crate::log_info!(format!("连接空间: {}", space.name), &space_id.to_string());
+                crate::log_info!(format!("连接空间 IPC 成功: {}", space.name), &space_id.to_string());
                 // 启动聊天服务器
+                crate::log_debug!(format!("connect: 启动聊天服务器"), &space_id.to_string());
                 self.start_chat_server(*space_id).await?;
                 // 启动文件服务器
+                crate::log_debug!(format!("connect: 启动文件服务器"), &space_id.to_string());
                 self.start_file_server(*space_id).await?;
                 // 启动语音服务器
+                crate::log_debug!(format!("connect: 启动语音服务器"), &space_id.to_string());
                 self.start_voice_server(*space_id).await?;
                 // 启动屏幕共享服务器
+                crate::log_debug!(format!("connect: 启动屏幕共享服务器"), &space_id.to_string());
                 self.start_screen_share_server(*space_id).await?;
                 // 发现并连接 peers
                 tokio::spawn({
@@ -342,8 +356,14 @@ Self {
                 });
                 Ok(())
             }
-            Ok(crate::daemon::ipc::IpcResponse::Error { message }) => Err(message),
-            Err(e) => Err(e),
+            Ok(crate::daemon::ipc::IpcResponse::Error { message }) => {
+                crate::log_error!(format!("connect: IPC 返回错误: {}", message), &space_id.to_string());
+                Err(message)
+            }
+            Err(e) => {
+                crate::log_error!(format!("connect: IPC 调用失败: {}", e), &space_id.to_string());
+                Err(e)
+            }
         }
     }
 

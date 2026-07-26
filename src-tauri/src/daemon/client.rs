@@ -99,10 +99,16 @@ impl IpcClient {
 
     /// 连接 space
     pub async fn connect_space(&self, space_id: &str, config: serde_json::Value) -> Result<IpcResponse, String> {
-        self.send(&IpcRequest::ConnectSpace {
+        crate::log_info!(format!("[IpcClient] connect_space 调用, space_id={}, port={}", space_id, self.port));
+        let result = self.send(&IpcRequest::ConnectSpace {
             space_id: space_id.to_string(),
             config,
-        }).await
+        }).await;
+        match &result {
+            Ok(resp) => crate::log_info!(format!("[IpcClient] connect_space 响应: {:?}", resp)),
+            Err(e) => crate::log_error!(format!("[IpcClient] connect_space 失败: {}", e)),
+        }
+        result
     }
 
     /// 断开 space

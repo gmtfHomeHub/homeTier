@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { getEasyTierVersion, checkEasyTierUpdate, upgradeEasyTier, buildEasyTierFromSource } from "../../utils/api";
-import { Button, Text, Flex } from "@radix-ui/themes";
-import { Cpu, RefreshCw, ArrowUpCircle, CheckCircle, Hammer } from "lucide-react";
+import { Button, Text, Flex, Select } from "@radix-ui/themes";
+import { Cpu, RefreshCw, ArrowUpCircle, Hammer } from "lucide-react";
 
 export function EasyTierVersionManager() {
   const { t } = useTranslation();
@@ -110,25 +110,42 @@ export function EasyTierVersionManager() {
           <Text size="1" className="text-[var(--color-text-secondary)]">
             {t("settings.availableVersions")}
           </Text>
-          <div className="flex flex-wrap gap-2">
-            {availableVersions.map((version) => (
-              <Button
-                key={version}
-                onClick={() => handleUpgrade(version)}
-                disabled={upgrading || version === currentVersion}
-                variant={version === currentVersion ? "solid" : "outline"}
-                color={version === currentVersion ? "green" : "blue"}
-                size="1"
-                loading={upgrading && selectedVersion === version}
-              >
-                {version === currentVersion ? (
-                  <><CheckCircle size={12} /> {t("settings.current")}</>
-                ) : (
-                  <><ArrowUpCircle size={12} /> {t("settings.upgrade")}</>
-                )}
-              </Button>
-            ))}
-          </div>
+          <Flex gap="2">
+            <Select.Root
+              value={selectedVersion || undefined}
+              onValueChange={(v) => setSelectedVersion(v)}
+              disabled={upgrading}
+              size="2"
+            >
+              <Select.Trigger className="flex-1" />
+              <Select.Content>
+                <Select.Group label={t("settings.availableVersions")}>
+                  {availableVersions.map((version) => (
+                    <Select.Item
+                      key={version}
+                      value={version}
+                      disabled={version === currentVersion}
+                    >
+                      {version === currentVersion
+                        ? `${version} (${t("settings.current")})`
+                        : version}
+                    </Select.Item>
+                  ))}
+                </Select.Group>
+              </Select.Content>
+            </Select.Root>
+            <Button
+              onClick={() => selectedVersion && handleUpgrade(selectedVersion)}
+              disabled={upgrading || !selectedVersion || selectedVersion === currentVersion}
+              variant="solid"
+              color="blue"
+              size="2"
+              loading={upgrading}
+            >
+              <ArrowUpCircle size={14} />
+              {t("settings.upgrade")}
+            </Button>
+          </Flex>
         </div>
       )}
 

@@ -160,29 +160,46 @@ impl Daemon {
                 }
             }
             ipc::IpcRequest::ConnectSpace { space_id, config } => {
-                crate::log_info!(format!("[Daemon] 连接空间: {}", space_id));
+                crate::log_info!(format!("[Daemon] ConnectSpace: 接收连接请求, space_id={}", space_id));
 
                 // 解析配置
                 let network_config: crate::easytier::config::NetworkConfig = match serde_json::from_value(config) {
-                    Ok(c) => c,
-                    Err(e) => return ipc::IpcResponse::Error { message: format!("解析配置失败: {}", e) },
+                    Ok(c) => {
+                        crate::log_info!(format!("[Daemon] ConnectSpace: 配置解析成功, network_name={}, dhcp={}, peers={}", c.network_name, c.dhcp, c.peers.len()));
+                        c
+                    }
+                    Err(e) => {
+                        crate::log_error!(format!("[Daemon] ConnectSpace: 配置解析失败: {}", e));
+                        return ipc::IpcResponse::Error { message: format!("解析配置失败: {}", e) };
+                    }
                 };
 
                 // 启动 easytier
                 let instance_id = match uuid::Uuid::parse_str(&space_id) {
-                    Ok(id) => id,
-                    Err(_) => return ipc::IpcResponse::Error { message: "无效的 space_id".into() },
+                    Ok(id) => {
+                        crate::log_debug!(format!("[Daemon] ConnectSpace: space_id 解析为 Uuid: {}", id));
+                        id
+                    }
+                    Err(_) => {
+                        crate::log_error!("[Daemon] ConnectSpace: 无效的 space_id 格式");
+                        return ipc::IpcResponse::Error { message: "无效的 space_id".into() };
+                    }
                 };
 
+                crate::log_info!(format!("[Daemon] ConnectSpace: 调用 easytier.start_network, instance_id={}", instance_id));
                 match easytier.start_network(&network_config, instance_id, None).await {
                     Ok(id) => {
+                        crate::log_info!(format!("[Daemon] ConnectSpace: easytier.start_network 成功, id={}", id));
                         let mut s = status.write().await;
                         if !s.connected_spaces.contains(&space_id) {
                             s.connected_spaces.push(space_id);
                         }
                         ipc::IpcResponse::Ok { data: Some(serde_json::json!({ "instance_id": id.to_string() })) }
                     }
-                    Err(e) => ipc::IpcResponse::Error { message: format!("连接空间失败: {}", e) },
+                    Err(e) => {
+                        crate::log_error!(format!("[Daemon] ConnectSpace: easytier.start_network 失败: {}", e));
+                        ipc::IpcResponse::Error { message: format!("连接空间失败: {}", e) }
+                    }
                 }
             }
             ipc::IpcRequest::DisconnectSpace { space_id } => {

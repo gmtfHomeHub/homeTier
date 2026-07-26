@@ -50,27 +50,62 @@ impl EasyTierManager {
         instance_id: Uuid,
         initial_config: Option<String>,
     ) -> Result<Uuid, String> {
-        crate::log_info!(format!("EasyTierManager: 启动网络实例, network_name={}, id={}", cfg.network_name, instance_id));
+        crate::log_info!(format!("EasyTierManager.start_network: 开始, network_name={}, id={}", cfg.network_name, instance_id));
 
         // 确保二进制存在
-        let binary = self.downloader.ensure_binary().await?;
+        crate::log_debug!(format!("EasyTierManager.start_network: 确保二进制存在"));
+        let binary = match self.downloader.ensure_binary().await {
+            Ok(b) => {
+                crate::log_info!(format!("EasyTierManager.start_network: 二进制路径: {}", b.display()));
+                b
+            }
+            Err(e) => {
+                crate::log_error!(format!("EasyTierManager.start_network: 确保二进制失败: {}", e));
+                return Err(e);
+            }
+        };
 
         // 生成 RPC 端口（基于 instance_id 的哈希，确保唯一性）
         let rpc_port = self.allocate_rpc_port(&instance_id);
+        crate::log_info!(format!("EasyTierManager.start_network: 分配 RPC 端口: {}", rpc_port));
 
         // 生成 TOML 配置
-        let config_path = self.generate_config(&cfg, &instance_id, initial_config.as_deref())?;
+        crate::log_debug!(format!("EasyTierManager.start_network: 生成配置文件"));
+        let config_path = match self.generate_config(&cfg, &instance_id, initial_config.as_deref()) {
+            Ok(p) => {
+                crate::log_info!(format!("EasyTierManager.start_network: 配置文件生成: {}", p.display()));
+                p
+            }
+            Err(e) => {
+                crate::log_error!(format!("EasyTierManager.start_network: 生成配置失败: {}", e));
+                return Err(e);
+            }
+        };
 
         // 停止现有进程（如果有）
         if self.processes.contains_key(&instance_id) {
-            self.stop_network(&instance_id).await?;
+            crate::log_warn!(format!("EasyTierManager.start_network: 发现现有实例，先停止"));
+            if let Err(e) = self.stop_network(&instance_id).await {
+                crate::log_error!(format!("EasyTierManager.start_network: 停止现有实例失败: {}", e));
+                return Err(e);
+            }
         }
 
         // 启动子进程（传入 RPC 端口）
-        let process = EasyTierProcess::start(&binary, &config_path, Some(rpc_port))?;
+        crate::log_info!(format!("EasyTierManager.start_network: 启动 easytier-core 进程, binary={}, config={}, rpc_port={}", binary.display(), config_path.display(), rpc_port));
+        let process = match EasyTierProcess::start(&binary, &config_path, Some(rpc_port)) {
+            Ok(p) => {
+                crate::log_info!(format!("EasyTierManager.start_network: 进程启动成功, pid={:?}", p.pid()));
+                p
+            }
+            Err(e) => {
+                crate::log_error!(format!("EasyTierManager.start_network: 启动进程失败: {}", e));
+                return Err(e);
+            }
+        };
         self.processes.insert(instance_id, process);
 
-        crate::log_info!(format!("EasyTierManager: 网络实例已启动, id={}, rpc_port={}", instance_id, rpc_port));
+        crate::log_info!(format!("EasyTierManager.start_network: 完成, id={}, rpc_port={}", instance_id, rpc_port));
         Ok(instance_id)
     }
 

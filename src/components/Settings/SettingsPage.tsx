@@ -3,14 +3,12 @@ import { LogViewer } from "../Log/LogViewer";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { TunAuthPanel } from "./TunAuthPanel";
 import { EasyTierVersionManager } from "./EasyTierVersionManager";
-import { Settings as SettingsIcon, Terminal, Network, Palette, Languages, HelpCircle, Shield } from "lucide-react";
+import { Terminal, Network, Palette, Languages, HelpCircle, Shield } from "lucide-react";
 import { getSystemConfig, setSystemConfig, getRelayPrefix, setRelayPrefix, getWebappMode, setWebappMode } from "../../utils/api";
 import { useSettingsStore } from "../../stores/settingsStore";
-import { useSpaceStore } from "../../stores/spaceStore";
 import type { EasyTierConfig } from "../../types/config";
 import { useTranslation } from "react-i18next";
 import { Tabs, Tooltip, Button, TextField, Flex, Text } from "@radix-ui/themes";
-import { NetworkConfigEditor } from "./NetworkConfigEditor";
 
 type Tab = "basic" | "logs" | "easytier";
 
@@ -23,7 +21,6 @@ export function SettingsPage() {
   const [relayPrefixLoaded, setRelayPrefixLoaded] = useState(false);
   const [webappMode, setWebappModeState] = useState<string | null>(null);
   const { theme, language, setTheme, setLanguage, relayPrefix: storePrefix, setRelayPrefix: setStorePrefix } = useSettingsStore();
-  const { currentSpaceId } = useSpaceStore();
   const { t, i18n } = useTranslation();
 
   useEffect(() => {
@@ -199,15 +196,6 @@ export function SettingsPage() {
                   <Text size="2" weight="bold">{t("settings.easytierEngine")}</Text>
                 </Flex>
                 <EasyTierVersionManager />
-              </section>
-
-              {/* 本地配置 */}
-              <section>
-                <Flex align="center" gap="2" mb="3">
-                  <SettingsIcon size={16} />
-                  <Text size="2" weight="bold">{t("settings.localConfig")}</Text>
-                </Flex>
-                {currentSpaceId && <NetworkConfigEditor spaceId={currentSpaceId} />}
               </section>
 
               {/* WebView 模式 */}
