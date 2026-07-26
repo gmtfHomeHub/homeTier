@@ -297,7 +297,7 @@ impl EasyTierDownloader {
         Ok(version)
     }
 
-    /// 从 GitHub Releases 下载并安装指定版本（带 ghproxy.top 镜像加速、指数退避重试、原子写入）
+    /// 从 GitHub Releases 下载并安装指定版本（带 ghproxy.top 镜像加速、指数退避重试、直连回退、原子写入）
     pub async fn download_from_github(&self, version: &str) -> Result<PathBuf, String> {
         const MAX_RETRIES: u32 = 3;
         const BASE_DELAY_MS: u64 = 1000;
@@ -309,7 +309,9 @@ impl EasyTierDownloader {
         );
         let mirror_url = format!("https://ghproxy.top/{}", direct_url);
 
-        crate::log_info!(format!("[EasyTierDownloader] 开始下载: version={}, platform={}, url={}", version, self.platform, mirror_url));
+        let urls = [(mirror_url.as_str(), "镜像"), (direct_url.as_str(), "直连")];
+
+        crate::log_info!(format!("[EasyTierDownloader] 开始下载: version={}, platform={}", version, self.platform));
 
         let client = reqwest::Client::builder()
             .user_agent("homeTier/0.1.0")
@@ -319,62 +321,67 @@ impl EasyTierDownloader {
 
         let mut last_err = String::new();
 
-        for attempt in 1..=MAX_RETRIES {
-            crate::log_info!(format!("[EasyTierDownloader] 尝试下载 (第 {}/{} 次)", attempt, MAX_RETRIES));
+        for (url, label) in &urls {
+            for attempt in 1..=MAX_RETRIES {
+                crate::log_info!(format!("[EasyTierDownloader] 尝试 {} 下载 (第 {}/{})", label, attempt, MAX_RETRIES));
 
-            match client.get(&mirror_url).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    let temp_dir = std::env::temp_dir().join(format!("easytier-dl-{}", version));
-                    let _ = std::fs::create_dir_all(&temp_dir);
-                    let final_path = temp_dir.join(&filename);
+                match client.get(*url).send().await {
+                    Ok(resp) if resp.status().is_success() => {
+                        let temp_dir = std::env::temp_dir().join(format!("easytier-dl-{}", version));
+                        let _ = std::fs::create_dir_all(&temp_dir);
+                        let final_path = temp_dir.join(&filename);
 
-                    let tmp_path = temp_dir.join(format!("{}.tmp", filename));
-                    let bytes = match resp.bytes().await {
-                        Ok(b) => b,
-                        Err(e) => {
-                            last_err = format!("读取下载数据失败: {}", e);
+                        let tmp_path = temp_dir.join(format!("{}.tmp", filename));
+                        let bytes = match resp.bytes().await {
+                            Ok(b) => b,
+                            Err(e) => {
+                                last_err = format!("{} 读取数据失败: {}", label, e);
+                                let _ = std::fs::remove_dir_all(&temp_dir);
+                                continue;
+                            }
+                        };
+                        if bytes.is_empty() {
+                            last_err = format!("{} 下载文件为空", label);
+                            let _ = std::fs::remove_dir_all(&temp_dir);
                             continue;
                         }
-                    };
-                    if bytes.is_empty() {
-                        last_err = "下载文件为空".into();
-                        continue;
-                    }
-                    if let Err(e) = tokio::fs::write(&tmp_path, &bytes).await {
-                        last_err = format!("写入临时文件失败: {}", e);
-                        continue;
-                    }
-                    let _ = tokio::fs::rename(&tmp_path, &final_path).await;
-
-                    crate::log_info!(format!("[EasyTierDownloader] 下载完成, 大小: {} bytes", bytes.len()));
-
-                    match self.install(version, BinarySource::LocalArchive(final_path.clone())).await {
-                        Ok(path) => {
+                        if let Err(e) = tokio::fs::write(&tmp_path, &bytes).await {
+                            last_err = format!("{} 写入临时文件失败: {}", label, e);
                             let _ = std::fs::remove_dir_all(&temp_dir);
-                            return Ok(path);
+                            continue;
                         }
-                        Err(e) => {
-                            last_err = format!("安装失败: {}", e);
-                        }
-                    }
-                    let _ = std::fs::remove_dir_all(&temp_dir);
-                }
-                Ok(resp) => {
-                    last_err = format!("下载返回 HTTP {}", resp.status());
-                }
-                Err(e) => {
-                    last_err = format!("下载失败: {}", e);
-                }
-            }
+                        let _ = tokio::fs::rename(&tmp_path, &final_path).await;
 
-            if attempt < MAX_RETRIES {
-                let delay = BASE_DELAY_MS * 2_u64.pow(attempt - 1);
-                crate::log_info!(format!("[EasyTierDownloader] {}ms 后重试...", delay));
-                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                        crate::log_info!(format!("[EasyTierDownloader] {}下载完成, 大小: {} bytes", label, bytes.len()));
+
+                        match self.install(version, BinarySource::LocalArchive(final_path.clone())).await {
+                            Ok(path) => {
+                                let _ = std::fs::remove_dir_all(&temp_dir);
+                                return Ok(path);
+                            }
+                            Err(e) => {
+                                last_err = format!("{} 安装失败: {}", label, e);
+                            }
+                        }
+                        let _ = std::fs::remove_dir_all(&temp_dir);
+                    }
+                    Ok(resp) => {
+                        last_err = format!("{} 返回 HTTP {}", label, resp.status());
+                    }
+                    Err(e) => {
+                        last_err = format!("{} 下载失败: {}", label, e);
+                    }
+                }
+
+                if attempt < MAX_RETRIES {
+                    let delay = BASE_DELAY_MS * 2_u64.pow(attempt - 1);
+                    crate::log_info!(format!("[EasyTierDownloader] {}ms 后重试...", delay));
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                }
             }
         }
 
-        Err(format!("下载失败 (重试 {} 次): {}", MAX_RETRIES, last_err))
+        Err(format!("下载失败 (重试 {} 次, {} 个源): {}", MAX_RETRIES, urls.len(), last_err))
     }
 }
 

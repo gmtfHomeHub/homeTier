@@ -46,7 +46,6 @@ export function EasyTierVersionManager() {
 
   const handleUpgrade = async (version: string) => {
     setUpgrading(true);
-    setSelectedVersion(version);
     setLastResult(null);
     setDownloadProgress(0);
     try {
@@ -61,7 +60,6 @@ export function EasyTierVersionManager() {
       setLastResult({ success: false, message: String(e) });
     } finally {
       setUpgrading(false);
-      setSelectedVersion(null);
     }
   };
 

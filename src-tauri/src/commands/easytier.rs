@@ -49,16 +49,23 @@ pub async fn upgrade_easytier_with_progress(
     app_handle: tauri::AppHandle,
     manager: State<'_, std::sync::Arc<EasyTierManager>>,
 ) -> Result<(), String> {
+    const MAX_RETRIES: u32 = 3;
+    const BASE_DELAY_MS: u64 = 1000;
+
+    use tokio::io::AsyncWriteExt;
+
     let platform = EasyTierDownloader::detect_platform();
     let filename = format!("easytier-{}-v{}.zip", platform, version);
     let direct_url = format!(
         "https://github.com/EasyTier/EasyTier/releases/download/v{}/{}",
         version, filename
     );
-    let download_url = if use_proxy {
-        format!("https://ghproxy.top/{}", direct_url)
+    let proxy_url = format!("https://ghproxy.top/{}", direct_url);
+
+    let urls: Vec<(&str, &str)> = if use_proxy {
+        vec![(&proxy_url, "代理"), (&direct_url, "直连")]
     } else {
-        direct_url
+        vec![(&direct_url, "直连"), (&proxy_url, "代理")]
     };
 
     let client = reqwest::Client::builder()
@@ -67,53 +74,86 @@ pub async fn upgrade_easytier_with_progress(
         .build()
         .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
 
-    let resp = client.get(&download_url).send().await
-        .map_err(|e| format!("下载失败: {}", e))?;
+    let mut last_err = String::new();
 
-    if !resp.status().is_success() {
-        return Err(format!("下载返回 HTTP {}", resp.status()));
-    }
+    for (url, label) in &urls {
+        for attempt in 1..=MAX_RETRIES {
+            let _ = app_handle.emit("easytier-download-status", format!("{}({}/{})", label, attempt, MAX_RETRIES));
 
-    let total = resp.content_length().unwrap_or(0);
-    let temp_dir = std::env::temp_dir().join(format!("easytier-dl-{}", version));
-    std::fs::create_dir_all(&temp_dir).map_err(|e| format!("创建临时目录失败: {}", e))?;
-    let temp_path = temp_dir.join(&filename);
-    let tmp_path = temp_dir.join(format!("{}.tmp", filename));
+            let temp_dir = std::env::temp_dir().join(format!("easytier-dl-{}", version));
+            let _ = std::fs::remove_dir_all(&temp_dir);
 
-    let mut file = tokio::fs::File::create(&tmp_path).await
-        .map_err(|e| format!("创建临时文件失败: {}", e))?;
-    let mut downloaded: u64 = 0;
-    let stream = resp.bytes_stream();
-    tokio::pin!(stream);
+            let resp = match client.get(*url).send().await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    last_err = format!("{} 下载失败: {}", label, e);
+                    if attempt < MAX_RETRIES {
+                        let delay = BASE_DELAY_MS * 2u64.pow(attempt - 1);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                    }
+                    continue;
+                }
+            };
 
-    use tokio::io::AsyncWriteExt;
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("读取下载数据失败: {}", e))?;
-        file.write_all(&chunk).await.map_err(|e| format!("写入临时文件失败: {}", e))?;
-        downloaded += chunk.len() as u64;
-        if total > 0 {
-            let _ = app_handle.emit("easytier-download-progress", downloaded as f64 / total as f64 * 100.0);
+            if !resp.status().is_success() {
+                last_err = format!("{} 返回 HTTP {}", label, resp.status());
+                if attempt < MAX_RETRIES {
+                    let delay = BASE_DELAY_MS * 2u64.pow(attempt - 1);
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                }
+                continue;
+            }
+
+            let total = resp.content_length().unwrap_or(0);
+            std::fs::create_dir_all(&temp_dir).map_err(|e| format!("创建临时目录失败: {}", e))?;
+            let temp_path = temp_dir.join(&filename);
+            let tmp_path = temp_dir.join(format!("{}.tmp", filename));
+
+            let mut file = tokio::fs::File::create(&tmp_path).await
+                .map_err(|e| format!("创建临时文件失败: {}", e))?;
+            let mut downloaded: u64 = 0;
+            let stream = resp.bytes_stream();
+            tokio::pin!(stream);
+
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| format!("读取下载数据失败: {}", e))?;
+                file.write_all(&chunk).await.map_err(|e| format!("写入临时文件失败: {}", e))?;
+                downloaded += chunk.len() as u64;
+                if total > 0 {
+                    let _ = app_handle.emit("easytier-download-progress", downloaded as f64 / total as f64 * 100.0);
+                }
+            }
+
+            file.flush().await.map_err(|e| format!("刷新文件失败: {}", e))?;
+            drop(file);
+
+            tokio::fs::rename(&tmp_path, &temp_path).await.map_err(|e| format!("重命名临时文件失败: {}", e))?;
+
+            if let Err(e) = manager.downloader.install(&version, BinarySource::LocalArchive(temp_path.clone())).await {
+                last_err = format!("安装失败: {}", e);
+                let _ = std::fs::remove_dir_all(&temp_dir);
+                if attempt < MAX_RETRIES {
+                    let delay = BASE_DELAY_MS * 2u64.pow(attempt - 1);
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                }
+                continue;
+            }
+
+            let _ = std::fs::remove_dir_all(&temp_dir);
+
+            let ipc = IpcClient::default_port();
+            if !ipc.ping().await {
+                return Err("daemon 未运行或无法连接".into());
+            }
+            return match ipc.switch_binary().await {
+                Ok(IpcResponse::Ok { .. }) => Ok(()),
+                Ok(IpcResponse::Error { message }) => Err(message),
+                Err(e) => Err(format!("连接 daemon 失败: {}", e)),
+            };
         }
     }
 
-    file.flush().await.map_err(|e| format!("刷新文件失败: {}", e))?;
-    drop(file);
-
-    tokio::fs::rename(&tmp_path, &temp_path).await.map_err(|e| format!("重命名临时文件失败: {}", e))?;
-
-    manager.downloader.install(&version, BinarySource::LocalArchive(temp_path.clone())).await?;
-
-    let _ = std::fs::remove_dir_all(&temp_dir);
-
-    let ipc = IpcClient::default_port();
-    if !ipc.ping().await {
-        return Err("daemon 未运行或无法连接".into());
-    }
-    match ipc.switch_binary().await {
-        Ok(IpcResponse::Ok { .. }) => Ok(()),
-        Ok(IpcResponse::Error { message }) => Err(message),
-        Err(e) => Err(format!("连接 daemon 失败: {}", e)),
-    }
+    Err(format!("下载失败 (重试 {} 次, {} 个源): {}", MAX_RETRIES, urls.len(), last_err))
 }
 
 /// 从源码编译 EasyTier 核心
