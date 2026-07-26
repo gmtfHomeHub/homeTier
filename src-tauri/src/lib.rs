@@ -83,23 +83,23 @@ pub fn run() -> std::process::ExitCode {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
                 // 清理旧 daemon 进程（上次会话残留）
-                if daemon::ipc::is_daemon_running() {
+                // 先直接 Ping 端口（不依赖 state file，旧版曾错存 PID=15888）
+                let old_client = daemon::client::IpcClient::default_port();
+                if old_client.ping_sync() {
                     crate::log_info!("[GUI] 清理旧 daemon 进程...");
-                    let old_client = daemon::client::IpcClient::default_port();
-                    if old_client.ping_sync() {
-                        old_client.shutdown_sync();
+                    old_client.shutdown_sync();
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                }
+                // 再检查 state file 兜底 SIGTERM
+                #[cfg(unix)]
+                if let Some((pid, _)) = daemon::ipc::load_daemon_state() {
+                    if daemon::ipc::is_process_alive(pid) {
+                        crate::log_info!(format!("[GUI] 强制终止旧 daemon 进程 pid={}", pid));
+                        unsafe { libc::kill(pid as i32, libc::SIGTERM); }
                         std::thread::sleep(std::time::Duration::from_millis(300));
                     }
-                    // IPC shutdown 未生效时通过信号强制终止
-                    #[cfg(unix)]
-                    if daemon::ipc::is_daemon_running() {
-                        if let Some((pid, _)) = daemon::ipc::load_daemon_state() {
-                            unsafe { libc::kill(pid as i32, libc::SIGTERM); }
-                            std::thread::sleep(std::time::Duration::from_millis(300));
-                        }
-                    }
-                    daemon::ipc::clear_daemon_state();
                 }
+                daemon::ipc::clear_daemon_state();
 
                 match spawn_daemon() {
                     Ok(child) => {
