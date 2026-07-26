@@ -89,12 +89,13 @@ impl VoiceEngine {
             peer_connection.on_ice_candidate(Box::new(move |c: Option<RTCIceCandidate>| {
                 if let Some(candidate) = c {
                     let cand_json = candidate.to_json().unwrap_or_default();
+                    let cand_str = serde_json::to_string(&cand_json).unwrap_or_default();
                     let signal_port = signal_port;
                     tokio::spawn(async move {
                         let _ = SignalHandler::send_ice(
                             "127.0.0.1",
                             signal_port,
-                            &cand_json,
+                            &cand_str,
                         ).await;
                     });
                 }
@@ -118,7 +119,7 @@ impl VoiceEngine {
             }));
 
             // 添加音频轨道
-            let audio_track = Arc::new(TrackLocalStaticSample::new(
+            let audio_track: Arc<dyn TrackLocal + Send + Sync> = Arc::new(TrackLocalStaticSample::new(
                 RTCRtpCodecCapability {
                     mime_type: "audio/opus".to_string(),
                     clock_rate: 48000,
@@ -130,7 +131,7 @@ impl VoiceEngine {
                 "voice".to_string(),
             ));
 
-            if let Err(e) = peer_connection.add_track(Arc::clone(&audio_track as Arc<dyn TrackLocal + Send + Sync>)).await {
+            if let Err(e) = peer_connection.add_track(&audio_track).await {
                 crate::log_error!(format!("添加音频轨道失败: {}", e));
                 *status.write().await = VoiceStatus::Disconnected;
                 return;
