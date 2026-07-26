@@ -4,6 +4,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 use crate::types::{FileInfo, TransferProgress, TransferStatus};
+use crate::file::compress;
+use crate::file::crypto;
 
 /// 文件传输管理器
 pub struct FileTransferManager {
@@ -49,10 +51,23 @@ impl FileTransferManager {
         let file_id = Uuid::new_v4();
 
         // 读取文件内容
-        let data = std::fs::read(&file_path)
+        let mut data = std::fs::read(&file_path)
             .map_err(|e| format!("Read error: {}", e))?;
 
-        // 计算哈希
+        // 压缩
+        let compressed = compress::compress(&data, 3)
+            .map_err(|e| format!("Compress error: {}", e))?;
+
+        // 处理密码加密（如果有密码）
+        let (body, encryption_used) = if let Some(ref pwd) = password {
+            let enc = crypto::encrypt(&compressed, pwd)
+                .map_err(|e| format!("Encrypt error: {}", e))?;
+            (enc, true)
+        } else {
+            (compressed, password.is_some())
+        };
+
+        // 计算哈希（基于原始数据）
         use sha2::{Sha256, Digest};
         let hash = hex::encode(Sha256::digest(&data));
 
@@ -64,8 +79,8 @@ impl FileTransferManager {
             file_size,
             file_hash: Some(hash),
             mime_type: None,
-            is_compressed: false,
-            is_password_protected: password.is_some(),
+            is_compressed: true,
+            is_password_protected: encryption_used,
             storage_path: None,
             created_at: chrono::Local::now(),
         };
@@ -85,7 +100,7 @@ impl FileTransferManager {
         let url = format!("http://{}:{}/files/{}", target_ip, target_port, file_id);
         let client = reqwest::Client::new();
         let _ = client.put(&url)
-            .body(data)
+            .body(body)
             .timeout(std::time::Duration::from_secs(300))
             .send()
             .await;
@@ -123,7 +138,7 @@ impl FileTransferManager {
         &self,
         file_id: Uuid,
         save_path: String,
-        _password: Option<String>,
+        password: Option<String>,
     ) -> Result<(), String> {
         let save_path = std::path::PathBuf::from(&save_path);
         if let Some(parent) = save_path.parent() {
@@ -131,23 +146,44 @@ impl FileTransferManager {
                 .map_err(|e| format!("创建目录失败: {}", e))?;
         }
 
-        // 实际实现会启动一个临时 HTTP 服务来接收文件上传
-        // 这里简化为直接创建文件
         crate::log_info!(format!("接收文件: id={}, save_path={}", file_id, save_path.display()));
 
-        // 更新传输状态
-        let transfer_id = Uuid::new_v4();
-        self.transfers.write().await.insert(transfer_id, TransferState {
-            file_name: save_path.file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default(),
-            total_bytes: 0,
-            bytes_transferred: 0,
-            speed: 0,
-            status: TransferStatus::Transferring,
-            last_update: std::time::Instant::now(),
-        });
+        // 从 FileServer 的存储位置加载
+        let data_dir = directories::ProjectDirs::from("com", "hometier", "homeTier")
+            .map(|d| d.data_dir().join("files"))
+            .unwrap_or_else(|| PathBuf::from("/tmp/hometier/files"));
+        let server_file = data_dir.join(format!("{}.bin", file_id));
 
+        // 等待文件传输完成
+        for _ in 0..30 {
+            if server_file.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+
+        if !server_file.exists() {
+            return Err("文件传输未完成".to_string());
+        }
+
+        let mut data = std::fs::read(&server_file)
+            .map_err(|e| format!("读取文件失败: {}", e))?;
+
+        // 解密（如果提供了密码）
+        if let Some(ref pwd) = password {
+            data = crypto::decrypt(&data, pwd)
+                .map_err(|e| format!("解密失败: {}", e))?;
+        }
+
+        // 解压缩
+        data = compress::decompress(&data)
+            .map_err(|e| format!("解压失败: {}", e))?;
+
+        // 保存最终文件
+        std::fs::write(&save_path, &data)
+            .map_err(|e| format!("保存文件失败: {}", e))?;
+
+        crate::log_info!(format!("文件保存成功: {}", save_path.display()));
         Ok(())
     }
 }
