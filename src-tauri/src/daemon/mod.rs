@@ -2,6 +2,7 @@ pub mod client;
 pub mod ipc;
 pub mod service;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
 use crate::easytier::EasyTierManager;
@@ -21,7 +22,10 @@ impl Daemon {
         std::fs::create_dir_all(&easytier_dir)
             .map_err(|e| format!("创建 EasyTier 配置目录失败: {}", e))?;
 
-        let easytier = Arc::new(EasyTierManager::new(easytier_dir));
+        let app_data_dir = directories::BaseDirs::new()
+            .map(|d| d.data_dir().join("com.hometier.app"))
+            .unwrap_or_else(|| PathBuf::from("."));
+        let easytier = Arc::new(EasyTierManager::new(easytier_dir, app_data_dir));
         let (shutdown_tx, _) = broadcast::channel(1);
 
         let status = ipc::DaemonStatus {

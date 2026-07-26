@@ -70,7 +70,7 @@ pub struct SpaceRuntimeStatus {
 /// 获取 daemon 状态文件路径
 pub fn get_daemon_state_path() -> PathBuf {
     let app_data = directories::BaseDirs::new()
-        .map(|d| d.data_dir().to_path_buf())
+        .map(|d| d.data_dir().join("com.hometier.app"))
         .unwrap_or_else(|| PathBuf::from("."));
     app_data.join("daemon_state.json")
 }

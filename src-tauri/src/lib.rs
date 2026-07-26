@@ -76,7 +76,7 @@ pub fn run() -> std::process::ExitCode {
                 .unwrap_or_else(|_| std::path::PathBuf::from("."));
             let easytier_config_dir = app_data.join("easytier");
             let _ = std::fs::create_dir_all(&easytier_config_dir);
-            let instance_manager = Arc::new(easytier::EasyTierManager::new(easytier_config_dir));
+            let instance_manager = Arc::new(easytier::EasyTierManager::new(easytier_config_dir, app_data));
             app.manage(instance_manager.clone());
 
             // Desktop: 启动 daemon 子进程并创建 IPC 客户端
