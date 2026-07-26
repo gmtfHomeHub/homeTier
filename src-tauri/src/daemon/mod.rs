@@ -51,7 +51,7 @@ impl Daemon {
         crate::log_info!("[Daemon] 守护进程启动");
 
         // 保存状态到文件（供 GUI 检测）
-        ipc::save_daemon_state(self.rpc_port.into(), self.rpc_port)?;
+        ipc::save_daemon_state(std::process::id(), self.rpc_port)?;
 
         // 启动 TCP RPC 服务器
         let addr = format!("127.0.0.1:{}", self.rpc_port);

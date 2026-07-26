@@ -158,6 +158,50 @@ impl IpcClient {
         }).await
     }
 
+    /// 同步关闭 daemon（用于 setup 等非 async 上下文）
+    pub fn shutdown_sync(&self) -> bool {
+        self.send_sync(&IpcRequest::Shutdown).is_ok()
+    }
+
+    /// 同步发送 IPC 请求（通用，用于非 async 上下文）
+    fn send_sync(&self, request: &IpcRequest) -> Result<IpcResponse, String> {
+        let addr = format!("127.0.0.1:{}", self.port);
+        use std::io::{Read, Write};
+        let mut stream = std::net::TcpStream::connect_timeout(
+            &addr.parse().unwrap_or(std::net::SocketAddr::from(([127, 0, 0, 1], self.port))),
+            Duration::from_secs(5),
+        ).map_err(|e| format!("连接 daemon 失败: {}", e))?;
+        stream.set_read_timeout(Some(Duration::from_secs(5)))
+            .map_err(|e| format!("设置读超时失败: {}", e))?;
+        stream.set_write_timeout(Some(Duration::from_secs(5)))
+            .map_err(|e| format!("设置写超时失败: {}", e))?;
+
+        let req_json = serde_json::to_string(request)
+            .map_err(|e| format!("序列化请求失败: {}", e))?;
+        let len = req_json.len() as u32;
+
+        stream.write_all(&len.to_le_bytes())
+            .map_err(|e| format!("发送请求长度失败: {}", e))?;
+        stream.write_all(req_json.as_bytes())
+            .map_err(|e| format!("发送请求内容失败: {}", e))?;
+
+        let mut len_buf = [0u8; 4];
+        stream.read_exact(&mut len_buf)
+            .map_err(|e| format!("读取响应长度失败: {}", e))?;
+        let resp_len = u32::from_le_bytes(len_buf) as usize;
+
+        if resp_len > 10 * 1024 * 1024 {
+            return Err("响应过大".into());
+        }
+
+        let mut resp_buf = vec![0u8; resp_len];
+        stream.read_exact(&mut resp_buf)
+            .map_err(|e| format!("读取响应内容失败: {}", e))?;
+
+        serde_json::from_slice(&resp_buf)
+            .map_err(|e| format!("反序列化响应失败: {}", e))
+    }
+
     /// 关闭 daemon
     pub async fn shutdown(&self) -> Result<IpcResponse, String> {
         self.send(&IpcRequest::Shutdown).await

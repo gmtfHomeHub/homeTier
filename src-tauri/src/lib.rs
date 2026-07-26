@@ -31,6 +31,10 @@ static PROXY_SERVER: OnceLock<Arc<proxy::ProxyServer>> = OnceLock::new();
 #[cfg(target_os = "windows")]
 static ELEVATED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// 管理 daemon 子进程生命周期，在 app 退出时自动清理
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub struct DaemonGuard(pub std::sync::Mutex<Option<std::process::Child>>);
+
 /// 检查当前进程是否以提权模式运行（Windows UAC）
 #[cfg(target_os = "windows")]
 pub fn is_elevated_process() -> bool {
@@ -78,33 +82,48 @@ pub fn run() -> std::process::ExitCode {
             // Desktop: 启动 daemon 子进程并创建 IPC 客户端
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
-                // 检查 daemon 是否已在运行
-                if !daemon::ipc::is_daemon_running() {
-                    match spawn_daemon() {
-                        Ok(_child) => {
-                            crate::log_info!("[GUI] daemon 子进程已启动");
-                            // 等待 daemon 就绪（最多 5s）
-                            let client = daemon::client::IpcClient::default_port();
-                            let mut ready = false;
-                            for _ in 0..50 {
-                                if client.ping_sync() {
-                                    ready = true;
-                                    break;
-                                }
-                                std::thread::sleep(std::time::Duration::from_millis(100));
-                            }
-                            if ready {
-                                crate::log_info!("[GUI] daemon 已就绪");
-                            } else {
-                                crate::log_warn!("[GUI] daemon 启动超时");
-                            }
-                        }
-                        Err(e) => {
-                            crate::log_error!(format!("[GUI] 启动 daemon 失败: {}", e));
+                // 清理旧 daemon 进程（上次会话残留）
+                if daemon::ipc::is_daemon_running() {
+                    crate::log_info!("[GUI] 清理旧 daemon 进程...");
+                    let old_client = daemon::client::IpcClient::default_port();
+                    if old_client.ping_sync() {
+                        old_client.shutdown_sync();
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                    }
+                    // IPC shutdown 未生效时通过信号强制终止
+                    #[cfg(unix)]
+                    if daemon::ipc::is_daemon_running() {
+                        if let Some((pid, _)) = daemon::ipc::load_daemon_state() {
+                            unsafe { libc::kill(pid as i32, libc::SIGTERM); }
+                            std::thread::sleep(std::time::Duration::from_millis(300));
                         }
                     }
-                } else {
-                    crate::log_info!("[GUI] daemon 已在运行");
+                    daemon::ipc::clear_daemon_state();
+                }
+
+                match spawn_daemon() {
+                    Ok(child) => {
+                        crate::log_info!("[GUI] daemon 子进程已启动");
+                        app.manage(crate::DaemonGuard(std::sync::Mutex::new(Some(child))));
+                        // 等待 daemon 就绪（最多 5s）
+                        let client = daemon::client::IpcClient::default_port();
+                        let mut ready = false;
+                        for _ in 0..50 {
+                            if client.ping_sync() {
+                                ready = true;
+                                break;
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(100));
+                        }
+                        if ready {
+                            crate::log_info!("[GUI] daemon 已就绪");
+                        } else {
+                            crate::log_warn!("[GUI] daemon 启动超时");
+                        }
+                    }
+                    Err(e) => {
+                        crate::log_error!(format!("[GUI] 启动 daemon 失败: {}", e));
+                    }
                 }
                 // 创建 IPC 客户端供 Tauri 命令使用
                 let ipc_client = Arc::new(daemon::client::IpcClient::default_port());
@@ -312,16 +331,7 @@ pub fn run() -> std::process::ExitCode {
             commands::network_port_forwards::delete_port_forward_rule,
         ])
         .on_window_event(|_win, event| {
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                // 通知 daemon 关闭（setup 未完成时 ipc_client 可能未注册）
-                if let Some(ipc_client) = _win.app_handle().try_state::<Arc<daemon::client::IpcClient>>() {
-                    let client = ipc_client.inner().clone();
-                    tokio::spawn(async move {
-                        let _ = client.shutdown().await;
-                        crate::log_info!("[GUI] 已通知 daemon 关闭");
-                    });
-                }
                 let _ = _win.hide();
                 api.prevent_close();
             }
@@ -335,10 +345,31 @@ pub fn run() -> std::process::ExitCode {
         }
     }));
 
-    if let Err(e) = builder.run(tauri::generate_context!()) {
-        log_error!(format!("应用运行失败: {}", e));
-        return std::process::ExitCode::FAILURE;
-    }
+    let app = match builder.build(tauri::generate_context!()) {
+        Ok(app) => app,
+        Err(e) => {
+            log_error!(format!("应用构建失败: {}", e));
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+
+    app.run(|app_handle, event| {
+        match event {
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            tauri::RunEvent::Exit => {
+                if let Some(guard) = app_handle.try_state::<DaemonGuard>() {
+                    if let Ok(mut child_opt) = guard.0.lock() {
+                        if let Some(mut child) = child_opt.take() {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            crate::log_info!("[GUI] daemon 子进程已终止");
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    });
 
     // 应用退出时关闭代理服务
     if let Some(proxy) = PROXY_SERVER.get() {
