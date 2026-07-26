@@ -85,12 +85,13 @@ impl ProxyHandler for HttpsTunnelPlugin {
 
 tokio::spawn(async move {
                     if let Ok(upgraded) = on_upgrade.await {
-                        let mut client_io = TokioIo::new(upgraded);
-                        let mut upstream_io = TokioIo::new(upstream);
-                        let _ = tokio::io::copy_bidirectional(
-                            &mut client_io,
-                            &mut upstream_io,
-                        ).await;
+                        let client_io = TokioIo::new(upgraded);
+                        let (mut client_read, mut client_write) = tokio::io::split(client_io);
+                        let (mut upstream_read, mut upstream_write) = tokio::io::split(upstream);
+
+                        let c2u = tokio::io::copy(&mut client_read, &mut upstream_write);
+                        let u2c = tokio::io::copy(&mut upstream_read, &mut client_write);
+                        let _ = tokio::join!(c2u, u2c);
                     }
                 });
 

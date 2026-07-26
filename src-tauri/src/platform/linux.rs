@@ -6,7 +6,7 @@ pub struct LinuxAdapter;
 
 impl LinuxAdapter {
     /// 通过 getcap 检查二进制文件是否具有 cap_net_admin 能力
-    fn check_file_capabilities() -> bool {
+    pub fn check_file_capabilities() -> bool {
         let Ok(exe) = std::env::current_exe() else {
             return false;
         };
@@ -112,6 +112,6 @@ impl PlatformAdapter for LinuxAdapter {
 }
 
 fn log_system_auth(details: &str) {
-    log_error!(details);
+    crate::log_error!(details);
     // crate::log::log_system("authorize_tun", details);
 }
