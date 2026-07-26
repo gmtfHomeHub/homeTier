@@ -73,6 +73,8 @@
     "relayPrefix": "Relay Network Prefix",
     "relayPrefixHelp": "Used with EasyTier to configure forwarding allowlist networks (CIDR supported, e.g. 10.0.0.0/24)",
     "tunAuth": "TUN Authorization",
+    "downloadProgress": "Downloading… {{pct}}%",
+    "useProxyDownload": "Use proxy download (ghproxy.top)",
     "easytierEngine": "EasyTier Engine",
     "webappMode": "Web App Launch Mode",
     "webappModeIframe": "Embedded Window (iframe)",

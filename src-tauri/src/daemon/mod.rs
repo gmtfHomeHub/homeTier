@@ -313,6 +313,11 @@ impl Daemon {
                     }
                 }
             }
+            ipc::IpcRequest::SwitchBinary => {
+                crate::log_info!("[Daemon] 收到切换二进制命令");
+                easytier.restart_all_instances().await;
+                ipc::IpcResponse::Ok { data: None }
+            }
             ipc::IpcRequest::Shutdown => {
                 crate::log_info!("[Daemon] 收到关闭命令");
                 let _ = shutdown_tx.send(());

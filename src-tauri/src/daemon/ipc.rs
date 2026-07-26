@@ -33,6 +33,7 @@ pub enum IpcRequest {
         version: String,
         source_path: Option<String>,
     },
+    SwitchBinary,
     Shutdown,
 }
 

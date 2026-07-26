@@ -406,6 +406,21 @@ export async function upgradeEasyTier(version: string, sourcePath?: string): Pro
   return invoke("upgrade_easytier", { version, sourcePath: sourcePath ?? null });
 }
 
+export async function upgradeEasyTierWithProgress(
+  version: string,
+  useProxy: boolean,
+  onProgress: (pct: number) => void,
+): Promise<void> {
+  const unlisten = await listen<number>("easytier-download-progress", (event) => {
+    onProgress(event.payload);
+  });
+  try {
+    await invoke("upgrade_easytier_with_progress", { version, useProxy });
+  } finally {
+    unlisten();
+  }
+}
+
 export async function buildEasyTierFromSource(): Promise<string> {
   return invoke("build_easytier_from_source");
 }

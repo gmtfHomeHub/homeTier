@@ -599,7 +599,7 @@ impl EasyTierManager {
     }
 
     /// 重启所有运行中的实例（升级后调用）
-    async fn restart_all_instances(&self) {
+    pub(crate) async fn restart_all_instances(&self) {
         for entry in self.processes.iter() {
             let space_id = *entry.key();
             if entry.value().is_running() {

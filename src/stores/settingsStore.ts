@@ -8,6 +8,7 @@ interface SettingsStore {
   minimizeToTray: boolean;
   logLevel: "debug" | "info" | "warn" | "error";
   relayPrefix: string;
+  useProxy: boolean;
 
   setTheme: (theme: "light" | "dark" | "system") => void;
   setLanguage: (lang: "zh" | "zh-TW" | "en") => void;
@@ -15,6 +16,7 @@ interface SettingsStore {
   setMinimizeToTray: (v: boolean) => void;
   setLogLevel: (level: "debug" | "info" | "warn" | "error") => void;
   setRelayPrefix: (prefix: string) => void;
+  setUseProxy: (v: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -26,6 +28,7 @@ export const useSettingsStore = create<SettingsStore>()(
       minimizeToTray: true,
       logLevel: "info",
       relayPrefix: "homeTier_",
+      useProxy: true,
 
       setTheme: (theme) => set({ theme }),
       setLanguage: (language) => set({ language }),
@@ -33,6 +36,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setMinimizeToTray: (minimizeToTray) => set({ minimizeToTray }),
       setLogLevel: (logLevel) => set({ logLevel }),
       setRelayPrefix: (relayPrefix) => set({ relayPrefix }),
+      setUseProxy: (useProxy) => set({ useProxy }),
     }),
     {
       name: 'settings-store',
@@ -43,6 +47,7 @@ export const useSettingsStore = create<SettingsStore>()(
         minimizeToTray: state.minimizeToTray,
         logLevel: state.logLevel,
         relayPrefix: state.relayPrefix,
+        useProxy: state.useProxy,
       }),
     }
   )

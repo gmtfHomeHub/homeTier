@@ -107,7 +107,7 @@ export function SettingsPage() {
           </Tabs.List>
 
           {/* 内容区 */}
-          <Tabs.Content value="basic" className="data-[state=active]:flex-1 overflow-y-auto">
+          <Tabs.Content value="basic" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 overflow-y-auto">
             <div className="max-w-lg p-4 space-y-5">
               {/* 主题 */}
               <section>
@@ -229,11 +229,11 @@ export function SettingsPage() {
             </div>
           </Tabs.Content>
 
-          <Tabs.Content value="logs" className="data-[state=active]:flex data-[state=active]:flex-col data-[state=active]:flex-1 min-h-0 overflow-hidden">
+          <Tabs.Content value="logs" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex data-[state=active]:flex-col data-[state=active]:flex-1 min-h-0 overflow-hidden">
               <LogViewer />
           </Tabs.Content>
 
-          <Tabs.Content value="easytier" className="data-[state=active]:flex-1 overflow-y-auto">
+          <Tabs.Content value="easytier" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 overflow-y-auto">
             <div className="p-4 space-y-4">
               <EasyTierConfigEditor
                 value={easytierConfig}

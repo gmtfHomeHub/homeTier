@@ -1,17 +1,21 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { getEasyTierVersion, checkEasyTierUpdate, upgradeEasyTier, buildEasyTierFromSource } from "../../utils/api";
-import { Button, Text, Flex, Select } from "@radix-ui/themes";
+import { getEasyTierVersion, checkEasyTierUpdate, upgradeEasyTierWithProgress, buildEasyTierFromSource } from "../../utils/api";
+import { Button, Text, Flex, Select, Switch, Progress } from "@radix-ui/themes";
 import { Cpu, RefreshCw, ArrowUpCircle, Hammer } from "lucide-react";
+import { useSettingsStore } from "../../stores/settingsStore";
 
 export function EasyTierVersionManager() {
   const { t } = useTranslation();
+  const useProxy = useSettingsStore((s) => s.useProxy);
+  const setUseProxy = useSettingsStore((s) => s.setUseProxy);
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
   const [availableVersions, setAvailableVersions] = useState<string[]>([]);
   const [checking, setChecking] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [building, setBuilding] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [lastResult, setLastResult] = useState<{ success: boolean; message: string } | null>(null);
 
   useEffect(() => {
@@ -44,11 +48,16 @@ export function EasyTierVersionManager() {
     setUpgrading(true);
     setSelectedVersion(version);
     setLastResult(null);
+    setDownloadProgress(0);
     try {
-      await upgradeEasyTier(version);
+      await upgradeEasyTierWithProgress(version, useProxy, (pct) => {
+        setDownloadProgress(pct);
+      });
+      setDownloadProgress(null);
       setLastResult({ success: true, message: t("settings.upgradedTo", { version }) });
       await loadVersion();
     } catch (e) {
+      setDownloadProgress(null);
       setLastResult({ success: false, message: String(e) });
     } finally {
       setUpgrading(false);
@@ -81,6 +90,26 @@ export function EasyTierVersionManager() {
         <Text className="text-[var(--color-text-secondary)]">{t("settings.currentVersion")}</Text>
         <Text>{currentVersion ?? t("settings.notInstalled")}</Text>
       </div>
+
+      <Flex align="center" gap="2">
+        <Switch
+          checked={useProxy}
+          onCheckedChange={setUseProxy}
+          size="1"
+        />
+        <Text size="1" className="text-[var(--color-text-secondary)]">
+          {t("settings.useProxyDownload")}
+        </Text>
+      </Flex>
+
+      {downloadProgress !== null && (
+        <div className="space-y-1">
+          <Progress value={Math.round(downloadProgress)} size="1" />
+          <Text size="1" className="text-[var(--color-text-secondary)]">
+            {t("settings.downloadProgress", { pct: Math.round(downloadProgress) })}
+          </Text>
+        </div>
+      )}
 
       <Flex gap="2" wrap="wrap">
         <Button
@@ -119,7 +148,8 @@ export function EasyTierVersionManager() {
             >
               <Select.Trigger className="flex-1" />
               <Select.Content>
-                <Select.Group label={t("settings.availableVersions")}>
+                <Select.Group>
+                  <Select.Label>{t("settings.availableVersions")}</Select.Label>
                   {availableVersions.map((version) => (
                     <Select.Item
                       key={version}

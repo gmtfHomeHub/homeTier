@@ -318,6 +318,7 @@ pub fn run() -> std::process::ExitCode {
             commands::easytier::get_easytier_version,
             commands::easytier::check_easytier_update,
             commands::easytier::upgrade_easytier,
+            commands::easytier::upgrade_easytier_with_progress,
             commands::easytier::build_easytier_from_source,
             // ACL 规则
             commands::network_acls::get_acl_rules,

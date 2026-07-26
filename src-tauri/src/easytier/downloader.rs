@@ -24,7 +24,7 @@ impl EasyTierDownloader {
     }
 
     /// 检测当前平台
-    fn detect_platform() -> String {
+    pub(crate) fn detect_platform() -> String {
         let os = std::env::consts::OS;
         let arch = std::env::consts::ARCH;
         match (os, arch) {
@@ -163,17 +163,11 @@ impl EasyTierDownloader {
         Ok(())
     }
 
-    #[cfg(target_os = "windows")]
     fn extract_zip(archive: &Path, target: &Path) -> Result<(), String> {
         let file = std::fs::File::open(archive).map_err(|e| format!("打开归档失败: {}", e))?;
         let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("打开 zip 失败: {}", e))?;
         archive.extract(target).map_err(|e| format!("解压 zip 失败: {}", e))?;
         Ok(())
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    fn extract_zip(_archive: &Path, _target: &Path) -> Result<(), String> {
-        Err("不支持的归档格式".into())
     }
 
     /// 列出已安装的版本

@@ -73,6 +73,8 @@
     "relayPrefix": "中继网络前缀",
     "relayPrefixHelp": "用于配合 EasyTier 配置转发白名单网络（支持 CIDR，如 10.0.0.0/24）",
     "tunAuth": "虚拟网卡授权",
+    "downloadProgress": "下载中… {{pct}}%",
+    "useProxyDownload": "使用代理下载（ghproxy.top）",
     "easytierEngine": "EasyTier 引擎",
     "webappMode": "Web 应用打开方式",
     "webappModeIframe": "内嵌窗口 (iframe)",

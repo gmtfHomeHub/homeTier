@@ -158,6 +158,11 @@ impl IpcClient {
         }).await
     }
 
+    /// 切换二进制（升级后通知 daemon 重启运行中的实例）
+    pub async fn switch_binary(&self) -> Result<IpcResponse, String> {
+        self.send(&IpcRequest::SwitchBinary).await
+    }
+
     /// 同步关闭 daemon（用于 setup 等非 async 上下文）
     pub fn shutdown_sync(&self) -> bool {
         self.send_sync(&IpcRequest::Shutdown).is_ok()
