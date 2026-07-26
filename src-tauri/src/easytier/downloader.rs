@@ -89,7 +89,28 @@ impl EasyTierDownloader {
 
         match source {
             BinarySource::LocalArchive(archive_path) => {
-                self.extract_archive(&archive_path, parent).await?;
+                let temp_dir = std::env::temp_dir().join(format!("easytier-extract-{}", version));
+                let _ = std::fs::remove_dir_all(&temp_dir);
+                std::fs::create_dir_all(&temp_dir)
+                    .map_err(|e| format!("创建临时目录失败: {}", e))?;
+
+                self.extract_archive(&archive_path, &temp_dir).await?;
+
+                let binary_name = if cfg!(target_os = "windows") { "easytier-core.exe" } else { "easytier-core" };
+                let found = Self::find_binary(&temp_dir, binary_name)
+                    .ok_or_else(|| format!("在归档中未找到 {}", binary_name))?;
+
+                std::fs::copy(&found, &target_path)
+                    .map_err(|e| format!("复制二进制失败: {}", e))?;
+
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(&target_path, std::fs::Permissions::from_mode(0o755))
+                        .map_err(|e| format!("设置权限失败: {}", e))?;
+                }
+
+                let _ = std::fs::remove_dir_all(&temp_dir);
             }
             BinarySource::LocalBinary(binary_path) => {
                 std::fs::copy(&binary_path, &target_path)
@@ -168,6 +189,21 @@ impl EasyTierDownloader {
         let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("打开 zip 失败: {}", e))?;
         archive.extract(target).map_err(|e| format!("解压 zip 失败: {}", e))?;
         Ok(())
+    }
+
+    fn find_binary(dir: &Path, name: &str) -> Option<PathBuf> {
+        let entries = std::fs::read_dir(dir).ok()?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(found) = Self::find_binary(&path, name) {
+                    return Some(found);
+                }
+            } else if path.file_name().and_then(|n| n.to_str()) == Some(name) {
+                return Some(path);
+            }
+        }
+        None
     }
 
     /// 列出已安装的版本
