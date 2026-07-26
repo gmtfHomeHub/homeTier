@@ -403,7 +403,7 @@ export async function checkEasyTierUpdate(): Promise<string[]> {
 }
 
 export async function upgradeEasyTier(version: string, sourcePath?: string): Promise<void> {
-  return invoke("upgrade_easytier", { version, sourcePath });
+  return invoke("upgrade_easytier", { version, sourcePath: sourcePath ?? null });
 }
 
 export async function buildEasyTierFromSource(): Promise<string> {

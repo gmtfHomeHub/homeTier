@@ -295,11 +295,22 @@ impl Daemon {
                 }
             }
             ipc::IpcRequest::UpgradeVersion { version, source_path } => {
-                crate::log_info!(format!("[Daemon] 升级版本: {}", version));
-                let source = source_path.map(|path| crate::easytier::BinarySource::LocalBinary(std::path::PathBuf::from(path)));
-                match easytier.upgrade(&version, source).await {
-                    Ok(()) => ipc::IpcResponse::Ok { data: None },
-                    Err(e) => ipc::IpcResponse::Error { message: format!("升级失败: {}", e) },
+                match source_path {
+                    Some(ref path) => {
+                        crate::log_info!(format!("[Daemon] 升级版本: {}, 本地路径: {}", version, path));
+                        let source = Some(crate::easytier::BinarySource::LocalBinary(std::path::PathBuf::from(path)));
+                        match easytier.upgrade(&version, source).await {
+                            Ok(()) => ipc::IpcResponse::Ok { data: None },
+                            Err(e) => ipc::IpcResponse::Error { message: format!("升级失败: {}", e) },
+                        }
+                    }
+                    None => {
+                        crate::log_info!(format!("[Daemon] 升级版本: {}, 从 GitHub 下载", version));
+                        match easytier.upgrade(&version, None).await {
+                            Ok(()) => ipc::IpcResponse::Ok { data: None },
+                            Err(e) => ipc::IpcResponse::Error { message: format!("升级失败: {}", e) },
+                        }
+                    }
                 }
             }
             ipc::IpcRequest::Shutdown => {

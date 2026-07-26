@@ -27,6 +27,12 @@ pub async fn check_easytier_update() -> Result<Vec<String>, String> {
 #[tauri::command]
 pub async fn upgrade_easytier(version: String, source_path: Option<String>) -> Result<(), String> {
     let client = IpcClient::default_port();
+
+    // 先检查 daemon 连通性
+    if !client.ping().await {
+        return Err("daemon 未运行或无法连接".into());
+    }
+
     match client.upgrade(&version, source_path.as_deref()).await {
         Ok(IpcResponse::Ok { .. }) => Ok(()),
         Ok(IpcResponse::Error { message }) => Err(message),
