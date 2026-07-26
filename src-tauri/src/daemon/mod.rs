@@ -163,7 +163,7 @@ impl Daemon {
                 crate::log_info!(format!("[Daemon] ConnectSpace: 接收连接请求, space_id={}", space_id));
 
                 // 解析配置
-                let network_config: crate::easytier::config::NetworkConfig = match serde_json::from_value(config) {
+                let network_config: crate::easytier::config::NetworkConfig = match serde_json::from_value::<crate::easytier::config::NetworkConfig>(config) {
                     Ok(c) => {
                         crate::log_info!(format!("[Daemon] ConnectSpace: 配置解析成功, network_name={}, dhcp={}, peers={}", c.network_name, c.dhcp, c.peers.len()));
                         c

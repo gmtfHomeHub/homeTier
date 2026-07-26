@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use crate::daemon::{client::IpcClient, ipc::IpcResponse};
 use crate::easytier::EasyTierManager;
-use tauri::{Emitter, State};
+use tauri::State;
 
 /// 获取 EasyTier 版本
 #[tauri::command]
@@ -32,23 +32,6 @@ pub async fn upgrade_easytier(version: String, source_path: Option<String>) -> R
         Ok(IpcResponse::Error { message }) => Err(message),
         Err(e) => Err(format!("连接 daemon 失败: {}", e)),
     }
-}
-
-/// 下载 EasyTier（带进度回调，直接在 App 上下文执行）
-#[tauri::command]
-pub async fn download_easytier_with_progress(
-    version: String,
-    app_handle: tauri::AppHandle,
-    manager: State<'_, std::sync::Arc<EasyTierManager>>,
-) -> Result<(), String> {
-    // 在 App 上下文中下载，支持进度事件
-    let path = manager.downloader.download_from_github(&version, Some(&app_handle)).await?;
-    
-    crate::log_info!(format!("[download_easytier_with_progress] 下载完成: {}", path.display()));
-    
-    // 可选：通知 daemon 重启运行中的实例以使用新版本
-    // 这里仅返回成功，前端可选择调用 upgrade_easytier 重启
-    Ok(())
 }
 
 /// 从源码编译 EasyTier 核心

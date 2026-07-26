@@ -4,7 +4,6 @@ use tokio::sync::RwLock;
 use webrtc::api::APIBuilder;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
@@ -131,7 +130,7 @@ impl VoiceEngine {
                 "voice".to_string(),
             ));
 
-            if let Err(e) = peer_connection.add_track(&audio_track).await {
+            if let Err(e) = peer_connection.add_track(Arc::clone(&audio_track)).await {
                 crate::log_error!(format!("添加音频轨道失败: {}", e));
                 *status.write().await = VoiceStatus::Disconnected;
                 return;

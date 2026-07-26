@@ -81,7 +81,9 @@ pub async fn fetch_checksum(version: &str, platform: &str) -> Result<Option<Stri
         return Ok(None);
     }
 
-    let release: Release = resp.json().await
+    let text = resp.text().await
+        .map_err(|e| format!("读取 Release 响应失败: {}", e))?;
+    let release: Release = serde_json::from_str(&text)
         .map_err(|e| format!("解析 Release 失败: {}", e))?;
 
     // 查找 checksums.txt 或同名 .sha256 文件
