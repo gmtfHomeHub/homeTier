@@ -209,6 +209,18 @@ impl IpcClient {
             .map_err(|e| format!("反序列化响应失败: {}", e))
     }
 
+    /// 获取 daemon 日志
+    pub async fn get_daemon_logs(&self, level: Option<&str>) -> Result<IpcResponse, String> {
+        self.send(&IpcRequest::GetDaemonLogs {
+            level: level.map(|s| s.to_string()),
+        }).await
+    }
+
+    /// 检查 EasyTier 二进制
+    pub async fn check_binary(&self) -> Result<IpcResponse, String> {
+        self.send(&IpcRequest::CheckBinary).await
+    }
+
     /// 关闭 daemon
     pub async fn shutdown(&self) -> Result<IpcResponse, String> {
         self.send(&IpcRequest::Shutdown).await

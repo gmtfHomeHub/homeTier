@@ -323,6 +323,47 @@ impl Daemon {
                 easytier.restart_all_instances().await;
                 ipc::IpcResponse::Ok { data: None }
             }
+            ipc::IpcRequest::GetDaemonLogs { level } => {
+                let level_filter = level.and_then(|l| match l.to_lowercase().as_str() {
+                    "debug" => Some(crate::log::LogLevel::Debug),
+                    "info" => Some(crate::log::LogLevel::Info),
+                    "warning" => Some(crate::log::LogLevel::Warning),
+                    "error" => Some(crate::log::LogLevel::Error),
+                    _ => None,
+                });
+                let logs = crate::log::get_all(level_filter);
+                match serde_json::to_value(&logs) {
+                    Ok(v) => ipc::IpcResponse::Ok { data: Some(v) },
+                    Err(e) => ipc::IpcResponse::Error { message: format!("序列化日志失败: {}", e) },
+                }
+            }
+            ipc::IpcRequest::CheckBinary => {
+                crate::log_info!("[Daemon] 检查 EasyTier 二进制");
+                match easytier.downloader.ensure_binary().await {
+                    Ok(binary_path) => {
+                        use tokio::process::Command;
+                        let output = Command::new(&binary_path)
+                            .arg("--version")
+                            .output()
+                            .await;
+                        match output {
+                            Ok(out) => {
+                                let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+                                let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                                let result = serde_json::json!({
+                                    "binary": binary_path.to_string_lossy(),
+                                    "version": stdout.trim(),
+                                    "stderr": stderr.trim(),
+                                    "success": out.status.success(),
+                                });
+                                ipc::IpcResponse::Ok { data: Some(result) }
+                            }
+                            Err(e) => ipc::IpcResponse::Error { message: format!("执行二进制失败: {}", e) },
+                        }
+                    }
+                    Err(e) => ipc::IpcResponse::Error { message: format!("获取二进制失败: {}", e) },
+                }
+            }
             ipc::IpcRequest::Shutdown => {
                 crate::log_info!("[Daemon] 收到关闭命令");
                 let _ = shutdown_tx.send(());

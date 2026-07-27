@@ -106,8 +106,9 @@ impl EasyTierManager {
         let health_ok = self.wait_for_rpc_ready(&instance_id, rpc_port, std::time::Duration::from_secs(5)).await;
         crate::log_info!(format!("EasyTierManager.start_network: 进程健康检查结果: {:?}", health_ok));
 
-        if let Err(ref e) = health_ok {
+        if let Err(e) = health_ok {
             crate::log_error!(format!("EasyTierManager.start_network: 进程可能未正常启动: {}", e));
+            return Err(e);
         }
 
         crate::log_info!(format!("EasyTierManager.start_network: 完成, id={}, rpc_port={}", instance_id, rpc_port));

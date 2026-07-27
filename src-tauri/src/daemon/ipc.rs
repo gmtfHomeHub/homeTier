@@ -34,6 +34,10 @@ pub enum IpcRequest {
         source_path: Option<String>,
     },
     SwitchBinary,
+    GetDaemonLogs {
+        level: Option<String>,
+    },
+    CheckBinary,
     Shutdown,
 }
 

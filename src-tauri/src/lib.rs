@@ -313,6 +313,8 @@ pub fn run() -> std::process::ExitCode {
             commands::daemon::stop_daemon_service,
             commands::daemon::is_daemon_service_installed,
             commands::daemon::is_daemon_service_running,
+            commands::daemon::get_daemon_logs,
+            commands::daemon::check_easytier_binary,
             commands::daemon::shutdown_daemon,
             // EasyTier 版本管理
             commands::easytier::get_easytier_version,

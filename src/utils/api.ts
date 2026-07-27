@@ -392,6 +392,16 @@ export async function resizeAppView(x: number, y: number, w: number, h: number):
   return invoke("resize_app_view", { x, y, w, h });
 }
 
+// === Daemon Logs ===
+
+export async function getDaemonLogs(level?: string): Promise<LogEntry[]> {
+  return invoke("get_daemon_logs", { level: level ?? null });
+}
+
+export async function checkEasytierBinary(): Promise<Record<string, unknown>> {
+  return invoke("check_easytier_binary");
+}
+
 // === EasyTier Version Management ===
 
 export async function getEasyTierVersion(): Promise<string> {
