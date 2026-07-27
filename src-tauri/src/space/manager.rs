@@ -468,13 +468,25 @@ Self {
 
     /// 发现并连接到 peers
     async fn discover_and_connect_peers(&self, space_id: &Uuid) -> Result<(), String> {
-        // 获取 space 状态以获取虚拟 IP
-        let status = self.get_space_status(&space_id.to_string()).await?;
-        let status_data = status.ok_or_else(|| "未获取到状态".to_string())?;
-
-        let virtual_ip = status_data.get("virtual_ip")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "未获取到虚拟 IP".to_string())?;
+        let virtual_ip = {
+            let mut retries = 0;
+            let max_retries = 10;
+            loop {
+                let status = self.get_space_status(&space_id.to_string()).await?;
+                if let Some(status_data) = status {
+                    if let Some(ip) = status_data.get("virtual_ip").and_then(|v| v.as_str()) {
+                        if !ip.is_empty() {
+                            break ip.to_string();
+                        }
+                    }
+                }
+                retries += 1;
+                if retries >= max_retries {
+                    return Err("未获取到虚拟 IP".to_string());
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+        };
 
         let my_chat_port = 18000 + (space_id.as_u128() % 1000) as u16;
 
