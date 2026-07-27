@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::net::IpAddr;
 
 /// Frontend-facing NetworkConfig — mirrors src/types/network.ts NetworkConfig
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -7,11 +8,14 @@ use std::collections::HashMap;
 pub struct NetworkConfig {
     // === Instance ===
     pub instance_id: String,
+    pub instance_name: Option<String>,
 
     // === Basic ===
     pub dhcp: bool,
     pub virtual_ipv4: String,
     pub network_length: u8,
+    pub ipv4: Option<String>,
+    pub ipv6: Option<String>,
     pub hostname: Option<String>,
     pub network_name: String,
     pub network_secret: String,
@@ -40,7 +44,9 @@ pub struct NetworkConfig {
     pub dev_name: String,
     pub use_smoltcp: bool,
     pub disable_ipv6: bool,
-    pub ipv6_public_addr_auto: bool,
+    pub ipv6_public_addr_provider: Option<bool>,
+    pub ipv6_public_addr_auto: Option<bool>,
+    pub ipv6_public_addr_prefix: Option<String>,
     pub enable_kcp_proxy: bool,
     pub disable_kcp_input: bool,
     pub enable_quic_proxy: bool,
@@ -89,6 +95,10 @@ pub struct NetworkConfig {
     // === ACL ===
     pub acl: Option<serde_json::Value>,
 
+    // === Logging ===
+    pub file_logger: Option<LogConfig>,
+    pub console_logger: Option<LogConfig>,
+
     // === Legacy compat ===
     pub peers: Vec<PeerConfig>,
     pub listeners: Vec<String>,
@@ -119,13 +129,25 @@ pub struct ProxyNetworkConfig {
     pub allow: Option<Vec<String>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogConfig {
+    pub level: Option<String>,
+    pub file: Option<String>,
+    pub dir: Option<String>,
+    pub size_mb: Option<u32>,
+    pub count: Option<u32>,
+}
+
 impl Default for NetworkConfig {
     fn default() -> Self {
         Self {
             instance_id: uuid::Uuid::new_v4().to_string(),
+            instance_name: None,
             dhcp: true,
             virtual_ipv4: String::new(),
             network_length: 24,
+            ipv4: None,
+            ipv6: None,
             hostname: None,
             network_name: "easytier".to_string(),
             network_secret: String::new(),
@@ -148,7 +170,9 @@ impl Default for NetworkConfig {
             dev_name: String::new(),
             use_smoltcp: false,
             disable_ipv6: false,
-            ipv6_public_addr_auto: false,
+            ipv6_public_addr_provider: None,
+            ipv6_public_addr_auto: None,
+            ipv6_public_addr_prefix: None,
             enable_kcp_proxy: false,
             disable_kcp_input: false,
             enable_quic_proxy: false,
@@ -182,6 +206,8 @@ impl Default for NetworkConfig {
             instance_recv_bps_limit: None,
             port_forwards: Vec::new(),
             acl: None,
+            file_logger: None,
+            console_logger: None,
             peers: Vec::new(),
             listeners: Vec::new(),
             proxy_networks: Vec::new(),
@@ -252,7 +278,7 @@ impl NetworkConfig {
         cfg.set_ipv6(None);
 
         // IPv6 public address
-        cfg.set_ipv6_public_addr_auto(self.ipv6_public_addr_auto);
+        cfg.set_ipv6_public_addr_auto(self.ipv6_public_addr_auto.unwrap_or(false));
 
         // Peer URLs
         if !self.peer_urls.is_empty() {
