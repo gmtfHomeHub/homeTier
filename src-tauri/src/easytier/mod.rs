@@ -102,8 +102,45 @@ impl EasyTierManager {
         };
         self.processes.insert(instance_id, process);
 
+        // Phase 1-1: 进程健康检查 — 等待 RPC 就绪
+        let health_ok = self.wait_for_rpc_ready(&instance_id, rpc_port, std::time::Duration::from_secs(5)).await;
+        crate::log_info!(format!("EasyTierManager.start_network: 进程健康检查结果: {:?}", health_ok));
+
+        if let Err(ref e) = health_ok {
+            crate::log_error!(format!("EasyTierManager.start_network: 进程可能未正常启动: {}", e));
+        }
+
         crate::log_info!(format!("EasyTierManager.start_network: 完成, id={}, rpc_port={}", instance_id, rpc_port));
         Ok(instance_id)
+    }
+
+    /// Phase 1-1: 等待进程 RPC 端口就绪
+    async fn wait_for_rpc_ready(&self, instance_id: &Uuid, rpc_port: u16, timeout: std::time::Duration) -> Result<(), String> {
+        let start = std::time::Instant::now();
+        let mut last_err = String::new();
+        while start.elapsed() < timeout {
+            // 检查进程是否还活着
+            let alive = self.processes.get(instance_id)
+                .map(|p| p.is_running())
+                .unwrap_or(false);
+            if !alive {
+                return Err("进程已退出".to_string());
+            }
+            // 尝试 TCP 连接 RPC 端口
+            match tokio::net::TcpStream::connect(format!("127.0.0.1:{}", rpc_port)).await {
+                Ok(_) => {
+                    crate::log_info!(format!("EasyTierManager.wait_for_rpc_ready: RPC 端口就绪, port={}, elapsed={:?}", rpc_port, start.elapsed()));
+                    return Ok(());
+                }
+                Err(e) => {
+                    last_err = e.to_string();
+                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                }
+            }
+        }
+        let msg = format!("RPC 端口超时未就绪, port={}, timeout={:?}, 最后错误: {}", rpc_port, timeout, last_err);
+        crate::log_warn!(format!("EasyTierManager.wait_for_rpc_ready: {}", msg));
+        Err(msg)
     }
 
     /// 为实例分配唯一的 RPC 端口

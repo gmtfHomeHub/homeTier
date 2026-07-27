@@ -334,6 +334,27 @@ Self {
         match self.ipc_client.connect_space(&space_id.to_string(), config_value).await {
             Ok(crate::daemon::ipc::IpcResponse::Ok { .. }) => {
                 crate::log_info!(format!("连接空间 IPC 成功: {}", space.name), &space_id.to_string());
+                // Phase 1-3: 清理旧的 GUI 服务（避免 port 冲突）
+                crate::log_debug!("connect: 清理旧聊天服务器");
+                if let Some(old) = self.chat_servers.write().await.remove(space_id) {
+                    old.stop().await;
+                    crate::log_info!(format!("connect: 旧聊天服务器已停止"), &space_id.to_string());
+                }
+                crate::log_debug!("connect: 清理旧文件服务器");
+                if let Some(old) = self.file_servers.write().await.remove(space_id) {
+                    old.stop().await;
+                    crate::log_info!(format!("connect: 旧文件服务器已停止"), &space_id.to_string());
+                }
+                crate::log_debug!("connect: 清理旧语音服务器");
+                if let Some(mut old) = self.voice_servers.write().await.remove(space_id) {
+                    old.shutdown();
+                    crate::log_info!(format!("connect: 旧语音服务器已停止"), &space_id.to_string());
+                }
+                crate::log_debug!("connect: 清理旧屏幕共享服务器");
+                if let Some(mut old) = self.screen_servers.write().await.remove(space_id) {
+                    old.shutdown();
+                    crate::log_info!(format!("connect: 旧屏幕共享服务器已停止"), &space_id.to_string());
+                }
                 // 启动聊天服务器
                 crate::log_debug!(format!("connect: 启动聊天服务器"), &space_id.to_string());
                 self.start_chat_server(*space_id).await?;
@@ -472,7 +493,20 @@ Self {
             let mut retries = 0;
             let max_retries = 10;
             loop {
-                let status = self.get_space_status(&space_id.to_string()).await?;
+                // Phase 1-4: get_space_status 失败时重试（区分"进程未就绪" vs "致命错误"）
+                let status = match self.get_space_status(&space_id.to_string()).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        retries += 1;
+                        if retries >= max_retries {
+                            crate::log_error!(format!("discover_and_connect_peers: get_space_status 已达最大重试次数, 最后错误: {}", e));
+                            return Err(format!("查询空间状态失败(已重试{}次): {}", max_retries, e));
+                        }
+                        crate::log_warn!(format!("discover_and_connect_peers: get_space_status 失败(第{}次), 等待重试: {}", retries, e));
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        continue;
+                    }
+                };
                 if let Some(status_data) = status {
                     if let Some(ip) = status_data.get("virtual_ip").and_then(|v| v.as_str()) {
                         if !ip.is_empty() {
