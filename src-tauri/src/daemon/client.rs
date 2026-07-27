@@ -5,11 +5,6 @@ use std::time::Duration;
 /// 全局共享 IPC 客户端（所有命令 handler 共享同一长连接）
 static GLOBAL_IPC: OnceLock<IpcClient> = OnceLock::new();
 
-/// 获取全局 IPC 客户端实例，所有命令 handler 共享一个长连接
-pub fn get_global() -> &'static IpcClient {
-    GLOBAL_IPC.get_or_init(IpcClient::default_port)
-}
-
 /// TCP RPC 客户端
 pub struct IpcClient {
     port: u16,
@@ -262,6 +257,11 @@ impl IpcClient {
     /// 关闭 daemon
     pub async fn shutdown(&self) -> Result<IpcResponse, String> {
         self.send(&IpcRequest::Shutdown).await
+    }
+
+    /// 获取全局 IPC 客户端实例（所有命令 handler 共享同一长连接）
+    pub fn get_global() -> &'static IpcClient {
+        GLOBAL_IPC.get_or_init(IpcClient::default_port)
     }
 }
 
