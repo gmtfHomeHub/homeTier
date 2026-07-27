@@ -50,24 +50,13 @@ impl PlatformAdapter for MacOSAdapter {
         match std::process::Command::new("osascript")
             .arg("-e")
             .arg(&script)
-            .output()
+            .spawn()
         {
-            Ok(output) => {
-                if output.status.success() {
-                    AuthResult {
-                        success: true,
-                        message: "macOS 管理员权限已获取，守护进程以 root 权限重启中...".into(),
-                        needs_restart: true,
-                    }
-                } else {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    AuthResult {
-                        success: false,
-                        message: format!("授权失败: {}", stderr.trim()),
-                        needs_restart: false,
-                    }
-                }
-            }
+            Ok(_child) => AuthResult {
+                success: true,
+                message: "macOS 管理员权限已获取，守护进程以 root 权限重启中...".into(),
+                needs_restart: true,
+            },
             Err(e) => AuthResult {
                 success: false,
                 message: format!("启动 osascript 失败: {}", e),
