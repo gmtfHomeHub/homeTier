@@ -534,8 +534,27 @@ Self {
         // 从 DB 加载组配置 (config_json) 作为基础配置
         let base_config = match self.db.get_space_config(&space_id.to_string()) {
             Ok(Some(json)) => {
-                serde_json::from_str::<NetworkConfig>(&json)
-                    .map_err(|e| format!("解析空间配置失败: {}", e))?
+                match NetworkConfig::from_config_json(&json) {
+                    Ok(mut cfg) => {
+                        // 从 config_json 解析成功，补充 identity 字段（防止 config_json 中缺失）
+                        if cfg.network_name.is_empty() {
+                            cfg.network_name = space.network_name.clone();
+                        }
+                        if cfg.network_secret.is_empty() {
+                            cfg.network_secret = space.network_secret.clone();
+                        }
+                        cfg
+                    }
+                    Err(e) => {
+                        crate::log_warn!(format!("get_effective_config: config_json 解析失败，使用空间基础配置: {}", e), &space_id.to_string());
+                        NetworkConfig {
+                            network_name: space.network_name.clone(),
+                            network_secret: space.network_secret.clone(),
+                            dhcp: true,
+                            ..Default::default()
+                        }
+                    }
+                }
             }
             Ok(None) => {
                 NetworkConfig {

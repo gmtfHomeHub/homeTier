@@ -43,9 +43,10 @@ impl IpcClient {
         stream.write_all(req_json.as_bytes()).await
             .map_err(|e| format!("发送请求内容失败: {}", e))?;
 
-        // 读取响应长度
+        // 读取响应长度（30s 超时）
         let mut len_buf = [0u8; 4];
-        stream.read_exact(&mut len_buf).await
+        timeout(Duration::from_secs(30), stream.read_exact(&mut len_buf)).await
+            .map_err(|_| "读取响应长度超时")?
             .map_err(|e| format!("读取响应长度失败: {}", e))?;
         let resp_len = u32::from_le_bytes(len_buf) as usize;
 
@@ -53,9 +54,10 @@ impl IpcClient {
             return Err("响应过大".into());
         }
 
-        // 读取响应内容
+        // 读取响应内容（30s 超时）
         let mut resp_buf = vec![0u8; resp_len];
-        stream.read_exact(&mut resp_buf).await
+        timeout(Duration::from_secs(30), stream.read_exact(&mut resp_buf)).await
+            .map_err(|_| "读取响应内容超时")?
             .map_err(|e| format!("读取响应内容失败: {}", e))?;
 
         // 反序列化

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 /// EasyTier 网络配置（对应前端 EasyTierConfig 接口）
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct NetworkConfig {
     // === Meta ===
     pub target_os: Option<String>,
@@ -117,6 +118,21 @@ impl Default for NetworkConfig {
 }
 
 impl NetworkConfig {
+    /// 从 config_json JSON 字符串安全映射到 NetworkConfig。
+    /// - 空字符串 → 默认 NetworkConfig（所有字段为类型默认值）
+    /// - 有效 JSON（partial）→ 缺失字段使用 Default::default()
+    /// - 无效 JSON → 返回错误
+    pub fn from_config_json(json_str: &str) -> Result<Self, String> {
+        let trimmed = json_str.trim();
+        if trimmed.is_empty() {
+            return Ok(Self::default());
+        }
+        let value: serde_json::Value = serde_json::from_str(trimmed)
+            .map_err(|e| format!("config_json 不是有效的 JSON: {}", e))?;
+        serde_json::from_value(value)
+            .map_err(|e| format!("config_json 映射到 NetworkConfig 失败: {}", e))
+    }
+
     /// 转换为 EasyTier 的 TomlConfigLoader
     pub fn to_easytier_config(&self) -> Result<easytier::common::config::TomlConfigLoader, String> {
         use easytier::common::config::ConfigLoader;
@@ -189,9 +205,9 @@ impl NetworkConfig {
                             uri: u,
                             peer_public_key: p.peer_public_key.clone(),
                         })
-                        .unwrap()
+                        .map_err(|e| format!("无效的 peer URI '{}': {}", p.uri, e))
                 })
-                .collect();
+                .collect::<Result<Vec<_>, String>>()?;
             if !easy_peers.is_empty() {
                 cfg.set_peers(easy_peers);
             }
@@ -203,8 +219,9 @@ impl NetworkConfig {
                 .listeners
                 .iter()
                 .filter(|l| !l.is_empty())
-                .map(|l| l.parse::<url::Url>().unwrap())
-                .collect();
+                .map(|l| l.parse::<url::Url>()
+                    .map_err(|e| format!("无效的 listener '{}': {}", l, e)))
+                .collect::<Result<Vec<_>, String>>()?;
             if !urls.is_empty() {
                 cfg.set_listeners(urls);
             }
