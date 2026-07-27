@@ -6,7 +6,7 @@ import { EasyTierVersionManager } from "./EasyTierVersionManager";
 import { Terminal, Network, Palette, Languages, HelpCircle, Shield } from "lucide-react";
 import { getSystemConfig, setSystemConfig, getRelayPrefix, setRelayPrefix, getWebappMode, setWebappMode } from "../../utils/api";
 import { useSettingsStore } from "../../stores/settingsStore";
-import type { EasyTierConfig } from "../../types/config";
+import type { NetworkConfig } from "../../types/network";
 import { useTranslation } from "react-i18next";
 import { Tabs, Tooltip, Button, TextField, Flex, Text } from "@radix-ui/themes";
 
@@ -14,7 +14,7 @@ type Tab = "basic" | "logs" | "easytier";
 
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("basic");
-  const [easytierConfig, setEasytierConfig] = useState<Partial<EasyTierConfig>>({});
+  const [easytierConfig, setEasytierConfig] = useState<Partial<NetworkConfig>>({});
   const [configLoaded, setConfigLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [relayPrefix, setRelayPrefixState] = useState("");

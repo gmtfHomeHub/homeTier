@@ -9,7 +9,8 @@ import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { MemberCount } from "../Common/MemberCount";
 import { Button, Flex } from "@radix-ui/themes";
 import { getSystemConfig, updateSpaceConfig, getRelayPrefix } from "../../utils/api";
-import type { EasyTierConfig } from "../../types/config";
+import type { NetworkConfig } from "../../types/network";
+import { DEFAULT_NETWORK_CONFIG } from "../../types/network";
 
 export function SpaceList() {
   const { spaces, connectSpace, disconnectSpace, deleteSpace, loadSpaces } = useSpaceStore();
@@ -17,7 +18,7 @@ export function SpaceList() {
   const { t } = useTranslation();
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; ownerId?: string } | null>(null);
   const [configTarget, setConfigTarget] = useState<string | null>(null);
-  const [spaceConfig, setSpaceConfig] = useState<Partial<EasyTierConfig>>({});
+  const [spaceConfig, setSpaceConfig] = useState<Partial<NetworkConfig>>({});
   const [savingConfig, setSavingConfig] = useState(false);
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [shareTarget, setShareTarget] = useState<string | null>(null);
@@ -26,55 +27,32 @@ export function SpaceList() {
 
   useEffect(() => {
     if (configTarget && configSpace) {
-      // 1. 解析空间级配置
-      let spaceCfg: Partial<EasyTierConfig> = {};
+      let spaceCfg: Partial<NetworkConfig> = {};
       if (configSpace.config_json) {
         try { spaceCfg = JSON.parse(configSpace.config_json); } catch (err) {
           console.log(err);
         }
       }
 
-      // 2. 加载系统级配置作为默认值，然后用空间级配置覆盖
       Promise.all([
         getSystemConfig(),
         getRelayPrefix(),
-      ]).then(([sysJson, prefix]) => {
-        localStorage.setItem("relayPrefix", prefix);
-        let merged: Partial<EasyTierConfig> = {};
+      ]).then(([sysJson]) => {
+        let merged: Partial<NetworkConfig> = {};
 
-        // 系统级配置作为基础
         if (sysJson) {
           try { merged = JSON.parse(sysJson); } catch (err) {
-          console.log(err);
-        }
+            console.log(err);
+          }
         }
 
-        // 空间级配置覆盖系统级（优先级：空间 > 系统）
         merged = { ...merged, ...spaceCfg };
-        // 深度合并 network_identity
-        if (spaceCfg.network_identity || !merged.network_identity?.network_name) {
-          merged = {
-            ...merged,
-            network_identity: {
-              network_name: merged.network_identity?.network_name || "",
-              network_secret: merged.network_identity?.network_secret,
-              ...spaceCfg.network_identity,
-            },
-          };
-        }
 
-        // 3. 自动填充 network_identity 默认值
-        if (!merged.network_identity?.network_name) {
-          merged.network_identity = {
-            ...merged.network_identity,
-            network_name: `${prefix}${configSpace.name}`,
-          };
+        if (!merged.network_name) {
+          merged.network_name = configSpace.network_name;
         }
-        if (!merged.network_identity?.network_secret) {
-          merged.network_identity = {
-            ...merged.network_identity,
-            network_secret: configSpace.network_secret,
-          };
+        if (!merged.network_secret) {
+          merged.network_secret = configSpace.network_secret;
         }
 
         setSpaceConfig(merged);
@@ -86,7 +64,7 @@ export function SpaceList() {
     if (!configTarget) return;
     setSavingConfig(true);
     try {
-      await updateSpaceConfig(configTarget, JSON.stringify(spaceConfig));
+      await updateSpaceConfig(configTarget, JSON.stringify({ ...DEFAULT_NETWORK_CONFIG(), ...spaceConfig }));
       await loadSpaces();
       setConfigTarget(null);
     } catch (e) {
@@ -241,7 +219,6 @@ export function SpaceList() {
                 value={spaceConfig}
                 onChange={setSpaceConfig}
                 title="空间级 EasyTier 配置（优先级高于系统级）"
-                showNetworkIdentity={true}
               />
             </div>
             <Flex justify="end" gap="2" px="6" py="4" className="border-t border-[var(--color-border)]">

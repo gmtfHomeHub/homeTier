@@ -1,4 +1,5 @@
 import { EasyTierConfig } from './config';
+import { DEFAULT_NETWORK_CONFIG as networkDefault } from './network';
 
 export interface Space {
   id: string;
@@ -80,90 +81,8 @@ export interface EasyTierNetworkConfig extends EasyTierConfig {
   instance_name?: string;
 }
 
-// === Detailed Network Configuration ===
-export interface NetworkConfigDetails {
-  instance_id?: string;
-  instance_name?: string;
-  hostname?: string;
-  dhcp?: boolean;
-  virtual_ipv4?: string;
-  network_length?: number;
-  network_name: string;
-  network_secret: string;
-  credential_file?: string;
-  networking_method?: string;
-  public_server_url?: string;
-  peer_urls?: string[];
-
-  ipv4?: string;
-  ipv6?: string;
-  ipv6_public_addr_auto?: boolean;
-  ipv6_public_addr_prefix?: string;
-
-  proxy_cidrs?: string[];
-
-  enable_vpn_portal?: boolean;
-  vpn_portal_listen_port?: number;
-  vpn_portal_client_network_addr?: string;
-  vpn_portal_client_network_len?: number;
-
-  listener_urls?: string[];
-  latency_first?: boolean;
-  dev_name?: string;
-
-  use_smoltcp?: boolean;
-  disable_ipv6?: boolean;
-  enable_kcp_proxy?: boolean;
-  disable_kcp_input?: boolean;
-  enable_quic_proxy?: boolean;
-  disable_quic_input?: boolean;
-  disable_p2p?: boolean;
-  p2p_only?: boolean;
-  lazy_p2p?: boolean;
-  bind_device?: boolean;
-  no_tun?: boolean;
-  enable_exit_node?: boolean;
-  relay_all_peer_rpc?: boolean;
-  need_p2p?: boolean;
-  multi_thread?: boolean;
-  proxy_forward_by_system?: boolean;
-  disable_encryption?: boolean;
-  disable_tcp_hole_punching?: boolean;
-  disable_udp_hole_punching?: boolean;
-  disable_upnp?: boolean;
-  enable_udp_broadcast_relay?: boolean;
-  disable_sym_hole_punching?: boolean;
-  enable_magic_dns?: boolean;
-  enable_private_mode?: boolean;
-
-  enable_relay_network_whitelist?: boolean;
-  relay_network_whitelist?: string[];
-
-  enable_manual_routes?: boolean;
-  routes?: string[];
-
-  exit_nodes?: string[];
-
-  enable_socks5?: boolean;
-  socks5_port?: number;
-
-  mtu?: number | null;
-  instance_recv_bps_limit?: number | null;
-  mapped_listeners?: string[];
-
-  port_forwards?: NetworkPortForwardConfig[];
-  acl?: AclConfig;
-
-  // Legacy fields for backward compat
-  target_os?: string;
-  peers?: PeerConfig[];
-  listeners?: string[];
-  proxy_networks?: ProxyNetworkConfig[];
-  vpn_portal?: VpnPortalConfig;
-  flags?: Record<string, string>;
-  file_logger?: LogConfig;
-  console_logger?: LogConfig;
-}
+/** @deprecated Use NetworkConfig from "./network" instead */
+export type NetworkConfigDetails = import("./network").NetworkConfig;
 
 export interface PeerConfig {
   uri: string;
@@ -314,65 +233,9 @@ export function buildAppUrlDisplay(app: SpaceApp): string {
 // AclItem interfaces (duplicated — keep the existing AclRule for db compat)
 // ... existing AclRule, AclChain, AclRuleItem above
 
-// === Default NetworkConfig factory (reflecting network.ts defaults) ===
+// === Default NetworkConfig factory — delegates to network.ts ===
 export function DEFAULT_NETWORK_CONFIG(): NetworkConfigDetails {
-  return {
-    instance_id: crypto.randomUUID(),
-    dhcp: true,
-    virtual_ipv4: '',
-    network_length: 24,
-    network_name: '',
-    network_secret: '',
-    credential_file: '',
-    networking_method: 'Manual',
-    public_server_url: '',
-    peer_urls: [],
-    proxy_cidrs: [],
-    enable_vpn_portal: false,
-    vpn_portal_listen_port: 22022,
-    vpn_portal_client_network_addr: '',
-    vpn_portal_client_network_len: 24,
-    listener_urls: ['tcp://0.0.0.0:11010','udp://0.0.0.0:11010','wg://0.0.0.0:11011'],
-    latency_first: false,
-    dev_name: '',
-    use_smoltcp: false,
-    disable_ipv6: false,
-    ipv6_public_addr_auto: false,
-    enable_kcp_proxy: false,
-    disable_kcp_input: false,
-    enable_quic_proxy: false,
-    disable_quic_input: false,
-    disable_p2p: false,
-    p2p_only: false,
-    lazy_p2p: false,
-    bind_device: true,
-    no_tun: false,
-    enable_exit_node: false,
-    relay_all_peer_rpc: false,
-    need_p2p: false,
-    multi_thread: true,
-    proxy_forward_by_system: false,
-    disable_encryption: false,
-    disable_tcp_hole_punching: false,
-    disable_udp_hole_punching: false,
-    disable_upnp: false,
-    enable_udp_broadcast_relay: false,
-    disable_sym_hole_punching: false,
-    enable_magic_dns: false,
-    enable_private_mode: false,
-    enable_relay_network_whitelist: false,
-    relay_network_whitelist: [],
-    enable_manual_routes: false,
-    routes: [],
-    exit_nodes: [],
-    enable_socks5: false,
-    socks5_port: 1080,
-    mtu: null,
-    instance_recv_bps_limit: null,
-    mapped_listeners: [],
-    port_forwards: [],
-    acl: { acl_v1: { chains: [], group: { declares: [], members: [] } } },
-  };
+  return networkDefault();
 }
 
 // ACL 规则类型

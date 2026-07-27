@@ -1,79 +1,105 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { EasyTierConfig, PeerConfig, ProxyNetworkConfig, PortForwardConfig, LogConfig } from "../../types/config";
-import { Eye, EyeOff } from "lucide-react";
-import { Button, TextField, Checkbox, Text } from "@radix-ui/themes";
+import type { NetworkConfig, PortForwardConfig } from "../../types/network";
+import { DEFAULT_NETWORK_CONFIG, addRow, removeRow } from "../../types/network";
+import { Button, TextField, Checkbox, Text, Select } from "@radix-ui/themes";
+import { CollapsibleSection } from "../Common/CollapsibleSection";
+import {
+  Network, Eye, EyeOff, Plus, Trash2, Globe, Shield, Settings,
+} from "lucide-react";
 
 interface Props {
-  value: Partial<EasyTierConfig>;
-  onChange: (value: Partial<EasyTierConfig>) => void;
+  value: Partial<NetworkConfig>;
+  onChange: (value: Partial<NetworkConfig>) => void;
   title?: string;
-  showNetworkIdentity?: boolean;
 }
 
-const SECTION_CLASS = "border border-[var(--color-border)] rounded-lg p-4 space-y-3";
 const LABEL_CLASS = "block text-xs font-medium text-[var(--color-text-secondary)] mb-1";
+const FIELD_CLASS = "flex flex-col gap-1";
 
-export function EasyTierConfigEditor({ value, onChange, title, showNetworkIdentity }: Props) {
+interface BoolFlagDef {
+  key: keyof NetworkConfig;
+  labelKey: string;
+}
+
+const boolFlags: BoolFlagDef[] = [
+  { key: "latency_first", labelKey: "network.flagLatencyFirst" },
+  { key: "use_smoltcp", labelKey: "network.flagUseSmoltcp" },
+  { key: "disable_ipv6", labelKey: "network.flagDisableIpv6" },
+  { key: "ipv6_public_addr_auto", labelKey: "network.flagIpv6PublicAddrAuto" },
+  { key: "enable_kcp_proxy", labelKey: "network.flagEnableKcp" },
+  { key: "disable_kcp_input", labelKey: "network.flagDisableKcpInput" },
+  { key: "enable_quic_proxy", labelKey: "network.flagEnableQuic" },
+  { key: "disable_quic_input", labelKey: "network.flagDisableQuicInput" },
+  { key: "disable_p2p", labelKey: "network.flagDisableP2P" },
+  { key: "p2p_only", labelKey: "network.flagP2pOnly" },
+  { key: "lazy_p2p", labelKey: "network.flagLazyP2p" },
+  { key: "bind_device", labelKey: "network.flagBindDevice" },
+  { key: "no_tun", labelKey: "network.flagNoTun" },
+  { key: "enable_exit_node", labelKey: "network.flagEnableExitNode" },
+  { key: "relay_all_peer_rpc", labelKey: "network.flagRelayAllPeerRpc" },
+  { key: "need_p2p", labelKey: "network.flagNeedP2p" },
+  { key: "multi_thread", labelKey: "network.flagMultiThread" },
+  { key: "proxy_forward_by_system", labelKey: "network.flagProxyForwardBySystem" },
+  { key: "disable_encryption", labelKey: "network.flagDisableEncryption" },
+  { key: "disable_tcp_hole_punching", labelKey: "network.flagDisableTcpHolePunch" },
+  { key: "disable_udp_hole_punching", labelKey: "network.flagDisableUdpHolePunch" },
+  { key: "disable_upnp", labelKey: "network.flagDisableUpnp" },
+  { key: "enable_udp_broadcast_relay", labelKey: "network.flagEnableUdpBroadcast" },
+  { key: "disable_sym_hole_punching", labelKey: "network.flagDisableSymHolePunch" },
+  { key: "enable_magic_dns", labelKey: "network.flagEnableMagicDns" },
+  { key: "enable_private_mode", labelKey: "network.flagEnablePrivateMode" },
+  { key: "enable_socks5", labelKey: "network.flagEnableSocks5" },
+  { key: "enable_relay_network_whitelist", labelKey: "network.flagEnableRelayWhitelist" },
+  { key: "enable_manual_routes", labelKey: "network.flagEnableManualRoutes" },
+];
+
+const protoOptions = ["tcp", "udp"];
+
+export function EasyTierConfigEditor({ value, onChange, title }: Props) {
   const { t } = useTranslation();
   const [showSecret, setShowSecret] = useState(false);
-  const set = (patch: Partial<EasyTierConfig>) => onChange({ ...value, ...patch });
-  const setFlags = (patch: Record<string, string | number | boolean>) =>
-    onChange({ ...value, flags: { ...value.flags, ...patch } as Record<string, string | number | boolean | bigint> });
-  const setNetworkIdentity = (patch: { network_name?: string; network_secret?: string }) => {
-    const existing = value.network_identity;
-    onChange({
-      ...value,
-      network_identity: {
-        network_name: (patch.network_name ?? existing?.network_name) || "",
-        network_secret: patch.network_secret ?? existing?.network_secret,
-      },
-    });
-  };
+
+  const set = (patch: Partial<NetworkConfig>) => onChange({ ...value, ...patch });
+
+  const boolVal = (key: keyof NetworkConfig): boolean =>
+    (value as any)[key] === true;
+
+  const setBool = (key: keyof NetworkConfig, val: boolean) =>
+    set({ [key]: val } as any);
+
+  const strVal = (key: keyof NetworkConfig): string =>
+    ((value as any)[key] ?? "") as string;
+
+  const setStr = (key: keyof NetworkConfig, val: string) =>
+    set({ [key]: val || undefined } as any);
+
+  const port_forwards: PortForwardConfig[] = value.port_forwards ?? [];
+
+  const setPortForwards = (pfs: PortForwardConfig[]) => set({ port_forwards: pfs });
 
   return (
     <div className="space-y-4 text-sm">
       {title && <h3 className="font-semibold">{title}</h3>}
 
-      {/* Basic */}
-      <fieldset className={SECTION_CLASS}>
-        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">{t("network.basicSettings")}</legend>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={LABEL_CLASS}>{t("settings.instanceName")}</label>
-            <TextField.Root size="1" value={value.instance_name ?? ""} onChange={e => set({ instance_name: e.target.value || undefined })} />
-          </div>
-          <div>
-            <label className={LABEL_CLASS}>{t("settings.hostname")}</label>
-            <TextField.Root size="1" value={value.hostname ?? ""} onChange={e => set({ hostname: e.target.value || undefined })} />
-          </div>
-          <div>
-            <label className={LABEL_CLASS}>{t("settings.ipv4")}</label>
-            <TextField.Root size="1" value={value.ipv4 ?? ""} onChange={e => set({ ipv4: e.target.value || undefined })} />
-          </div>
-          <div>
-            <label className={LABEL_CLASS}>{t("settings.ipv6")}</label>
-            <TextField.Root size="1" value={value.ipv6 ?? ""} onChange={e => set({ ipv6: e.target.value || undefined })} />
-          </div>
+      {/* Panel 1: Basic Settings (always open) */}
+      <div className="border border-[var(--color-border)] rounded-lg">
+        <div className="flex items-center gap-2 p-4 border-b border-[var(--color-border)]">
+          <Globe size={16} />
+          <Text size="2" weight="medium">{t("network.basicSettings")}</Text>
         </div>
-        <Text as="label" size="1" className="flex items-center gap-2">
-          <Checkbox checked={value.dhcp ?? false} onCheckedChange={(c) => set({ dhcp: c === true })} />
-          {t("network.dhcpAuto")}
-        </Text>
-      </fieldset>
-
-      {/* Network Identity */}
-      {showNetworkIdentity && (
-        <fieldset className={SECTION_CLASS}>
-          <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">{t("network.networkIdentity")}</legend>
+        <div className="p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <div>
+            <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("settings.networkName")}</label>
-              <TextField.Root size="1" value={value.network_identity?.network_name ?? ""} onChange={e => setNetworkIdentity({ network_name: e.target.value })} />
+              <TextField.Root size="1" value={strVal("network_name")}
+                onChange={e => setStr("network_name", e.target.value)} />
             </div>
-            <div>
+            <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("settings.networkSecret")}</label>
-              <TextField.Root size="1" type={showSecret ? "text" : "password"} value={value.network_identity?.network_secret ?? ""} onChange={e => setNetworkIdentity({ network_secret: e.target.value })}>
+              <TextField.Root size="1" type={showSecret ? "text" : "password"}
+                value={strVal("network_secret")}
+                onChange={e => setStr("network_secret", e.target.value)}>
                 <TextField.Slot side="right">
                   <Button type="button" onClick={() => setShowSecret(!showSecret)} variant="ghost" size="1">
                     {showSecret ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -82,121 +108,294 @@ export function EasyTierConfigEditor({ value, onChange, title, showNetworkIdenti
               </TextField.Root>
             </div>
           </div>
-        </fieldset>
-      )}
 
-      {/* Peers */}
-      <fieldset className={SECTION_CLASS}>
-        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">{t("network.peersTitle")}</legend>
-        {(value.peers ?? []).map((p, i) => (
-          <div key={i} className="flex items-start gap-2">
-            <TextField.Root size="1" className="flex-1" placeholder="URI" value={p.uri} onChange={e => {
-              const peers = [...(value.peers ?? [])];
-              peers[i] = { ...peers[i], uri: e.target.value };
-              set({ peers });
-            }} />
-            <Button variant="ghost" color="red" size="1" onClick={() => {
-              const peers = (value.peers ?? []).filter((_, j) => j !== i);
-              set({ peers: peers.length ? peers : undefined });
-            }}>×</Button>
+          <div className="grid grid-cols-2 gap-3">
+            <div className={FIELD_CLASS}>
+              <label className={LABEL_CLASS}>{t("network.virtualIpv4")}</label>
+              <TextField.Root size="1" value={strVal("virtual_ipv4")}
+                onChange={e => setStr("virtual_ipv4", e.target.value)}
+                placeholder="10.0.0.1" />
+            </div>
+            <div className={FIELD_CLASS}>
+              <label className={LABEL_CLASS}>{t("network.networkLength")}</label>
+              <TextField.Root size="1" type="number"
+                value={String(value.network_length ?? 24)}
+                onChange={e => set({ network_length: parseInt(e.target.value) || 24 })} />
+            </div>
           </div>
-        ))}
-        <Button variant="ghost" color="blue" size="1" onClick={() => set({ peers: [...(value.peers ?? []), { uri: "" }] })}>{t("network.addPeer")}</Button>
-      </fieldset>
 
-      {/* Listeners */}
-      <fieldset className={SECTION_CLASS}>
-        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">{t("network.listenersTitle")}</legend>
-        {(value.listeners ?? []).map((l, i) => (
-          <div key={i} className="flex items-start gap-2">
-            <TextField.Root size="1" className="flex-1" placeholder="tcp://0.0.0.0:11000" value={l} onChange={e => {
-              const listeners = [...(value.listeners ?? [])];
-              listeners[i] = e.target.value;
-              set({ listeners });
-            }} />
-            <Button variant="ghost" color="red" size="1" onClick={() => {
-              const listeners = (value.listeners ?? []).filter((_, j) => j !== i);
-              set({ listeners: listeners.length ? listeners : undefined });
-            }}>×</Button>
-          </div>
-        ))}
-        <Button variant="ghost" color="blue" size="1" onClick={() => set({ listeners: [...(value.listeners ?? []), ""] })}>{t("network.addListener")}</Button>
-      </fieldset>
+          <Text as="label" size="1" className="flex items-center gap-2">
+            <Checkbox checked={boolVal("dhcp")}
+              onCheckedChange={(c) => setBool("dhcp", c === true)} />
+            {t("network.dhcpAuto")}
+          </Text>
 
-      {/* Proxy Networks */}
-      <fieldset className={SECTION_CLASS}>
-        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">{t("network.subnetProxy")}</legend>
-        {(value.proxy_networks ?? []).map((pn, i) => (
-          <div key={i} className="flex items-start gap-2">
-            <TextField.Root size="1" className="flex-1" placeholder="CIDR" value={pn.cidr} onChange={e => {
-              const list = [...(value.proxy_networks ?? [])];
-              list[i] = { ...list[i], cidr: e.target.value };
-              set({ proxy_networks: list });
-            }} />
-            <Button variant="ghost" color="red" size="1" onClick={() => {
-              const list = (value.proxy_networks ?? []).filter((_, j) => j !== i);
-              set({ proxy_networks: list.length ? list : undefined });
-            }}>×</Button>
+          <div className={FIELD_CLASS}>
+            <label className={LABEL_CLASS}>{t("network.initialNodes")}</label>
+            <div className="flex flex-col gap-1">
+              {(value.peer_urls ?? []).map((url, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <TextField.Root size="1" className="flex-1" value={url}
+                    onChange={e => {
+                      const urls = [...(value.peer_urls ?? [])];
+                      urls[i] = e.target.value;
+                      set({ peer_urls: urls });
+                    }}
+                    placeholder="tcp://:11010" />
+                  <Button variant="ghost" color="red" size="1" onClick={() => {
+                    const urls = (value.peer_urls ?? []).filter((_, j) => j !== i);
+                    set({ peer_urls: urls.length ? urls : [] });
+                  }}>×</Button>
+                </div>
+              ))}
+              <Button variant="ghost" color="blue" size="1"
+                onClick={() => set({ peer_urls: [...(value.peer_urls ?? []), ""] })}>
+                <Plus size={14} className="mr-1" />{t("network.addInitialNode")}
+              </Button>
+            </div>
           </div>
-        ))}
-        <Button variant="ghost" color="blue" size="1" onClick={() => set({ proxy_networks: [...(value.proxy_networks ?? []), { cidr: "" }] })}>{t("network.addSubnetProxy")}</Button>
-      </fieldset>
 
-      {/* Routes & Exit Nodes */}
-      <fieldset className={SECTION_CLASS}>
-        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">{t("network.routesAndExit")}</legend>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={LABEL_CLASS}>{t("network.routes")}</label>
-            <TextField.Root size="1" value={(value.routes ?? []).join(", ")} onChange={e => set({ routes: e.target.value ? e.target.value.split(",").map(s => s.trim()) : undefined })} placeholder="用逗号分隔" />
-          </div>
-          <div>
-            <label className={LABEL_CLASS}>{t("network.exitNodes")}</label>
-            <TextField.Root size="1" value={(value.exit_nodes ?? []).join(", ")} onChange={e => set({ exit_nodes: e.target.value ? e.target.value.split(",").map(s => s.trim()) : undefined })} placeholder="用逗号分隔" />
+          <div className={FIELD_CLASS}>
+            <label className={LABEL_CLASS}>{t("settings.hostname")}</label>
+            <TextField.Root size="1" value={strVal("hostname")}
+              onChange={e => setStr("hostname", e.target.value)}
+              placeholder={t("network.hostnamePlaceholder")} />
           </div>
         </div>
-      </fieldset>
+      </div>
 
-      {/* Flags */}
-      <fieldset className={SECTION_CLASS}>
-        <legend className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)] px-1">{t("network.advancedFlags")}</legend>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-          {[
-            { key: "mtu", label: t("network.flagMtu"), type: "number" },
-            { key: "latency_first", label: t("network.flagLatencyFirst"), type: "checkbox" },
-            { key: "enable_kcp_proxy", label: t("network.flagEnableKcp"), type: "checkbox" },
-            { key: "enable_quic_proxy", label: t("network.flagEnableQuic"), type: "checkbox" },
-            { key: "encryption_algorithm", label: t("network.flagEncryptionAlgorithm"), type: "text" },
-            { key: "no_tun", label: t("network.flagNoTun"), type: "checkbox" },
-            { key: "disable_p2p", label: t("network.flagDisableP2P"), type: "checkbox" },
-            { key: "multi_thread", label: t("network.flagMultiThread"), type: "checkbox" },
-            { key: "bind_device", label: t("network.flagBindDevice"), type: "checkbox" },
-            { key: "default_protocol", label: t("network.flagDefaultProtocol"), type: "text" },
-            { key: "dev_name", label: t("network.flagDevName"), type: "text" },
-            { key: "enable_encryption", label: t("network.flagEnableEncryption"), type: "checkbox" },
-            { key: "enable_ipv6", label: t("network.flagEnableIPv6"), type: "checkbox" },
-          ].map(({ key, label, type }) => (
-            <div key={key}>
-              {type === "checkbox" ? (
-                <Text as="label" size="1" className="flex items-center gap-2">
-                  <Checkbox
-                    checked={!!(value.flags)?.[key]}
-                    onCheckedChange={(c) => setFlags({ [key]: c === true })}
-                  />
-                  {label}
-                </Text>
-              ) : (
-                <>
-                  <label className={LABEL_CLASS}>{label}</label>
-                  <TextField.Root size="1" type={type === "number" ? "number" : "text"}
-                    value={String((value.flags)?.[key] ?? "")}
-                    onChange={e => setFlags({ [key]: type === "number" ? Number(e.target.value) : e.target.value })} />
-                </>
+      {/* Panel 2: Advanced Settings (collapsible) */}
+      <CollapsibleSection title={t("network.advancedSettings")} defaultOpen={false}>
+        <div className="space-y-3">
+
+          {/* Listeners */}
+          <div className={FIELD_CLASS}>
+            <label className={LABEL_CLASS}>{t("network.listenersTitle")}</label>
+            {(value.listener_urls ?? []).map((l, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <TextField.Root size="1" className="flex-1" value={l}
+                  onChange={e => {
+                    const urls = [...(value.listener_urls ?? [])];
+                    urls[i] = e.target.value;
+                    set({ listener_urls: urls });
+                  }}
+                  placeholder="tcp://0.0.0.0:11010" />
+                <Button variant="ghost" color="red" size="1" onClick={() => {
+                  const urls = (value.listener_urls ?? []).filter((_, j) => j !== i);
+                  set({ listener_urls: urls.length ? urls : [] });
+                }}>×</Button>
+              </div>
+            ))}
+            <Button variant="ghost" color="blue" size="1"
+              onClick={() => set({ listener_urls: [...(value.listener_urls ?? []), ""] })}>
+              <Plus size={14} className="mr-1" />{t("network.addListener")}
+            </Button>
+          </div>
+
+          {/* Mapped Listeners */}
+          <div className={FIELD_CLASS}>
+            <label className={LABEL_CLASS}>{t("network.mappedListeners")}</label>
+            {(value.mapped_listeners ?? []).map((l, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <TextField.Root size="1" className="flex-1" value={l}
+                  onChange={e => {
+                    const urls = [...(value.mapped_listeners ?? [])];
+                    urls[i] = e.target.value;
+                    set({ mapped_listeners: urls });
+                  }} />
+                <Button variant="ghost" color="red" size="1" onClick={() => {
+                  const urls = (value.mapped_listeners ?? []).filter((_, j) => j !== i);
+                  set({ mapped_listeners: urls.length ? urls : [] });
+                }}>×</Button>
+              </div>
+            ))}
+            <Button variant="ghost" color="blue" size="1"
+              onClick={() => set({ mapped_listeners: [...(value.mapped_listeners ?? []), ""] })}>
+              <Plus size={14} className="mr-1" />{t("network.addMappedListener")}
+            </Button>
+          </div>
+
+          {/* Proxy CIDRs */}
+          <div className={FIELD_CLASS}>
+            <label className={LABEL_CLASS}>{t("network.subnetProxy")}</label>
+            {(value.proxy_cidrs ?? []).map((cidr, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <TextField.Root size="1" className="flex-1" value={cidr}
+                  onChange={e => {
+                    const list = [...(value.proxy_cidrs ?? [])];
+                    list[i] = e.target.value;
+                    set({ proxy_cidrs: list });
+                  }}
+                  placeholder="10.0.0.0/24" />
+                <Button variant="ghost" color="red" size="1" onClick={() => {
+                  const list = (value.proxy_cidrs ?? []).filter((_, j) => j !== i);
+                  set({ proxy_cidrs: list.length ? list : [] });
+                }}>×</Button>
+              </div>
+            ))}
+            <Button variant="ghost" color="blue" size="1"
+              onClick={() => set({ proxy_cidrs: [...(value.proxy_cidrs ?? []), ""] })}>
+              <Plus size={14} className="mr-1" />{t("network.addSubnetProxy")}
+            </Button>
+          </div>
+
+          {/* Routes & Exit Nodes */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className={FIELD_CLASS}>
+              <label className={LABEL_CLASS}>{t("network.routes")}</label>
+              <TextField.Root size="1"
+                value={(value.routes ?? []).join(", ")}
+                onChange={e => set({ routes: e.target.value ? e.target.value.split(",").map(s => s.trim()) : [] })}
+                placeholder={t("network.commaSeparated")} />
+            </div>
+            <div className={FIELD_CLASS}>
+              <label className={LABEL_CLASS}>{t("network.exitNodes")}</label>
+              <TextField.Root size="1"
+                value={(value.exit_nodes ?? []).join(", ")}
+                onChange={e => set({ exit_nodes: e.target.value ? e.target.value.split(",").map(s => s.trim()) : [] })}
+                placeholder={t("network.commaSeparated")} />
+            </div>
+          </div>
+
+          {/* Dev Name, MTU, Instance Recv Bps Limit */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className={FIELD_CLASS}>
+              <label className={LABEL_CLASS}>{t("network.devName")}</label>
+              <TextField.Root size="1" value={strVal("dev_name")}
+                onChange={e => setStr("dev_name", e.target.value)}
+                placeholder={t("network.devNamePlaceholder")} />
+            </div>
+            <div className={FIELD_CLASS}>
+              <label className={LABEL_CLASS}>{t("settings.mtu")}</label>
+              <TextField.Root size="1" type="number"
+                value={value.mtu != null ? String(value.mtu) : ""}
+                onChange={e => set({ mtu: e.target.value ? parseInt(e.target.value) : null })}
+                placeholder="1380" />
+            </div>
+            <div className={FIELD_CLASS}>
+              <label className={LABEL_CLASS}>{t("settings.instanceRecvBpsLimit")}</label>
+              <TextField.Root size="1" type="number"
+                value={value.instance_recv_bps_limit != null ? String(value.instance_recv_bps_limit) : ""}
+                onChange={e => set({ instance_recv_bps_limit: e.target.value ? parseInt(e.target.value) : null })}
+                placeholder={t("network.unlimited")} />
+            </div>
+          </div>
+
+          {/* Relay Network Whitelist */}
+          <div className={FIELD_CLASS}>
+            <label className={LABEL_CLASS}>{t("network.relayNetworkWhitelist")}</label>
+            <TextField.Root size="1"
+              value={(value.relay_network_whitelist ?? []).join(", ")}
+              onChange={e => set({ relay_network_whitelist: e.target.value ? e.target.value.split(",").map(s => s.trim()) : [] })}
+              placeholder={t("network.commaSeparated")} />
+          </div>
+
+          {/* SOCKS5 */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className={FIELD_CLASS}>
+              <Text as="label" size="1" className="flex items-center gap-2">
+                <Checkbox checked={boolVal("enable_socks5")}
+                  onCheckedChange={(c) => setBool("enable_socks5", c === true)} />
+                {t("network.socks5")}
+              </Text>
+              {boolVal("enable_socks5") && (
+                <TextField.Root size="1" type="number"
+                  value={String(value.socks5_port ?? 1080)}
+                  onChange={e => set({ socks5_port: parseInt(e.target.value) || 1080 })} />
               )}
             </div>
-          ))}
+          </div>
+
+          {/* Boolean flags grid */}
+          <div className="pt-2">
+            <Text size="1" weight="medium" className="mb-2 block">{t("network.flagsSwitch")}</Text>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 md:grid-cols-3">
+              {boolFlags.filter(f => f.key !== "enable_socks5" && f.key !== "enable_manual_routes" && f.key !== "enable_relay_network_whitelist").map(({ key, labelKey }) => (
+                <Text as="label" size="1" className="flex items-center gap-2" key={key}>
+                  <Checkbox checked={boolVal(key)}
+                    onCheckedChange={(c) => setBool(key, c === true)} />
+                  {t(labelKey)}
+                </Text>
+              ))}
+            </div>
+          </div>
         </div>
-      </fieldset>
+      </CollapsibleSection>
+
+      {/* Panel 3: Port Forwards (collapsible) */}
+      <CollapsibleSection title={t("network.portForwards")} defaultOpen={false}>
+        <div className="space-y-2">
+          {port_forwards.map((pf, i) => (
+            <div key={i} className="flex items-center gap-2 p-2 border border-[var(--color-border)] rounded">
+              <Select.Root value={pf.proto}
+                onValueChange={(v) => {
+                  const list = [...port_forwards];
+                  list[i] = { ...list[i], proto: v };
+                  setPortForwards(list);
+                }}>
+                <Select.Trigger style={{ width: 70 }} />
+                <Select.Content>
+                  {protoOptions.map(p => (
+                    <Select.Item key={p} value={p}>{p.toUpperCase()}</Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+              <TextField.Root size="1" className="flex-1" value={pf.bind_ip}
+                onChange={e => {
+                  const list = [...port_forwards];
+                  list[i] = { ...list[i], bind_ip: e.target.value };
+                  setPortForwards(list);
+                }}
+                placeholder={t("network.bindAddr")} />
+              <Text size="1" color="gray">:</Text>
+              <TextField.Root size="1" style={{ width: 70 }} type="number"
+                value={String(pf.bind_port)}
+                onChange={e => {
+                  const list = [...port_forwards];
+                  list[i] = { ...list[i], bind_port: parseInt(e.target.value) || 0 };
+                  setPortForwards(list);
+                }} />
+              <Text size="1" color="gray">→</Text>
+              <TextField.Root size="1" className="flex-1" value={pf.dst_ip}
+                onChange={e => {
+                  const list = [...port_forwards];
+                  list[i] = { ...list[i], dst_ip: e.target.value };
+                  setPortForwards(list);
+                }}
+                placeholder={t("network.dstAddr")} />
+              <Text size="1" color="gray">:</Text>
+              <TextField.Root size="1" style={{ width: 70 }} type="number"
+                value={String(pf.dst_port)}
+                onChange={e => {
+                  const list = [...port_forwards];
+                  list[i] = { ...list[i], dst_port: parseInt(e.target.value) || 0 };
+                  setPortForwards(list);
+                }} />
+              <Button variant="ghost" color="red" size="1"
+                onClick={() => {
+                  removeRow(i, port_forwards as any);
+                  setPortForwards([...port_forwards]);
+                }}>
+                <Trash2 size={14} />
+              </Button>
+            </div>
+          ))}
+          <Button variant="ghost" color="blue" size="1"
+            onClick={() => {
+              addRow(port_forwards as any);
+              setPortForwards([...port_forwards]);
+            }}>
+            <Plus size={14} className="mr-1" />{t("network.portForwardsAddBtn")}
+          </Button>
+        </div>
+      </CollapsibleSection>
+
+      {/* Panel 4: ACL (collapsible) */}
+      <CollapsibleSection title={t("network.acl")} defaultOpen={false}>
+        <div className="text-sm text-[var(--color-text-secondary)]">
+          {t("network.aclConfigureInTab")}
+        </div>
+      </CollapsibleSection>
     </div>
   );
 }

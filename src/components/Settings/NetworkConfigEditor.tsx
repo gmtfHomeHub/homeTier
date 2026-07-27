@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { Flex, Text, Button, TextField, Switch, ScrollArea, Card } from "@radix-ui/themes";
-import { Tabs } from "@radix-ui/themes";
 import { Network, Shield, Settings, HelpCircle, Check, X, Save, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSpace } from "../../hooks/useSpace";
 import { useToast } from "../../hooks/useToast";
-import { NetworkConfigDetails } from "../../types";
+import type { NetworkConfig } from "../../types/network";
+import { DEFAULT_NETWORK_CONFIG } from "../../types/network";
 import { updateLocalConfig } from "../../utils/api";
+import { CollapsibleSection } from "../Common/CollapsibleSection";
 
 interface NetworkConfigEditorProps {
   spaceId: string;
@@ -17,38 +18,23 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
   const { space, loading, error } = useSpace(spaceId);
   const { showToast } = useToast();
   
-  const [config, setConfig] = useState<NetworkConfigDetails>({
-    network_name: "",
-    network_secret: "",
-    dhcp: false,
-    peers: [],
-    listeners: [],
-    mapped_listeners: [],
-    proxy_networks: [],
-    routes: [],
-    exit_nodes: [],
-    port_forwards: [],
-    flags: {},
-  });
+  const [config, setConfig] = useState<NetworkConfig>(DEFAULT_NETWORK_CONFIG());
   
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
   useEffect(() => {
     if (space) {
-        setConfig({
-          network_name: space.network_name,
-          network_secret: space.network_secret,
-          dhcp: false,
-          peers: [],
-          listeners: [],
-          mapped_listeners: [],
-          proxy_networks: [],
-          routes: [],
-          exit_nodes: [],
-          port_forwards: [],
-          flags: {},
-        });
+      if (space.config_json) {
+        try {
+          const parsed = JSON.parse(space.config_json) as Partial<NetworkConfig>;
+          setConfig({ ...DEFAULT_NETWORK_CONFIG(), ...parsed, network_name: space.network_name, network_secret: space.network_secret });
+        } catch {
+          setConfig({ ...DEFAULT_NETWORK_CONFIG(), network_name: space.network_name, network_secret: space.network_secret });
+        }
+      } else {
+        setConfig({ ...DEFAULT_NETWORK_CONFIG(), network_name: space.network_name, network_secret: space.network_secret });
+      }
     }
   }, [space]);
 
@@ -75,21 +61,15 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
 
   const handleReset = () => {
     if (space) {
-      setConfig({
-        network_name: space.network_name,
-        network_secret: space.network_secret,
-        dhcp: false,
-        peers: [],
-        listeners: [],
-        mapped_listeners: [],
-        proxy_networks: [],
-        routes: [],
-        exit_nodes: [],
-        port_forwards: [],
-        flags: {},
-      });
+      setConfig({ ...DEFAULT_NETWORK_CONFIG(), network_name: space.network_name, network_secret: space.network_secret });
     }
   };
+
+  const setBool = (key: keyof NetworkConfig, val: boolean) =>
+    setConfig({ ...config, [key]: val } as any);
+
+  const setStr = (key: keyof NetworkConfig, val: string) =>
+    setConfig({ ...config, [key]: val } as any);
 
   if (loading) {
     return (
@@ -108,209 +88,168 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
     );
   }
 
+  const boolFlags: { key: keyof NetworkConfig; label: string }[] = [
+    { key: "latency_first", label: t("network.flagLatencyFirst") },
+    { key: "use_smoltcp", label: "use_smoltcp" },
+    { key: "disable_ipv6", label: "disable_ipv6" },
+    { key: "enable_kcp_proxy", label: "enable_kcp_proxy" },
+    { key: "disable_kcp_input", label: "disable_kcp_input" },
+    { key: "enable_quic_proxy", label: "enable_quic_proxy" },
+    { key: "disable_quic_input", label: "disable_quic_input" },
+    { key: "disable_p2p", label: "disable_p2p" },
+    { key: "p2p_only", label: "p2p_only" },
+    { key: "lazy_p2p", label: "lazy_p2p" },
+    { key: "bind_device", label: "bind_device" },
+    { key: "no_tun", label: "no_tun" },
+    { key: "enable_exit_node", label: "enable_exit_node" },
+    { key: "relay_all_peer_rpc", label: "relay_all_peer_rpc" },
+    { key: "need_p2p", label: "need_p2p" },
+    { key: "multi_thread", label: "multi_thread" },
+    { key: "proxy_forward_by_system", label: "proxy_forward_by_system" },
+    { key: "disable_encryption", label: "disable_encryption" },
+    { key: "disable_tcp_hole_punching", label: "disable_tcp_hole_punching" },
+    { key: "disable_udp_hole_punching", label: "disable_udp_hole_punching" },
+    { key: "disable_upnp", label: "disable_upnp" },
+    { key: "enable_udp_broadcast_relay", label: "enable_udp_broadcast_relay" },
+    { key: "disable_sym_hole_punching", label: "disable_sym_hole_punching" },
+    { key: "enable_magic_dns", label: "enable_magic_dns" },
+    { key: "enable_private_mode", label: "enable_private_mode" },
+  ];
+
   return (
     <Card>
       <div className="flex items-center gap-2 p-4 border-b border-[var(--color-border)]">
         <Text size="2" weight="bold">{t("settings.localConfig")}</Text>
       </div>
-      <div className="p-4">
+      <div className="p-4 space-y-4">
         {showSuccess && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
             <Text size="1" weight="bold" className="text-green-800">{t("settings.configSaved")}</Text>
           </div>
         )}
 
-        <Tabs.Root defaultValue="basic">
-          <Tabs.List>
-            <Tabs.Trigger value="basic">{t("settings.basic")}</Tabs.Trigger>
-            <Tabs.Trigger value="advanced">{t("settings.advanced")}</Tabs.Trigger>
-          </Tabs.List>
-
-          <Tabs.Content value="basic" className="space-y-4">
-            <Flex direction="column" gap="4">
-              {/* 网络名称 */}
-              <Flex direction="column" gap="2">
-                <label className="text-sm font-medium flex items-center gap-2">
-                  <Network size={16} />
-                  {t("settings.networkName")}
-                </label>
-                <TextField.Root
-                  value={config.network_name}
-                  onChange={(e) => setConfig({ ...config, network_name: e.target.value })}
-                  placeholder={t("settings.networkNamePlaceholder")}
-                />
+        {/* Basic Settings */}
+        <div className="border border-[var(--color-border)] rounded-lg">
+          <div className="flex items-center gap-2 p-4 border-b border-[var(--color-border)]">
+            <Network size={16} />
+            <Text size="2" weight="medium">{t("settings.basic")}</Text>
+          </div>
+          <div className="p-4 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <Flex direction="column" gap="1">
+                <label className="text-xs font-medium">{t("settings.networkName")}</label>
+                <TextField.Root value={config.network_name}
+                  onChange={(e) => setStr("network_name", e.target.value)} />
               </Flex>
-
-              {/* 网络密钥 */}
-              <Flex direction="column" gap="2">
-                <label className="text-sm font-medium flex items-center gap-2">
-                  <Shield size={16} />
-                  {t("settings.networkSecret")}
-                </label>
-                <TextField.Root
-                  type="password"
-                  value={config.network_secret}
-                  onChange={(e) => setConfig({ ...config, network_secret: e.target.value })}
-                  placeholder={t("settings.networkSecretPlaceholder")}
-                />
+              <Flex direction="column" gap="1">
+                <label className="text-xs font-medium">{t("settings.networkSecret")}</label>
+                <TextField.Root type="password" value={config.network_secret}
+                  onChange={(e) => setStr("network_secret", e.target.value)} />
               </Flex>
-
-              {/* DHCP */}
-              <Flex align="center" gap="2">
-                <Switch
-                  checked={config.dhcp}
-                  onCheckedChange={(checked) => setConfig({ ...config, dhcp: checked })}
-                />
-                <label className="text-sm">{t("settings.dhcp")}</label>
-              </Flex>
-
-              {/* 操作按钮 */}
-              <Flex gap="2" justify="end">
-                <Button variant="outline" onClick={handleReset}>
-                  <RefreshCw size={16} className="mr-2" />
-                  {t("settings.reset")}
-                </Button>
-                <Button onClick={handleSave} disabled={isSaving}>
-                  {isSaving ? (
-                    <RefreshCw size={16} className="animate-spin mr-2" />
-                  ) : (
-                    <Save size={16} className="mr-2" />
-                  )}
-                  {t("settings.save")}
-                </Button>
-              </Flex>
+            </div>
+            <Flex direction="column" gap="1">
+              <label className="text-xs font-medium">{t("settings.virtualIpv4")}</label>
+              <TextField.Root value={config.virtual_ipv4}
+                onChange={(e) => setStr("virtual_ipv4", e.target.value)} />
             </Flex>
-          </Tabs.Content>
-
-          <Tabs.Content value="advanced" className="space-y-4">
-            <ScrollArea className="h-96">
-              <Flex direction="column" gap="4">
-                {/* 高级配置项 */}
-                <Flex direction="column" gap="2">
-                  <label className="text-sm font-medium">{t("settings.instanceName")}</label>
-                  <TextField.Root
-                    value={config.instance_name || ""}
-                    onChange={(e) => setConfig({ ...config, instance_name: e.target.value })}
-                    placeholder={t("settings.instanceNamePlaceholder")}
-                  />
-                </Flex>
-
-                <Flex direction="column" gap="2">
-                  <label className="text-sm font-medium">{t("settings.hostname")}</label>
-                  <TextField.Root
-                    value={config.hostname || ""}
-                    onChange={(e) => setConfig({ ...config, hostname: e.target.value })}
-                    placeholder={t("settings.hostnamePlaceholder")}
-                  />
-                </Flex>
-
-                <Flex direction="column" gap="2">
-                  <label className="text-sm font-medium">{t("settings.ipv4")}</label>
-                  <TextField.Root
-                    value={config.ipv4 || ""}
-                    onChange={(e) => setConfig({ ...config, ipv4: e.target.value })}
-                    placeholder="192.168.1.100"
-                  />
-                </Flex>
-
-                <Flex direction="column" gap="2">
-                  <label className="text-sm font-medium">{t("settings.ipv6")}</label>
-                  <TextField.Root
-                    value={config.ipv6 || ""}
-                    onChange={(e) => setConfig({ ...config, ipv6: e.target.value })}
-                    placeholder="fd00::1"
-                  />
-                </Flex>
-
-                <Flex direction="column" gap="2">
-                  <label className="text-sm font-medium">{t("settings.ipv6PublicAddrProvider")}</label>
-                  <Switch
-                    checked={config.ipv6_public_addr_provider || false}
-                    onCheckedChange={(checked) => setConfig({ ...config, ipv6_public_addr_provider: checked })}
-                  />
-                </Flex>
-
-                <Flex direction="column" gap="2">
-                  <label className="text-sm font-medium">{t("settings.ipv6PublicAddrAuto")}</label>
-                  <Switch
-                    checked={config.ipv6_public_addr_auto || false}
-                    onCheckedChange={(checked) => setConfig({ ...config, ipv6_public_addr_auto: checked })}
-                  />
-                </Flex>
-
-                <Flex direction="column" gap="2">
-                  <label className="text-sm font-medium">{t("settings.ipv6PublicAddrPrefix")}</label>
-                  <TextField.Root
-                    value={config.ipv6_public_addr_prefix || ""}
-                    onChange={(e) => setConfig({ ...config, ipv6_public_addr_prefix: e.target.value })}
-                    placeholder="fd00::/64"
-                  />
-                </Flex>
-
-                <Flex direction="column" gap="2">
-                  <label className="text-sm font-medium">{t("settings.peers")}</label>
-                  <TextField.Root
-                    value={config.peers.map(p => p.uri).join(", ")}
-                    onChange={(e) => {
-                      const uris = e.target.value.split(",").map(s => s.trim()).filter(s => s);
-                      const peers = uris.map(uri => ({ uri, peer_public_key: "" }));
-                      setConfig({ ...config, peers });
-                    }}
-                    placeholder="tcp://peer1.example.com:10000, tcp://peer2.example.com:10000"
-                  />
-                </Flex>
-
-                <Flex direction="column" gap="2">
-                  <label className="text-sm font-medium">{t("settings.listeners")}</label>
-                  <TextField.Root
-                    value={config.listeners.join(", ")}
-                    onChange={(e) => {
-                      const listeners = e.target.value.split(",").map(s => s.trim()).filter(s => s);
-                      setConfig({ ...config, listeners });
-                    }}
-                    placeholder="tcp://0.0.0.0:10000, udp://0.0.0.0:10000"
-                  />
-                </Flex>
-
-                <Flex direction="column" gap="2">
-                  <label className="text-sm font-medium">{t("settings.flags")}</label>
-                  <TextField.Root
-                    value={Object.entries(config.flags)
-                      .map(([k, v]) => `${k}=${v}`)
-                      .join(", ")}
-                    onChange={(e) => {
-                      const flags: Record<string, string> = {};
-                      const flagEntries = e.target.value.split(",").map(s => s.trim()).filter(s => s);
-                      for (const entry of flagEntries) {
-                        const [key, value] = entry.split("=");
-                        if (key && value) {
-                          flags[key.trim()] = value.trim();
-                        }
-                      }
-                      setConfig({ ...config, flags });
-                    }}
-                    placeholder="enable_kcp_proxy=true, mtu=1400"
-                  />
-                </Flex>
-              </Flex>
-            </ScrollArea>
-
-            <Flex gap="2" justify="end" mt="4">
-              <Button variant="outline" onClick={handleReset}>
-                <RefreshCw size={16} className="mr-2" />
-                {t("settings.reset")}
-              </Button>
-              <Button onClick={handleSave} disabled={isSaving}>
-                {isSaving ? (
-                  <RefreshCw size={16} className="animate-spin mr-2" />
-                ) : (
-                  <Save size={16} className="mr-2" />
-                )}
-                {t("settings.save")}
-              </Button>
+            <Flex align="center" gap="2">
+              <Switch checked={config.dhcp}
+                onCheckedChange={(c) => setBool("dhcp", c)} />
+              <label className="text-sm">{t("settings.dhcp")}</label>
             </Flex>
-          </Tabs.Content>
-        </Tabs.Root>
+            <Flex direction="column" gap="1">
+              <label className="text-xs font-medium">{t("settings.initialNodes")}</label>
+              <TextField.Root value={config.peer_urls.join(", ")}
+                onChange={(e) => setConfig({ ...config, peer_urls: e.target.value.split(",").map(s => s.trim()).filter(s => s) })}
+                placeholder="tcp://:11010" />
+            </Flex>
+          </div>
+        </div>
+
+        {/* Advanced Settings */}
+        <CollapsibleSection title={t("settings.advanced")} defaultOpen={false}>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <Flex direction="column" gap="1">
+                <label className="text-xs font-medium">{t("settings.instanceName")}</label>
+                <TextField.Root value={config.instance_id}
+                  onChange={(e) => setStr("instance_id", e.target.value)} />
+              </Flex>
+              <Flex direction="column" gap="1">
+                <label className="text-xs font-medium">{t("settings.hostname")}</label>
+                <TextField.Root value={config.hostname ?? ""}
+                  onChange={(e) => setStr("hostname", e.target.value)} />
+              </Flex>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Flex direction="column" gap="1">
+                <label className="text-xs font-medium">{t("settings.listeners")}</label>
+                <TextField.Root value={config.listener_urls.join(", ")}
+                  onChange={(e) => setConfig({ ...config, listener_urls: e.target.value.split(",").map(s => s.trim()).filter(s => s) })} />
+              </Flex>
+              <Flex direction="column" gap="1">
+                <label className="text-xs font-medium">{t("settings.proxyCidrs")}</label>
+                <TextField.Root value={config.proxy_cidrs.join(", ")}
+                  onChange={(e) => setConfig({ ...config, proxy_cidrs: e.target.value.split(",").map(s => s.trim()).filter(s => s) })} />
+              </Flex>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Flex direction="column" gap="1">
+                <label className="text-xs font-medium">{t("settings.mtu")}</label>
+                <TextField.Root type="number" value={config.mtu != null ? String(config.mtu) : ""}
+                  onChange={(e) => setConfig({ ...config, mtu: e.target.value ? parseInt(e.target.value) : null })} />
+              </Flex>
+              <Flex direction="column" gap="1">
+                <label className="text-xs font-medium">{t("settings.socks5")}</label>
+                <TextField.Root type="number" value={String(config.socks5_port)}
+                  onChange={(e) => setConfig({ ...config, socks5_port: parseInt(e.target.value) || 1080 })} />
+              </Flex>
+            </div>
+            <div>
+              <Text size="1" weight="medium" className="mb-2 block">{t("settings.flags")}</Text>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {boolFlags.map(({ key, label }) => (
+                  <label key={key as string} className="flex items-center gap-2 text-sm">
+                    <Switch checked={(config as any)[key] === true}
+                      onCheckedChange={(c) => setBool(key, c)} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        </CollapsibleSection>
+
+        {/* Port Forwards */}
+        <CollapsibleSection title={t("settings.portForwards")} defaultOpen={false}>
+          <div className="text-sm text-[var(--color-text-secondary)]">
+            {config.port_forwards.length === 0 ? t("settings.noPortForwards") : (
+              <div className="space-y-2">
+                {config.port_forwards.map((pf, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span className="font-mono">{pf.proto}://{pf.bind_ip}:{pf.bind_port} → {pf.dst_ip}:{pf.dst_port}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </CollapsibleSection>
+
+        {/* Save/Reset */}
+        <Flex gap="2" justify="end" pt="2">
+          <Button variant="outline" onClick={handleReset}>
+            <RefreshCw size={16} className="mr-2" />
+            {t("settings.reset")}
+          </Button>
+          <Button onClick={handleSave} disabled={isSaving}>
+            {isSaving ? (
+              <RefreshCw size={16} className="animate-spin mr-2" />
+            ) : (
+              <Save size={16} className="mr-2" />
+            )}
+            {t("settings.save")}
+          </Button>
+        </Flex>
       </div>
     </Card>
   );

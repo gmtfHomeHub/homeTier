@@ -8,7 +8,6 @@ import type {
   TransferProgress,
   NetworkStatus,
   ShareInfo,
-  NetworkConfigDetails,
   LogEntry,
   SpaceApp,
   AuthResult,
@@ -18,6 +17,7 @@ import type {
   AclRule,
   PortForwardRule,
 } from "../types";
+import type { NetworkConfig } from "../types/network";
 
 // === Space Commands ===
 
@@ -79,11 +79,11 @@ export async function getNetworkStatus(spaceId: string): Promise<NetworkStatus> 
   return invoke("get_network_status", { spaceId });
 }
 
-export async function updateGroupConfig(spaceId: string, config: NetworkConfigDetails): Promise<void> {
+export async function updateGroupConfig(spaceId: string, config: NetworkConfig): Promise<void> {
   return invoke("update_group_config", { spaceId, config: JSON.stringify(config) });
 }
 
-export async function updateLocalConfig(spaceId: string, config: NetworkConfigDetails): Promise<void> {
+export async function updateLocalConfig(spaceId: string, config: NetworkConfig): Promise<void> {
   return invoke("update_local_config", { spaceId, config: JSON.stringify(config) });
 }
 
