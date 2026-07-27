@@ -58,13 +58,13 @@ impl EasyTierProcess {
             });
         }
 
-        crate::log_info!(format!("[EasyTierProcess] 进程已启动, pid={}, rpc_port={}", child.id(), rpc_arg));
+        crate::log_info!(format!("[EasyTierProcess] 进程已启动, pid={:?}, rpc_port={}", child.id(), rpc_arg));
         Ok(Self { child: Mutex::new(Some(child)), config_path: config.clone(), binary_path: binary.clone(), rpc_port: Some(rpc_arg) })
     }
 
     /// 获取进程 ID
     pub fn pid(&self) -> Option<u32> {
-        self.child.lock().ok()?.as_ref().map(|c| c.id())
+        self.child.lock().ok().and_then(|guard| guard.as_ref().and_then(|c| c.id()))
     }
 
     /// 获取 RPC 端口
@@ -92,14 +92,15 @@ impl EasyTierProcess {
 
     /// 停止进程
     pub async fn stop(&self) -> Result<(), String> {
-        let mut guard = self.child.lock().map_err(|e| format!("锁获取失败: {}", e))?;
-        if let Some(ref mut child) = *guard {
-            crate::log_info!(format!("[EasyTierProcess] 停止进程, pid={}", child.id()));
-            child.kill().map_err(|e| format!("终止进程失败: {}", e))?;
+        let mut child_opt = self.child.lock().map_err(|e| format!("锁获取失败: {}", e))?
+            .take();
+        if let Some(ref mut child) = child_opt {
+            crate::log_info!(format!("[EasyTierProcess] 停止进程, pid={:?}", child.id()));
+            child.kill().await.map_err(|e| format!("终止进程失败: {}", e))?;
             child.wait().await.map_err(|e| format!("等待进程退出失败: {}", e))?;
-            *guard = None;
             crate::log_info!("[EasyTierProcess] 进程已停止");
         }
+        *self.child.lock().map_err(|e| format!("锁获取失败: {}", e))? = child_opt;
         Ok(())
     }
 
@@ -115,7 +116,7 @@ impl EasyTierProcess {
             .spawn()
             .map_err(|e| format!("重启 easytier-core 失败: {}", e))?;
 
-        crate::log_info!(format!("[EasyTierProcess] 进程已重启, pid={}", new_child.id()));
+        crate::log_info!(format!("[EasyTierProcess] 进程已重启, pid={:?}", new_child.id()));
         *self.child.lock().map_err(|e| format!("锁获取失败: {}", e))? = Some(new_child);
         self.config_path = config.clone();
         Ok(())
