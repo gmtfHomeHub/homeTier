@@ -1,15 +1,37 @@
 use crate::log::{self, LogLevel};
 
 #[tauri::command]
-pub fn get_logs(level: Option<String>) -> Vec<log::LogEntry> {
-    let level_filter = level.and_then(|l| match l.to_lowercase().as_str() {
+pub async fn get_logs(level: Option<String>) -> Vec<log::LogEntry> {
+    let level_filter = level.as_deref().and_then(|l| match l.to_lowercase().as_str() {
         "debug" => Some(LogLevel::Debug),
         "info" => Some(LogLevel::Info),
         "warning" => Some(LogLevel::Warning),
         "error" => Some(LogLevel::Error),
         _ => None,
     });
-    log::get_all(level_filter)
+
+    let mut logs = log::get_all(level_filter);
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let client = crate::daemon::client::IpcClient::default_port();
+        if client.ping().await {
+            if let Ok(crate::daemon::ipc::IpcResponse::Ok { data }) =
+                client.get_daemon_logs(level.as_deref()).await
+            {
+                if let Some(json) = data {
+                    if let Ok(mut daemon_logs) =
+                        serde_json::from_value::<Vec<log::LogEntry>>(json)
+                    {
+                        logs.append(&mut daemon_logs);
+                        logs.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+                    }
+                }
+            }
+        }
+    }
+
+    logs
 }
 
 #[tauri::command]

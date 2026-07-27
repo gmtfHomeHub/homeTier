@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use std::sync::Mutex;
 
@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use windows::Win32::System::Diagnostics::Debug::OutputDebugStringA;
 
 /// 日志级别
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum LogLevel {
     Debug,
@@ -16,7 +16,7 @@ pub enum LogLevel {
 }
 
 /// 单条日志条目
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
     pub timestamp: String,
     pub level: LogLevel,
