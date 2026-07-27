@@ -546,8 +546,10 @@ Self {
         // 从 DB 加载组配置 (config_json) 作为基础配置
         let base_config = match self.db.get_space_config(&space_id.to_string()) {
             Ok(Some(json)) => {
+                crate::log_info!(format!("get_effective_config: 加载 config_json: {}", json), &space_id.to_string());
                 match NetworkConfig::from_config_json(&json) {
                     Ok(mut cfg) => {
+                        crate::log_info!(format!("get_effective_config: config_json 解析成功: virtual_ipv4={}, network_name={}, instance_id={}", cfg.virtual_ipv4, cfg.network_name, cfg.instance_id), &space_id.to_string());
                         // 从 config_json 解析成功，补充 identity 字段（防止 config_json 中缺失）
                         if cfg.network_name.is_empty() {
                             cfg.network_name = space.network_name.clone();
