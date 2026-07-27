@@ -54,6 +54,9 @@ impl Daemon {
     pub async fn run(&self) -> Result<(), String> {
         crate::log_info!("[Daemon] 守护进程启动");
 
+        // 初始化 TUN 检测（每个 daemon 进程按自身权限初始化）
+        crate::platform::init_tun_cap_check();
+
         // 保存状态到文件（供 GUI 检测）
         ipc::save_daemon_state(std::process::id(), self.rpc_port)?;
 
