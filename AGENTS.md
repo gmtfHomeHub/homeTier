@@ -14,7 +14,9 @@
 | `pnpm build` | `tsc --noEmit && vite build` (typecheck then bundle) |
 | `pnpm tauri dev` | Launch Tauri dev (native window + Vite) |
 | `pnpm tauri build` | Production build (frontend + Rust, platform bundle) |
-| `cargo build` | Backend-only build (from `src-tauri/`) |
+| `cargo check` | Backend type-check only (from `src-tauri/`) — preferred over `cargo build` |
+| `cargo build` | Full backend compilation (from `src-tauri/`) |
+| `codegraph index` | Run after each commit to keep CodeGraph index up to date |
 
 Vite ignores `**/src-tauri/**` — no hot-reload on Rust changes.
 
