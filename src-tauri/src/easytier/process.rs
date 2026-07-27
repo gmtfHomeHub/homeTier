@@ -1,6 +1,7 @@
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::Stdio;
 use std::sync::Mutex;
+use tokio::process::{Child, Command};
 
 /// EasyTier 子进程管理器
 pub struct EasyTierProcess {
@@ -13,7 +14,7 @@ pub struct EasyTierProcess {
 
 impl EasyTierProcess {
     /// 启动 easytier-core 子进程
-    pub fn start(binary: &PathBuf, config: &PathBuf, rpc_port: Option<u16>) -> Result<Self, String> {
+    pub async fn start(binary: &PathBuf, config: &PathBuf, rpc_port: Option<u16>) -> Result<Self, String> {
         let rpc_arg = rpc_port.unwrap_or(15888);
         crate::log_info!(format!("[EasyTierProcess] 启动: {} --config-file {} --rpc-portal {}", binary.display(), config.display(), rpc_arg));
 
@@ -90,12 +91,12 @@ impl EasyTierProcess {
     }
 
     /// 停止进程
-    pub fn stop(&self) -> Result<(), String> {
+    pub async fn stop(&self) -> Result<(), String> {
         let mut guard = self.child.lock().map_err(|e| format!("锁获取失败: {}", e))?;
         if let Some(ref mut child) = *guard {
             crate::log_info!(format!("[EasyTierProcess] 停止进程, pid={}", child.id()));
             child.kill().map_err(|e| format!("终止进程失败: {}", e))?;
-            child.wait().map_err(|e| format!("等待进程退出失败: {}", e))?;
+            child.wait().await.map_err(|e| format!("等待进程退出失败: {}", e))?;
             *guard = None;
             crate::log_info!("[EasyTierProcess] 进程已停止");
         }
@@ -103,8 +104,8 @@ impl EasyTierProcess {
     }
 
     /// 重启进程
-    pub fn restart(&mut self, new_config: Option<&PathBuf>) -> Result<(), String> {
-        self.stop()?;
+    pub async fn restart(&mut self, new_config: Option<&PathBuf>) -> Result<(), String> {
+        self.stop().await?;
         let config = new_config.unwrap_or(&self.config_path);
         let new_child = Command::new(&self.binary_path)
             .arg("--config-file")
@@ -132,8 +133,10 @@ impl EasyTierProcess {
 
 impl Drop for EasyTierProcess {
     fn drop(&mut self) {
-        if self.child.lock().ok().is_some_and(|g| g.is_some()) {
-            let _ = self.stop();
+        if let Ok(mut guard) = self.child.lock() {
+            if let Some(ref mut child) = *guard {
+                let _ = child.kill();
+            }
         }
     }
 }

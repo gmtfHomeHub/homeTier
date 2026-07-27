@@ -90,7 +90,7 @@ impl EasyTierManager {
 
         // 启动子进程（传入 RPC 端口）
         crate::log_info!(format!("EasyTierManager.start_network: 启动 easytier-core 进程, binary={}, config={}, rpc_port={}", binary.display(), config_path.display(), rpc_port));
-        let process = match EasyTierProcess::start(&binary, &config_path, Some(rpc_port)) {
+        let process = match EasyTierProcess::start(&binary, &config_path, Some(rpc_port)).await {
             Ok(p) => {
                 crate::log_info!(format!("EasyTierManager.start_network: 进程启动成功, pid={:?}", p.pid()));
                 p
@@ -120,7 +120,7 @@ impl EasyTierManager {
         crate::log_info!(format!("EasyTierManager: 停止网络实例, id={}", instance_id));
         if let Some((_, mut process)) = self.processes.remove(instance_id) {
             let config = self.read_config(instance_id);
-            process.stop()?;
+            process.stop().await?;
             crate::log_info!(format!("EasyTierManager: 网络实例已停止, id={}", instance_id));
             Ok(config)
         } else {
@@ -529,7 +529,7 @@ impl EasyTierManager {
 
         // 重启子进程
         if let Some(mut process) = self.processes.get_mut(instance_id) {
-            process.restart(Some(&new_config_path))?;
+            process.restart(Some(&new_config_path)).await?;
             crate::log_info!(format!("EasyTierManager: 配置已更新并重启, id={}", instance_id));
         }
 
@@ -627,7 +627,7 @@ impl EasyTierManager {
                 if let Some(config_path) = self.read_config_path(&space_id) {
                     if let Some(binary) = self.downloader.current_binary_path() {
                         if let Some(mut proc) = self.processes.get_mut(&space_id) {
-                            proc.restart(Some(&config_path)).ok();
+                            proc.restart(Some(&config_path)).await.ok();
                         }
                     }
                 }
