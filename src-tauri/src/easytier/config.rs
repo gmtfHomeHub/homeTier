@@ -108,6 +108,7 @@ pub struct NetworkConfig {
 
 /// Port forward — matches frontend PortForwardConfig
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PortForwardConfig {
     pub bind_ip: String,
     pub bind_port: u16,
@@ -115,6 +116,7 @@ pub struct PortForwardConfig {
     pub dst_port: u16,
     pub proto: String,
 }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PeerConfig {
@@ -224,8 +226,18 @@ impl NetworkConfig {
         }
         let value: serde_json::Value = serde_json::from_str(trimmed)
             .map_err(|e| format!("config_json is not valid JSON: {}", e))?;
-        serde_json::from_value(value)
-            .map_err(|e| format!("config_json -> NetworkConfig failed: {}", e))
+        let keys: Vec<&str> = match &value {
+            serde_json::Value::Object(m) => m.keys().map(|k| k.as_str()).collect(),
+            _ => vec![],
+        };
+        serde_json::from_value(value).map_err(|e| {
+            format!(
+                "config_json -> NetworkConfig failed: {} (keys: {:?}, json_preview: {}..)",
+                e,
+                keys,
+                &trimmed[..trimmed.len().min(200)]
+            )
+        })
     }
 
     pub fn to_easytier_config(&self) -> Result<easytier::common::config::TomlConfigLoader, String> {
