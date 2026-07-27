@@ -108,12 +108,16 @@ pub struct NetworkConfig {
 
 /// Port forward — matches frontend PortForwardConfig
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
 pub struct PortForwardConfig {
+    #[serde(default)]
     pub bind_ip: String,
+    #[serde(default)]
     pub bind_port: u16,
+    #[serde(default)]
     pub dst_ip: String,
+    #[serde(default)]
     pub dst_port: u16,
+    #[serde(default)]
     pub proto: String,
 }
 
@@ -226,8 +230,8 @@ impl NetworkConfig {
         }
         let value: serde_json::Value = serde_json::from_str(trimmed)
             .map_err(|e| format!("config_json is not valid JSON: {}", e))?;
-        let keys: Vec<&str> = match &value {
-            serde_json::Value::Object(m) => m.keys().map(|k| k.as_str()).collect(),
+        let keys: Vec<String> = match &value {
+            serde_json::Value::Object(m) => m.keys().cloned().collect(),
             _ => vec![],
         };
         serde_json::from_value(value).map_err(|e| {
