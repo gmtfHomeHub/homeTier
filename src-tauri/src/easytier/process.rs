@@ -29,11 +29,33 @@ impl EasyTierProcess {
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
 
-        let child = cmd.spawn().map_err(|e| {
+        let mut child = cmd.spawn().map_err(|e| {
             let msg = format!("启动 easytier-core 失败: {}", e);
             crate::log_error!(&msg);
             msg
         })?;
+
+        // 异步读取 stdout/stderr
+        if let Some(stdout) = child.stdout.take() {
+            tokio::spawn(async move {
+                use tokio::io::AsyncBufReadExt;
+                let reader = tokio::io::BufReader::new(stdout);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    crate::log_info!(format!("[easytier stdout] {}", line));
+                }
+            });
+        }
+        if let Some(stderr) = child.stderr.take() {
+            tokio::spawn(async move {
+                use tokio::io::AsyncBufReadExt;
+                let reader = tokio::io::BufReader::new(stderr);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    crate::log_info!(format!("[easytier stderr] {}", line));
+                }
+            });
+        }
 
         crate::log_info!(format!("[EasyTierProcess] 进程已启动, pid={}, rpc_port={}", child.id(), rpc_arg));
         Ok(Self { child: Mutex::new(Some(child)), config_path: config.clone(), binary_path: binary.clone(), rpc_port: Some(rpc_arg) })

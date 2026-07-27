@@ -255,6 +255,7 @@ impl Daemon {
                     Ok(id) => {
                         match easytier.get_peers(&id).await {
                             Ok(peers) => {
+                                crate::log_info!(format!("[Daemon] ListPeers 结果: peer 数量={}", peers.len()));
                                 match serde_json::to_value(&peers) {
                                     Ok(v) => ipc::IpcResponse::Ok { data: Some(v) },
                                     Err(e) => ipc::IpcResponse::Error { message: format!("序列化 peer 列表失败: {}", e) },

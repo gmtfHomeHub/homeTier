@@ -351,7 +351,9 @@ Self {
                     let space_id = *space_id;
                     let manager = self.clone();
                     async move {
-                        let _ = manager.discover_and_connect_peers(&space_id).await;
+                        if let Err(e) = manager.discover_and_connect_peers(&space_id).await {
+                            crate::log_error!(format!("discover_and_connect_peers 失败: {}", e));
+                        }
                     }
                 });
                 Ok(())
@@ -523,18 +525,30 @@ Self {
         }
     }
 
-    /// 获取有效配置（合并本地配置和组配置）
+    /// 获取有效配置（合并组配置和本地配置）
     pub async fn get_effective_config(&self, space_id: &Uuid) -> Result<NetworkConfig, String> {
         let spaces = self.spaces.read().await;
         let space = spaces.iter().find(|s| &s.id == space_id)
             .ok_or_else(|| "Space not found".to_string())?;
 
-        // 获取组配置（从 space 对象）
-        let mut config = NetworkConfig {
-            network_name: space.network_name.clone(),
-            network_secret: space.network_secret.clone(),
-            ..Default::default()
+        // 从 DB 加载组配置 (config_json) 作为基础配置
+        let base_config = match self.db.get_space_config(&space_id.to_string()) {
+            Ok(Some(json)) => {
+                serde_json::from_str::<NetworkConfig>(&json)
+                    .map_err(|e| format!("解析空间配置失败: {}", e))?
+            }
+            Ok(None) => {
+                NetworkConfig {
+                    network_name: space.network_name.clone(),
+                    network_secret: space.network_secret.clone(),
+                    dhcp: true,
+                    ..Default::default()
+                }
+            }
+            Err(e) => return Err(format!("读取空间配置失败: {}", e)),
         };
+
+        let mut config = base_config;
 
         // 获取本地配置（优先使用内存缓存，未命中则从 DB 加载）
         let local_config = {

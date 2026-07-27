@@ -177,7 +177,7 @@ impl EasyTierManager {
         std::fs::write(&config_path, &config_content)
             .map_err(|e| format!("写入配置文件失败: {}", e))?;
 
-        crate::log_debug!(format!("EasyTierManager: 配置文件已生成: {}", config_path.display()));
+        crate::log_info!(format!("EasyTierManager: 配置文件已生成, 内容:\n{}", config_content));
         Ok(config_path)
     }
 
@@ -375,7 +375,7 @@ impl EasyTierManager {
             .ok_or_else(|| "查询 peer 列表失败".to_string())
     }
 
-    /// 通过 RPC 查询 peer 列表
+    /// 通过 RPC 查询 peer 列表（含重试）
     async fn query_peer_list(&self, instance_id: &Uuid, rpc_port: u16) -> Option<Vec<crate::easytier::launcher::PeerInfo>> {
         use easytier::proto::rpc_impl::standalone::StandAloneClient;
         use easytier::proto::rpc_types::controller::BaseController;
@@ -385,65 +385,88 @@ impl EasyTierManager {
         let addr = format!("tcp://127.0.0.1:{}", rpc_port);
         let url: url::Url = addr.parse().ok()?;
 
-        let connector = TcpTunnelConnector::new(url);
-        let mut client = StandAloneClient::new(connector);
+        let max_retries = 3;
+        for attempt in 1..=max_retries {
+            let connector = TcpTunnelConnector::new(url.clone());
+            let mut client = StandAloneClient::new(connector);
 
-        let ctrl = BaseController::default();
-        let peer_service = client.scoped_client::<PeerManageRpcClientFactory<BaseController>>("".to_string()).await.ok()?;
+            let ctrl = BaseController::default();
+            let peer_service = client.scoped_client::<PeerManageRpcClientFactory<BaseController>>("".to_string()).await;
 
-        match peer_service.list_peer(ctrl, easytier::proto::api::instance::ListPeerRequest::default()).await {
-            Ok(resp) => {
-                let mut peer_infos = Vec::new();
+            if let Ok(peer_service) = peer_service {
+                let result = peer_service.list_peer(ctrl, easytier::proto::api::instance::ListPeerRequest::default()).await;
+                match result {
+                    Ok(resp) => {
+                        let mut peer_infos = Vec::new();
 
-                for peer in resp.peer_infos {
-                    // 从连接中聚合统计信息
-                    let mut total_rx = 0u64;
-                    let mut total_tx = 0u64;
-                    let mut total_latency_us = 0u64;
-                    let mut total_loss_rate = 0.0f32;
-                    let mut conn_count = 0u32;
-                    let mut tunnel_proto = None;
+                        for peer in resp.peer_infos {
+                            let mut total_rx = 0u64;
+                            let mut total_tx = 0u64;
+                            let mut total_latency_us = 0u64;
+                            let mut total_loss_rate = 0.0f32;
+                            let mut conn_count = 0u32;
+                            let mut tunnel_proto = None;
 
-                    for conn in &peer.conns {
-                        if let Some(stats) = &conn.stats {
-                            total_rx += stats.rx_bytes;
-                            total_tx += stats.tx_bytes;
-                            total_latency_us += stats.latency_us;
-                            total_loss_rate += conn.loss_rate;
-                            conn_count += 1;
+                            for conn in &peer.conns {
+                                if let Some(stats) = &conn.stats {
+                                    total_rx += stats.rx_bytes;
+                                    total_tx += stats.tx_bytes;
+                                    total_latency_us += stats.latency_us;
+                                    total_loss_rate += conn.loss_rate;
+                                    conn_count += 1;
+                                }
+                                if let Some(ref tunnel) = conn.tunnel {
+                                    tunnel_proto = Some(tunnel.tunnel_type.clone());
+                                }
+                            }
+
+                            let avg_latency_ms = if conn_count > 0 { Some(total_latency_us as f64 / conn_count as f64 / 1000.0) } else { None };
+                            let avg_loss_rate = if conn_count > 0 { Some(total_loss_rate / conn_count as f32) } else { None };
+                            let any_connected = peer.conns.iter().any(|c| !c.is_closed);
+
+                            peer_infos.push(crate::easytier::launcher::PeerInfo {
+                                peer_id: peer.peer_id,
+                                virtual_ip: None,
+                                hostname: None,
+                                latency_ms: avg_latency_ms,
+                                loss_rate: avg_loss_rate.map(|f| f as f64),
+                                rx_bytes: Some(total_rx),
+                                tx_bytes: Some(total_tx),
+                                connected: any_connected,
+                                is_local: false,
+                                version: None,
+                                tunnel_proto,
+                                nat_type: None,
+                            });
                         }
-                        if let Some(ref tunnel) = conn.tunnel {
-                            tunnel_proto = Some(tunnel.tunnel_type.clone());
+
+                        if attempt > 1 {
+                            crate::log_info!(format!("EasyTierManager: RPC 查询成功 (第{}次重试), peer数量={}", attempt, peer_infos.len()));
+                        }
+                        return Some(peer_infos);
+                    }
+                    Err(e) => {
+                        if attempt < max_retries {
+                            crate::log_warn!(format!("EasyTierManager: RPC 查询失败 (第{}/{}次), port={}, error={}, 即将重试", attempt, max_retries, rpc_port, e));
+                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        } else {
+                            crate::log_warn!(format!("EasyTierManager: RPC 查询失败 (已重试{}次), port={}, error={}", max_retries, rpc_port, e));
+                            return None;
                         }
                     }
-
-                    let avg_latency_ms = if conn_count > 0 { Some(total_latency_us as f64 / conn_count as f64 / 1000.0) } else { None };
-                    let avg_loss_rate = if conn_count > 0 { Some(total_loss_rate / conn_count as f32) } else { None };
-                    let any_connected = peer.conns.iter().any(|c| !c.is_closed);
-
-                    peer_infos.push(crate::easytier::launcher::PeerInfo {
-                        peer_id: peer.peer_id,
-                        virtual_ip: None,
-                        hostname: None,
-                        latency_ms: avg_latency_ms,
-                        loss_rate: avg_loss_rate.map(|f| f as f64),
-                        rx_bytes: Some(total_rx),
-                        tx_bytes: Some(total_tx),
-                        connected: any_connected,
-                        is_local: false,
-                        version: None,
-                        tunnel_proto,
-                        nat_type: None,
-                    });
                 }
-
-                Some(peer_infos)
-            }
-            Err(e) => {
-                crate::log_warn!(format!("EasyTierManager: RPC 查询 peer 列表失败, port={}, error={}", rpc_port, e));
-                None
+            } else {
+                if attempt < max_retries {
+                    crate::log_warn!(format!("EasyTierManager: RPC 连接失败 (第{}/{}次), port={}, 即将重试", attempt, max_retries, rpc_port));
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                } else {
+                    crate::log_warn!(format!("EasyTierManager: RPC 连接失败 (已重试{}次), port={}", max_retries, rpc_port));
+                    return None;
+                }
             }
         }
+
+        None
     }
 
     /// 获取空间运行时状态（通过 RPC 查询）
