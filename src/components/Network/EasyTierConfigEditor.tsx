@@ -5,7 +5,7 @@ import { DEFAULT_NETWORK_CONFIG, addRow, removeRow } from "../../types/network";
 import { Button, TextField, Checkbox, Text, Select } from "@radix-ui/themes";
 import { CollapsibleSection } from "../Common/CollapsibleSection";
 import {
-  Network, Eye, EyeOff, Plus, Trash2, Globe, Shield, Settings,
+  Network, Eye, EyeOff, Trash2, Globe, Shield, Settings,
 } from "lucide-react";
 
 interface Props {
@@ -134,14 +134,14 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
             <label className={LABEL_CLASS}>{t("network.initialNodes")}</label>
             <div className="flex flex-col gap-1">
               {(value.peer_urls ?? []).map((url, i) => (
-                <div key={i} className="flex items-start gap-2">
+                <div key={i} className="flex items-start gap-4">
                   <TextField.Root size="1" className="flex-1" value={url}
                     onChange={e => {
                       const urls = [...(value.peer_urls ?? [])];
                       urls[i] = e.target.value;
                       set({ peer_urls: urls });
                     }}
-                    placeholder="tcp://:11010" />
+                    placeholder="tcp://0.0.0.0:11010" />
                   <Button variant="ghost" color="red" size="1" onClick={() => {
                     const urls = (value.peer_urls ?? []).filter((_, j) => j !== i);
                     set({ peer_urls: urls.length ? urls : [] });
@@ -150,7 +150,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
               ))}
               <Button variant="ghost" color="blue" size="1"
                 onClick={() => set({ peer_urls: [...(value.peer_urls ?? []), ""] })}>
-                <Plus size={14} className="mr-1" />{t("network.addInitialNode")}
+                {t("network.addInitialNode")}
               </Button>
             </div>
           </div>
@@ -188,7 +188,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
             ))}
             <Button variant="ghost" color="blue" size="1"
               onClick={() => set({ listener_urls: [...(value.listener_urls ?? []), ""] })}>
-              <Plus size={14} className="mr-1" />{t("network.addListener")}
+              {t("network.addListener")}
             </Button>
           </div>
 
@@ -211,7 +211,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
             ))}
             <Button variant="ghost" color="blue" size="1"
               onClick={() => set({ mapped_listeners: [...(value.mapped_listeners ?? []), ""] })}>
-              <Plus size={14} className="mr-1" />{t("network.addMappedListener")}
+              {t("network.addMappedListener")}
             </Button>
           </div>
 
@@ -235,7 +235,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
             ))}
             <Button variant="ghost" color="blue" size="1"
               onClick={() => set({ proxy_cidrs: [...(value.proxy_cidrs ?? []), ""] })}>
-              <Plus size={14} className="mr-1" />{t("network.addSubnetProxy")}
+              {t("network.addSubnetProxy")}
             </Button>
           </div>
 
@@ -385,7 +385,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
               addRow(port_forwards);
               setPortForwards([...port_forwards]);
             }}>
-            <Plus size={14} className="mr-1" />{t("network.portForwardsAddBtn")}
+            {t("network.portForwardsAddBtn")}
           </Button>
         </div>
       </CollapsibleSection>

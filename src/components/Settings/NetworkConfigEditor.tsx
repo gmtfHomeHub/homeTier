@@ -153,7 +153,7 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
                 onChange={(e) => setStr("virtual_ipv4", e.target.value)} />
             </Flex>
             <Flex align="center" gap="2">
-              <Switch checked={config.dhcp}
+              <Switch checked={!!config.dhcp}
                 onCheckedChange={(c) => setBool("dhcp", c)} />
               <label className="text-sm">{t("settings.dhcp")}</label>
             </Flex>
