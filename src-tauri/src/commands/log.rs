@@ -14,7 +14,7 @@ pub async fn get_logs(level: Option<String>) -> Vec<log::LogEntry> {
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        let client = crate::daemon::client::IpcClient::default_port();
+        let client = crate::daemon::client::IpcClient::get_global();
         if client.ping().await {
             if let Ok(crate::daemon::ipc::IpcResponse::Ok { data }) =
                 client.get_daemon_logs(level.as_deref()).await

@@ -7,7 +7,7 @@ use futures_util::StreamExt;
 /// 获取 EasyTier 版本
 #[tauri::command]
 pub async fn get_easytier_version() -> Result<String, String> {
-    let client = IpcClient::default_port();
+    let client = IpcClient::get_global();
     match client.get_version().await {
         Ok(IpcResponse::Ok { data }) => {
             data.and_then(|v| v.get("version").and_then(|s| s.as_str().map(|s| s.to_string())))
@@ -27,7 +27,7 @@ pub async fn check_easytier_update() -> Result<Vec<String>, String> {
 /// 升级 EasyTier（通过 daemon，无进度）
 #[tauri::command]
 pub async fn upgrade_easytier(version: String, source_path: Option<String>) -> Result<(), String> {
-    let client = IpcClient::default_port();
+    let client = IpcClient::get_global();
 
     // 先检查 daemon 连通性
     if !client.ping().await {
@@ -141,7 +141,7 @@ pub async fn upgrade_easytier_with_progress(
 
             let _ = std::fs::remove_dir_all(&temp_dir);
 
-            let ipc = IpcClient::default_port();
+            let ipc = IpcClient::get_global();
             if !ipc.ping().await {
                 return Err("daemon 未运行或无法连接".into());
             }

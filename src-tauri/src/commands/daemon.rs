@@ -5,7 +5,7 @@ use crate::daemon::{client::IpcClient, service::get_service_manager, ipc::IpcRes
 #[tauri::command]
 pub async fn check_daemon_running() -> Result<bool, String> {
     crate::log_debug!("检查守护进程运行状态");
-    let client = IpcClient::default_port();
+    let client = IpcClient::get_global();
     Ok(client.ping().await)
 }
 
@@ -13,7 +13,7 @@ pub async fn check_daemon_running() -> Result<bool, String> {
 #[tauri::command]
 pub async fn get_daemon_status() -> Result<serde_json::Value, String> {
     crate::log_debug!("获取守护进程状态");
-    let client = IpcClient::default_port();
+    let client = IpcClient::get_global();
     match client.get_status().await {
         Ok(IpcResponse::Ok { data }) => Ok(data.unwrap_or(serde_json::Value::Null)),
         Ok(IpcResponse::Error { message }) => Err(message),
@@ -25,7 +25,7 @@ pub async fn get_daemon_status() -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub async fn daemon_connect_space(space_id: String) -> Result<(), String> {
     crate::log_info!(format!("守护进程连接空间: {}", space_id));
-    let client = IpcClient::default_port();
+    let client = IpcClient::get_global();
     match client.connect_space(&space_id, serde_json::json!({})).await {
         Ok(IpcResponse::Ok { .. }) => Ok(()),
         Ok(IpcResponse::Error { message }) => Err(message),
@@ -37,7 +37,7 @@ pub async fn daemon_connect_space(space_id: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn daemon_disconnect_space(space_id: String) -> Result<(), String> {
     crate::log_info!(format!("守护进程断开空间: {}", space_id));
-    let client = IpcClient::default_port();
+    let client = IpcClient::get_global();
     match client.disconnect_space(&space_id).await {
         Ok(IpcResponse::Ok { .. }) => Ok(()),
         Ok(IpcResponse::Error { message }) => Err(message),
@@ -49,7 +49,7 @@ pub async fn daemon_disconnect_space(space_id: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn daemon_list_spaces() -> Result<Vec<String>, String> {
     crate::log_debug!("守护进程获取空间列表");
-    let client = IpcClient::default_port();
+    let client = IpcClient::get_global();
     match client.list_spaces().await {
         Ok(IpcResponse::Ok { data }) => {
             Ok(data.and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default())
@@ -109,7 +109,7 @@ pub async fn is_daemon_service_running() -> Result<bool, String> {
 #[tauri::command]
 pub async fn get_daemon_logs(level: Option<String>) -> Result<Vec<crate::log::LogEntry>, String> {
     crate::log_debug!("获取守护进程日志");
-    let client = IpcClient::default_port();
+    let client = IpcClient::get_global();
     match client.get_daemon_logs(level.as_deref()).await {
         Ok(IpcResponse::Ok { data }) => {
             match data {
@@ -126,7 +126,7 @@ pub async fn get_daemon_logs(level: Option<String>) -> Result<Vec<crate::log::Lo
 #[tauri::command]
 pub async fn check_easytier_binary() -> Result<serde_json::Value, String> {
     crate::log_info!("检查 EasyTier 二进制");
-    let client = IpcClient::default_port();
+    let client = IpcClient::get_global();
     match client.check_binary().await {
         Ok(IpcResponse::Ok { data }) => Ok(data.unwrap_or(serde_json::Value::Null)),
         Ok(IpcResponse::Error { message }) => Err(message),
@@ -138,7 +138,7 @@ pub async fn check_easytier_binary() -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub async fn shutdown_daemon() -> Result<(), String> {
     crate::log_info!("关闭守护进程");
-    let client = IpcClient::default_port();
+    let client = IpcClient::get_global();
     match client.shutdown().await {
         Ok(IpcResponse::Ok { .. }) => Ok(()),
         Ok(IpcResponse::Error { message }) => Err(message),

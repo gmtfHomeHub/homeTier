@@ -57,8 +57,20 @@ impl Daemon {
         // 保存状态到文件（供 GUI 检测）
         ipc::save_daemon_state(std::process::id(), self.rpc_port)?;
 
-        // 启动 TCP RPC 服务器
+        // 清理已有 daemon（处理 osascript root 授权后端口冲突）
         let addr = format!("127.0.0.1:{}", self.rpc_port);
+        if let Ok(mut stream) = tokio::net::TcpStream::connect(&addr).await {
+            crate::log_info!("[Daemon] 检测到已有守护进程，发送关闭命令");
+            use tokio::io::AsyncWriteExt;
+            let req = serde_json::to_string(&ipc::IpcRequest::Shutdown).unwrap_or_default();
+            let len = (req.len() as u32).to_le_bytes();
+            let _ = stream.write_all(&len).await;
+            let _ = stream.write_all(req.as_bytes()).await;
+            drop(stream);
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+
+        // 启动 TCP RPC 服务器
         let listener = tokio::net::TcpListener::bind(&addr).await
             .map_err(|e| format!("绑定 TCP 端口失败: {}", e))?;
 
