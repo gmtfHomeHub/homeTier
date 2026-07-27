@@ -1,5 +1,6 @@
 import { QRCodeSVG } from "qrcode.react";
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Button, TextField } from "@radix-ui/themes";
 import { X, Copy, Check } from "lucide-react";
 import { generateShareLink } from "../../utils/api";
@@ -10,6 +11,7 @@ interface ShareSpaceDialogProps {
 }
 
 export function ShareSpaceDialog({ spaceId, onClose }: ShareSpaceDialogProps) {
+  const { t } = useTranslation();
   const [link, setLink] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -34,24 +36,22 @@ export function ShareSpaceDialog({ spaceId, onClose }: ShareSpaceDialogProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-[var(--color-surface)] rounded-xl p-6 w-80 shadow-xl animate-fade-in">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">分享空间</h2>
+          <h2 className="text-lg font-semibold">{t("space.shareSpace")}</h2>
           <Button onClick={onClose} variant="ghost" size="2">
             <X size={20} />
           </Button>
         </div>
 
         {loading ? (
-          <div className="text-center py-8 text-[var(--color-text-secondary)]">加载中...</div>
+          <div className="text-center py-8 text-[var(--color-text-secondary)]">{t("common.loading")}</div>
         ) : (
           <div className="space-y-4">
-            {/* 二维码 */}
             <div className="flex justify-center">
               <div className="p-3 bg-white rounded-xl">
                 <QRCodeSVG value={link} size={180} />
               </div>
             </div>
 
-            {/* 链接 */}
             <div className="flex items-center gap-2">
               <TextField.Root
                 value={link}
@@ -67,7 +67,7 @@ export function ShareSpaceDialog({ spaceId, onClose }: ShareSpaceDialogProps) {
               </Button>
             </div>
             {copied && (
-              <p className="text-xs text-[var(--color-success)] text-center">已复制到剪贴板</p>
+              <p className="text-xs text-[var(--color-success)] text-center">{t("space.copiedToClipboard")}</p>
             )}
           </div>
         )}

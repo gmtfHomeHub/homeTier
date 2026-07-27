@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Users, X } from "lucide-react";
 import { getSpacePeers } from "../../utils/api";
 import { formatBytes } from "../../utils/format";
@@ -11,10 +12,10 @@ interface MemberCountProps {
 }
 
 export function MemberCount({ spaceId, connected }: MemberCountProps) {
+  const { t } = useTranslation();
   const [peersList, setPeersList] = useState<PeerInfo[]>([]);
   const [showDialog, setShowDialog] = useState(false);
 
-  // 连接时每 2 秒轮询 peer 列表
   useEffect(() => {
     if (!connected) {
       setPeersList([]);
@@ -46,17 +47,17 @@ export function MemberCount({ spaceId, connected }: MemberCountProps) {
         variant="ghost"
         size="1"
         className="inline-flex items-center gap-1"
-        title="查看在线成员"
+        title={t("space.viewOnlineMembers")}
       >
         <Users size={12} />
-        <span>{peersList.length} 个成员</span>
+        <span>{t("space.memberCount", { count: peersList.length })}</span>
       </Button>
 
       {showDialog && (
         <Dialog.Root open={showDialog} onOpenChange={setShowDialog}>
           <Dialog.Content className="w-[820px] max-h-[80vh]">
             <div className="flex items-center justify-between mb-4">
-              <Text size="2" weight="bold">在线成员</Text>
+              <Text size="2" weight="bold">{t("space.onlineMembers")}</Text>
               <Dialog.Close>
                 <Button variant="ghost" size="2">
                   <X size={20} />
@@ -68,22 +69,22 @@ export function MemberCount({ spaceId, connected }: MemberCountProps) {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b">
-                      <th className="text-left p-3">主机名</th>
-                      <th className="text-left p-3">虚拟 IP</th>
-                      <th className="text-right p-3">延迟</th>
-                      <th className="text-right p-3">丢包</th>
-                      <th className="text-right p-3">接收</th>
-                      <th className="text-right p-3">发送</th>
-                      <th className="text-left p-3">隧道</th>
-                      <th className="text-left p-3">NAT</th>
-                      <th className="text-left p-3">版本</th>
+                      <th className="text-left p-3">{t("space.hostname")}</th>
+                      <th className="text-left p-3">{t("space.virtualIp")}</th>
+                      <th className="text-right p-3">{t("network.latency")}</th>
+                      <th className="text-right p-3">{t("space.packetLoss")}</th>
+                      <th className="text-right p-3">{t("network.downstream")}</th>
+                      <th className="text-right p-3">{t("network.upstream")}</th>
+                      <th className="text-left p-3">{t("space.tunnel")}</th>
+                      <th className="text-left p-3">{t("space.nat")}</th>
+                      <th className="text-left p-3">{t("space.version")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {peersList.length === 0 ? (
                       <tr>
                         <td colSpan={9} className="text-center p-8 text-[var(--color-text-secondary)]">
-                          暂无数据
+                          {t("space.noData")}
                         </td>
                       </tr>
                     ) : (
@@ -91,8 +92,8 @@ export function MemberCount({ spaceId, connected }: MemberCountProps) {
                         <tr key={i} className="border-b">
                           <td className="p-3">
                             <span className="font-medium">{peer.hostname?.replace(/^PublicServer_/, '') || `Peer #${peer.peer_id}`}</span>
-                            {peer.is_local && <Badge color="blue" ml="1" size="1">本机</Badge>}
-                            {peer.hostname?.startsWith('PublicServer_') && <Badge color="gray" ml="1" size="1">服务器</Badge>}
+                            {peer.is_local && <Badge color="blue" ml="1" size="1">{t("space.local")}</Badge>}
+                            {peer.hostname?.startsWith('PublicServer_') && <Badge color="gray" ml="1" size="1">{t("space.server")}</Badge>}
                           </td>
                           <td className="p-3 font-mono text-[var(--color-text-secondary)]">{peer.virtual_ip || '-'}</td>
                           <td className="p-3 font-mono text-right">{peer.latency_ms != null ? `${peer.latency_ms.toFixed(1)}ms` : '-'}</td>
@@ -110,7 +111,7 @@ export function MemberCount({ spaceId, connected }: MemberCountProps) {
               </div>
             </ScrollArea>
             <div className="mt-4 pt-3 border-t border-[var(--color-border)] text-xs text-[var(--color-text-secondary)]">
-              共 {peersList.length} 个在线成员
+              {t("space.totalOnlineMembers", { count: peersList.length })}
             </div>
           </Dialog.Content>
         </Dialog.Root>

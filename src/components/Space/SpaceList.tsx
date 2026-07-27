@@ -166,7 +166,7 @@ export function SpaceList() {
                 onClick={() => setShareTarget(space.id)}
                 variant="ghost"
                 size="2"
-                title="分享"
+                title={t("space.share")}
               >
                 <Share2 size={16} />
               </Button>
@@ -174,7 +174,7 @@ export function SpaceList() {
                 onClick={() => setConfigTarget(space.id)}
                 variant="ghost"
                 size="2"
-                title="空间配置"
+                title={t("space.spaceConfig")}
               >
                 <Settings size={16} />
               </Button>
@@ -184,7 +184,7 @@ export function SpaceList() {
                 variant="ghost"
                 color="red"
                 size="2"
-                title="删除空间"
+                title={t("space.deleteSpace")}
               >
                 <Trash2 size={16} />
               </Button>
@@ -196,20 +196,19 @@ export function SpaceList() {
 
       <ConfirmDialog
         open={deleteTarget !== null}
-        title="删除空间"
-        message={`确定要删除空间「${deleteTarget?.name || ""}」吗？此操作不可撤销。`}
-        confirmText="删除"
+        title={t("space.deleteSpace")}
+        message={t("space.confirmDeleteMessage", { name: deleteTarget?.name || "" })}
+        confirmText={t("space.delete")}
         danger
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
 
-      {/* 空间级 EasyTier 配置弹窗 */}
       {configTarget && configSpace && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-[var(--color-surface)] rounded-xl w-[640px] max-h-[80vh] flex flex-col shadow-xl">
             <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
-              <h2 className="text-lg font-semibold">空间配置 - {configSpace.name}</h2>
+              <h2 className="text-lg font-semibold">{t("space.spaceConfigTitle", { name: configSpace.name })}</h2>
               <Button onClick={() => setConfigTarget(null)} variant="ghost" size="2">
                 <X size={20} />
               </Button>
@@ -218,15 +217,15 @@ export function SpaceList() {
               <EasyTierConfigEditor
                 value={spaceConfig}
                 onChange={setSpaceConfig}
-                title="空间级 EasyTier 配置（优先级高于系统级）"
+                title={t("space.spaceConfigSubtitle")}
               />
             </div>
             <Flex justify="end" gap="2" px="6" py="4" className="border-t border-[var(--color-border)]">
               <Button onClick={() => setConfigTarget(null)} variant="outline" size="2">
-                取消
+                {t("common.cancel")}
               </Button>
               <Button onClick={handleSaveConfig} disabled={savingConfig} variant="solid" color="blue" size="2" loading={savingConfig}>
-                {savingConfig ? "保存中..." : "保存配置"}
+                {savingConfig ? t("common.saving") : t("space.saveConfig")}
               </Button>
             </Flex>
           </div>
@@ -236,8 +235,6 @@ export function SpaceList() {
       {shareTarget && (
         <ShareSpaceDialog spaceId={shareTarget} onClose={() => setShareTarget(null)} />
       )}
-
-      {/* 在线成员列表弹窗 */}
     </div>
   );
 }

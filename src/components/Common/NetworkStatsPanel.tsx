@@ -77,7 +77,7 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
     };
   }, [spaceId, stats.connected_peers]);
 
-  const formatBytes = (bytes: number): string => {
+  const formatLocalBytes = (bytes: number): string => {
     if (bytes === 0) return "0 B";
     const k = 1024;
     const sizes = ["B", "KB", "MB", "GB"];
@@ -97,7 +97,7 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
           <Text size="2" weight="bold">{t('network.stats')}</Text>
         </div>
         <div className="p-4">
-          <Text size="1" color="gray">加载中...</Text>
+          <Text size="1" color="gray">{t("common.loading")}</Text>
         </div>
       </Card>
     );
@@ -110,29 +110,26 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
       </div>
       <div className="p-4">
         <div className="grid grid-cols-2 gap-4">
-          {/* 接收流量 */}
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-sm">
               <Signal className="text-[var(--color-info)]" />
               <span className="font-medium">{t('network.downstream')}</span>
             </div>
             <Text size="1" weight="bold" className="text-[var(--color-info)]">
-              {formatBytes(stats.rx_bytes)}
+              {formatLocalBytes(stats.rx_bytes)}
             </Text>
           </div>
 
-          {/* 发送流量 */}
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-sm">
               <Signal className="text-[var(--color-info)]" />
               <span className="font-medium">{t('network.upstream')}</span>
             </div>
             <Text size="1" weight="bold" className="text-[var(--color-info)]">
-              {formatBytes(stats.tx_bytes)}
+              {formatLocalBytes(stats.tx_bytes)}
             </Text>
           </div>
 
-          {/* 平均延迟 */}
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-sm">
               <Activity className="text-[var(--color-success)]" />
@@ -143,7 +140,6 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
             </Text>
           </div>
 
-          {/* 连接节点数 */}
           <div
             className="space-y-1 cursor-pointer hover:bg-[var(--color-surface-hover)] rounded p-1 -m-1 transition-colors"
             onClick={() => stats.connected_peers > 0 && setShowPeersDialog(true)}
@@ -161,7 +157,6 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
           </div>
         </div>
 
-        {/* 流量趋势指示器 */}
         <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
           <div className="flex items-center justify-between text-xs text-[var(--color-text-secondary)]">
             <span>{t('network.networkActivity')}</span>
@@ -173,7 +168,7 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
       <Dialog.Root open={showPeersDialog} onOpenChange={setShowPeersDialog}>
         <Dialog.Content className="w-[820px] max-h-[80vh]">
           <div className="flex items-center justify-between mb-4">
-            <Text size="2" weight="bold">在线成员</Text>
+            <Text size="2" weight="bold">{t("space.onlineMembers")}</Text>
             <Dialog.Close>
               <Button variant="ghost" size="2">
                 <X size={20} />
@@ -185,22 +180,22 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
               <table className="w-full">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left p-3">主机名</th>
-                    <th className="text-left p-3">虚拟 IP</th>
-                    <th className="text-right p-3">延迟</th>
-                    <th className="text-right p-3">丢包</th>
-                    <th className="text-right p-3">接收</th>
-                    <th className="text-right p-3">发送</th>
-                    <th className="text-left p-3">隧道</th>
-                    <th className="text-left p-3">NAT</th>
-                    <th className="text-left p-3">版本</th>
+                    <th className="text-left p-3">{t("space.hostname")}</th>
+                    <th className="text-left p-3">{t("space.virtualIp")}</th>
+                    <th className="text-right p-3">{t("network.latency")}</th>
+                    <th className="text-right p-3">{t("space.packetLoss")}</th>
+                    <th className="text-right p-3">{t("network.downstream")}</th>
+                    <th className="text-right p-3">{t("network.upstream")}</th>
+                    <th className="text-left p-3">{t("space.tunnel")}</th>
+                    <th className="text-left p-3">{t("space.nat")}</th>
+                    <th className="text-left p-3">{t("space.version")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {peersList.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="text-center p-8 text-[var(--color-text-secondary)]">
-                        暂无数据
+                        {t("space.noData")}
                       </td>
                     </tr>
                   ) : (
@@ -208,8 +203,8 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
                       <tr key={i} className="border-b">
                         <td className="p-3">
                           <span className="font-medium">{peer.hostname?.replace(/^PublicServer_/, '') || `Peer #${peer.peer_id}`}</span>
-                          {peer.is_local && <Badge color="blue" ml="1" size="1">本机</Badge>}
-                          {peer.hostname?.startsWith('PublicServer_') && <Badge color="gray" ml="1" size="1">服务器</Badge>}
+                          {peer.is_local && <Badge color="blue" ml="1" size="1">{t("space.local")}</Badge>}
+                          {peer.hostname?.startsWith('PublicServer_') && <Badge color="gray" ml="1" size="1">{t("space.server")}</Badge>}
                         </td>
                         <td className="p-3 font-mono text-[var(--color-text-secondary)]">{peer.virtual_ip || '-'}</td>
                         <td className="p-3 font-mono text-right">{peer.latency_ms != null ? `${peer.latency_ms.toFixed(1)}ms` : '-'}</td>
@@ -227,7 +222,7 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
             </div>
           </ScrollArea>
           <div className="mt-4 pt-3 border-t border-[var(--color-border)] text-xs text-[var(--color-text-secondary)]">
-            共 {peersList.length} 个在线成员
+            {t("space.totalOnlineMembers", { count: peersList.length })}
           </div>
         </Dialog.Content>
       </Dialog.Root>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { listMembers, removeMember } from "../../utils/api";
 import type { Member } from "../../types";
@@ -12,6 +13,7 @@ interface MemberManagerProps {
 }
 
 export function MemberManager({ spaceId, callerId, onClose }: MemberManagerProps) {
+  const { t } = useTranslation();
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,18 +50,18 @@ export function MemberManager({ spaceId, callerId, onClose }: MemberManagerProps
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-[var(--color-surface)] rounded-xl w-[540px] max-h-[80vh] flex flex-col shadow-xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
-          <h2 className="text-lg font-semibold">成员管理</h2>
+          <h2 className="text-lg font-semibold">{t("space.memberManager")}</h2>
           <Button onClick={onClose} variant="ghost" size="2">
             <X size={20} />
           </Button>
         </div>
         <div className="flex-1 p-6 overflow-y-auto">
           {loading ? (
-            <p className="text-center py-8 text-[var(--color-text-secondary)]">加载中...</p>
+            <p className="text-center py-8 text-[var(--color-text-secondary)]">{t("common.loading")}</p>
           ) : error ? (
             <p className="text-center py-8 text-[var(--color-danger)]">{error}</p>
           ) : members.length === 0 ? (
-            <p className="text-center py-8 text-[var(--color-text-secondary)]">暂无成员</p>
+            <p className="text-center py-8 text-[var(--color-text-secondary)]">{t("space.noMembers")}</p>
           ) : (
             <div className="space-y-2">
               {members.map((m) => (
@@ -75,9 +77,9 @@ export function MemberManager({ spaceId, callerId, onClose }: MemberManagerProps
                       </p>
                     )}
                     {m.is_online ? (
-                      <p className="text-xs text-[var(--color-success)]">在线</p>
+                      <p className="text-xs text-[var(--color-success)]">{t("space.online")}</p>
                     ) : (
-                      <p className="text-xs text-[var(--color-text-secondary)]">离线</p>
+                      <p className="text-xs text-[var(--color-text-secondary)]">{t("space.offline")}</p>
                     )}
                   </div>
                   <Button
@@ -85,7 +87,7 @@ export function MemberManager({ spaceId, callerId, onClose }: MemberManagerProps
                     variant="ghost"
                     color="red"
                     size="2"
-                    title="移除成员"
+                    title={t("space.removeMember")}
                   >
                     <UserMinus size={16} />
                   </Button>

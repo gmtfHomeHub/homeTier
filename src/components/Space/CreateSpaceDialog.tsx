@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { X, Eye, EyeOff } from "lucide-react";
 import { Button, TextField, TextArea, Flex } from "@radix-ui/themes";
@@ -8,6 +9,7 @@ interface CreateSpaceDialogProps {
 }
 
 export function CreateSpaceDialog({ onClose }: CreateSpaceDialogProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [networkSecret, setNetworkSecret] = useState("");
   const [description, setDescription] = useState("");
@@ -36,28 +38,28 @@ export function CreateSpaceDialog({ onClose }: CreateSpaceDialogProps) {
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-[var(--color-surface)] rounded-xl p-6 w-96 shadow-xl animate-fade-in">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">创建空间</h2>
+          <h2 className="text-lg font-semibold">{t("space.createSpace")}</h2>
           <Button onClick={onClose} variant="ghost" size="2">
             <X size={20} />
           </Button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">空间名称</label>
+            <label className="block text-sm font-medium mb-1">{t("space.spaceName")}</label>
             <TextField.Root
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="输入空间名称"
+              placeholder={t("space.spaceNamePlaceholder")}
               autoFocus
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">网络密钥</label>
+            <label className="block text-sm font-medium mb-1">{t("settings.networkSecret")}</label>
             <TextField.Root
               type={showSecret ? "text" : "password"}
               value={networkSecret}
               onChange={(e) => setNetworkSecret(e.target.value)}
-              placeholder="输入网络密钥"
+              placeholder={t("space.networkSecretPlaceholder")}
             >
               <TextField.Slot side="right">
                 <Button
@@ -72,11 +74,11 @@ export function CreateSpaceDialog({ onClose }: CreateSpaceDialogProps) {
             </TextField.Root>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">描述（可选）</label>
+            <label className="block text-sm font-medium mb-1">{t("space.descriptionOptional")}</label>
             <TextArea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="空间描述"
+              placeholder={t("space.descriptionPlaceholder")}
               rows={3}
             />
           </div>
@@ -85,10 +87,10 @@ export function CreateSpaceDialog({ onClose }: CreateSpaceDialogProps) {
           )}
           <Flex justify="end" gap="2" pt="2">
             <Button type="button" onClick={onClose} variant="outline" size="2">
-              取消
+              {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={loading || !name.trim() || !networkSecret.trim()} variant="solid" color="blue" size="2" loading={loading}>
-              {loading ? "创建中..." : "创建"}
+              {loading ? t("space.creating") : t("space.createSpace")}
             </Button>
           </Flex>
         </form>

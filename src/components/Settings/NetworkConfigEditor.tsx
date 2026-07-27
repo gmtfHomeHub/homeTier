@@ -13,6 +13,35 @@ interface NetworkConfigEditorProps {
   spaceId: string;
 }
 
+const boolFlagKeys: { key: keyof NetworkConfig; labelKey: string }[] = [
+  { key: "latency_first", labelKey: "network.flagLatencyFirst" },
+  { key: "use_smoltcp", labelKey: "network.flagUseSmoltcp" },
+  { key: "disable_ipv6", labelKey: "network.flagDisableIpv6" },
+  { key: "ipv6_public_addr_auto", labelKey: "network.flagIpv6PublicAddrAuto" },
+  { key: "enable_kcp_proxy", labelKey: "network.flagEnableKcp" },
+  { key: "disable_kcp_input", labelKey: "network.flagDisableKcpInput" },
+  { key: "enable_quic_proxy", labelKey: "network.flagEnableQuic" },
+  { key: "disable_quic_input", labelKey: "network.flagDisableQuicInput" },
+  { key: "disable_p2p", labelKey: "network.flagDisableP2P" },
+  { key: "p2p_only", labelKey: "network.flagP2pOnly" },
+  { key: "lazy_p2p", labelKey: "network.flagLazyP2p" },
+  { key: "bind_device", labelKey: "network.flagBindDevice" },
+  { key: "no_tun", labelKey: "network.flagNoTun" },
+  { key: "enable_exit_node", labelKey: "network.flagEnableExitNode" },
+  { key: "relay_all_peer_rpc", labelKey: "network.flagRelayAllPeerRpc" },
+  { key: "need_p2p", labelKey: "network.flagNeedP2p" },
+  { key: "multi_thread", labelKey: "network.flagMultiThread" },
+  { key: "proxy_forward_by_system", labelKey: "network.flagProxyForwardBySystem" },
+  { key: "disable_encryption", labelKey: "network.flagDisableEncryption" },
+  { key: "disable_tcp_hole_punching", labelKey: "network.flagDisableTcpHolePunch" },
+  { key: "disable_udp_hole_punching", labelKey: "network.flagDisableUdpHolePunch" },
+  { key: "disable_upnp", labelKey: "network.flagDisableUpnp" },
+  { key: "enable_udp_broadcast_relay", labelKey: "network.flagEnableUdpBroadcast" },
+  { key: "disable_sym_hole_punching", labelKey: "network.flagDisableSymHolePunch" },
+  { key: "enable_magic_dns", labelKey: "network.flagEnableMagicDns" },
+  { key: "enable_private_mode", labelKey: "network.flagEnablePrivateMode" },
+];
+
 export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceId }) => {
   const { t } = useTranslation();
   const { space, loading, error } = useSpace(spaceId);
@@ -88,34 +117,6 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
     );
   }
 
-  const boolFlags: { key: keyof NetworkConfig; label: string }[] = [
-    { key: "latency_first", label: t("network.flagLatencyFirst") },
-    { key: "use_smoltcp", label: "use_smoltcp" },
-    { key: "disable_ipv6", label: "disable_ipv6" },
-    { key: "enable_kcp_proxy", label: "enable_kcp_proxy" },
-    { key: "disable_kcp_input", label: "disable_kcp_input" },
-    { key: "enable_quic_proxy", label: "enable_quic_proxy" },
-    { key: "disable_quic_input", label: "disable_quic_input" },
-    { key: "disable_p2p", label: "disable_p2p" },
-    { key: "p2p_only", label: "p2p_only" },
-    { key: "lazy_p2p", label: "lazy_p2p" },
-    { key: "bind_device", label: "bind_device" },
-    { key: "no_tun", label: "no_tun" },
-    { key: "enable_exit_node", label: "enable_exit_node" },
-    { key: "relay_all_peer_rpc", label: "relay_all_peer_rpc" },
-    { key: "need_p2p", label: "need_p2p" },
-    { key: "multi_thread", label: "multi_thread" },
-    { key: "proxy_forward_by_system", label: "proxy_forward_by_system" },
-    { key: "disable_encryption", label: "disable_encryption" },
-    { key: "disable_tcp_hole_punching", label: "disable_tcp_hole_punching" },
-    { key: "disable_udp_hole_punching", label: "disable_udp_hole_punching" },
-    { key: "disable_upnp", label: "disable_upnp" },
-    { key: "enable_udp_broadcast_relay", label: "enable_udp_broadcast_relay" },
-    { key: "disable_sym_hole_punching", label: "disable_sym_hole_punching" },
-    { key: "enable_magic_dns", label: "enable_magic_dns" },
-    { key: "enable_private_mode", label: "enable_private_mode" },
-  ];
-
   return (
     <Card>
       <div className="flex items-center gap-2 p-4 border-b border-[var(--color-border)]">
@@ -128,7 +129,6 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
           </div>
         )}
 
-        {/* Basic Settings */}
         <div className="border border-[var(--color-border)] rounded-lg">
           <div className="flex items-center gap-2 p-4 border-b border-[var(--color-border)]">
             <Network size={16} />
@@ -148,7 +148,7 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
               </Flex>
             </div>
             <Flex direction="column" gap="1">
-              <label className="text-xs font-medium">{t("settings.virtualIpv4")}</label>
+              <label className="text-xs font-medium">{t("network.virtualIpv4")}</label>
               <TextField.Root value={config.virtual_ipv4}
                 onChange={(e) => setStr("virtual_ipv4", e.target.value)} />
             </Flex>
@@ -158,7 +158,7 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
               <label className="text-sm">{t("settings.dhcp")}</label>
             </Flex>
             <Flex direction="column" gap="1">
-              <label className="text-xs font-medium">{t("settings.initialNodes")}</label>
+              <label className="text-xs font-medium">{t("network.initialNodes")}</label>
               <TextField.Root value={config.peer_urls.join(", ")}
                 onChange={(e) => setConfig({ ...config, peer_urls: e.target.value.split(",").map(s => s.trim()).filter(s => s) })}
                 placeholder="tcp://:11010" />
@@ -166,7 +166,6 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
           </div>
         </div>
 
-        {/* Advanced Settings */}
         <CollapsibleSection title={t("settings.advanced")} defaultOpen={false}>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
@@ -188,7 +187,7 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
                   onChange={(e) => setConfig({ ...config, listener_urls: e.target.value.split(",").map(s => s.trim()).filter(s => s) })} />
               </Flex>
               <Flex direction="column" gap="1">
-                <label className="text-xs font-medium">{t("settings.proxyCidrs")}</label>
+                <label className="text-xs font-medium">{t("network.subnetProxy")}</label>
                 <TextField.Root value={config.proxy_cidrs.join(", ")}
                   onChange={(e) => setConfig({ ...config, proxy_cidrs: e.target.value.split(",").map(s => s.trim()).filter(s => s) })} />
               </Flex>
@@ -200,7 +199,7 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
                   onChange={(e) => setConfig({ ...config, mtu: e.target.value ? parseInt(e.target.value) : null })} />
               </Flex>
               <Flex direction="column" gap="1">
-                <label className="text-xs font-medium">{t("settings.socks5")}</label>
+                <label className="text-xs font-medium">{t("network.socks5")}</label>
                 <TextField.Root type="number" value={String(config.socks5_port)}
                   onChange={(e) => setConfig({ ...config, socks5_port: parseInt(e.target.value) || 1080 })} />
               </Flex>
@@ -208,11 +207,11 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
             <div>
               <Text size="1" weight="medium" className="mb-2 block">{t("settings.flags")}</Text>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {boolFlags.map(({ key, label }) => (
+                {boolFlagKeys.map(({ key, labelKey }) => (
                   <label key={key as string} className="flex items-center gap-2 text-sm">
                     <Switch checked={(config as any)[key] === true}
                       onCheckedChange={(c) => setBool(key, c)} />
-                    {label}
+                    {t(labelKey)}
                   </label>
                 ))}
               </div>
@@ -220,7 +219,6 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
           </div>
         </CollapsibleSection>
 
-        {/* Port Forwards */}
         <CollapsibleSection title={t("settings.portForwards")} defaultOpen={false}>
           <div className="text-sm text-[var(--color-text-secondary)]">
             {config.port_forwards.length === 0 ? t("settings.noPortForwards") : (
@@ -235,7 +233,6 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
           </div>
         </CollapsibleSection>
 
-        {/* Save/Reset */}
         <Flex gap="2" justify="end" pt="2">
           <Button variant="outline" onClick={handleReset}>
             <RefreshCw size={16} className="mr-2" />

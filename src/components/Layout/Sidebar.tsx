@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { useNavigate, useLocation } from "react-router-dom";
 import { MessageSquare, LogIn, Settings, Plus, House } from "lucide-react";
@@ -9,6 +10,7 @@ import { useLayoutStore } from "../../stores/layoutStore";
 import { useSwipe } from "../../hooks/useSwipe";
 
 export function Sidebar() {
+  const { t } = useTranslation();
   const { spaces, setCurrentSpace } = useSpaceStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -21,7 +23,6 @@ export function Sidebar() {
     navigate(`/space/${spaceId}`);
   };
 
-  // 从 config_json 中解析 ipv4 地址
   const getConfigIp = (configJson?: string): string | undefined => {
     if (!configJson) return undefined;
     try {
@@ -32,7 +33,6 @@ export function Sidebar() {
     }
   };
 
-  // 左划收起 sidebar
   const swipeBind = useSwipe({
     onSwipeLeft: () => setSidebarOpen(false),
   });
@@ -43,13 +43,11 @@ export function Sidebar() {
         className="w-64 bg-[var(--color-surface)] border-r border-[var(--color-border)] flex flex-col h-full relative"
         {...swipeBind}
       >
-        {/* 右侧点击/划动收起的透明条 */}
         <div
           className="absolute right-0 top-0 bottom-0 w-4 z-20 cursor-w-resize hidden md:block"
           onClick={() => setSidebarOpen(false)}
         />
 
-        {/* 空间列表 */}
         <div className="flex-1 p-3 overflow-y-auto overflow-x-hidden">
           <div className="flex items-center justify-between mb-3">
             <Flex gap="2">
@@ -61,7 +59,7 @@ export function Sidebar() {
               >
                 <Flex align="center" gap="2">
                   <House size={16} />
-                  空间
+                  {t("space.spaces")}
                 </Flex>
               </Button>
             </Flex>
@@ -70,7 +68,7 @@ export function Sidebar() {
                 onClick={() => setShowJoin(true)}
                 variant="ghost"
                 size="2"
-                title="加入空间"
+                title={t("space.join")}
               >
                 <LogIn size={16} />
               </Button>
@@ -78,7 +76,7 @@ export function Sidebar() {
                 onClick={() => setShowCreate(true)}
                 variant="ghost"
                 size="2"
-                title="创建空间"
+                title={t("space.create")}
               >
                 <Plus size={16} />
               </Button>
@@ -87,7 +85,7 @@ export function Sidebar() {
 
           {spaces.length === 0 && (
             <div className="text-center py-8 text-[var(--color-text-secondary)] text-sm">
-              暂无空间
+              {t("space.noSpaces")}
               <br />
               <Button
                 onClick={() => setShowCreate(true)}
@@ -95,12 +93,11 @@ export function Sidebar() {
                 size="1"
                 className="text-[var(--color-primary)]"
               >
-                创建第一个空间
+                {t("space.createFirstSpace")}
               </Button>
             </div>
           )}
 
-          {/* 空间列表 — 垂直堆叠，向下展开 */}
           <div className="w-full space-y-1">
             {spaces.map((space) => (
               <Button
@@ -136,19 +133,18 @@ export function Sidebar() {
           </div>
         </div>
 
-        {/* 底部功能按钮 */}
         <div className="p-3 border-t border-[var(--color-border)]">
           <Flex gap="2">
             <Button onClick={() => navigate("/")} variant="ghost" size="2" className="flex-1">
               <Flex align="center" gap="2" justify="center">
                 <MessageSquare size={16} />
-                <span>消息</span>
+                <span>{t("chat.title")}</span>
               </Flex>
             </Button>
             <Button onClick={() => navigate("/settings")} variant="ghost" size="2" className="flex-1">
               <Flex align="center" gap="2" justify="center">
                 <Settings size={16} />
-                <span>设置</span>
+                <span>{t("settings.title")}</span>
               </Flex>
             </Button>
           </Flex>
