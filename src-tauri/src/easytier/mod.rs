@@ -89,7 +89,7 @@ impl EasyTierManager {
         }
 
         // Phase 0: TUN 可用性检查（no_tun 模式跳过）
-        if !cfg.no_tun && !crate::platform::is_tun_available() {
+        if !cfg.no_tun && !crate::platform::check_tun_available() {
             let hint = if cfg!(target_os = "macos") {
                 "macOS 上创建虚拟网卡需要 root 权限。请先点击「授权」按钮，或设置「无 TUN 模式」。"
             } else {

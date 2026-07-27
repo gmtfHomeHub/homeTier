@@ -107,23 +107,11 @@ fn check_tun_available_inner() -> bool {
 
     #[cfg(target_os = "macos")]
     {
-        // macOS utun socket 创建不需要 root，但 ifconfig/route 配置网络需要 root
-        // 通过测试是否能修改 lo0 接口来检测实际权限
-        if let Ok(status) = std::process::Command::new("ifconfig")
-            .args(["lo0", "inet", "127.0.0.1", "127.0.0.1", "up"])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-        {
-            let available = status.success();
-            if !available {
-                crate::log_warn!("macOS ifconfig 权限不足，TUN 网络配置需要 root 权限");
-            }
-            available
-        } else {
-            crate::log_warn!("macOS 无法执行 ifconfig 命令");
-            false
+        let available = adapter.is_elevated();
+        if !available {
+            crate::log_warn!("macOS 非 root 权限，TUN 网络配置需要 root 权限");
         }
+        available
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]

@@ -293,8 +293,9 @@ Self {
 
     /// 连接空间（通过 IPC 通知 daemon）
     pub async fn connect(&self, space_id: &Uuid) -> Result<(), String> {
-        crate::log_info!(format!("connect: 开始连接空间, space_id={}", space_id), &space_id.to_string());
-
+        self.connect_inner(space_id, false).await
+    }
+    async fn connect_inner(&self, space_id: &Uuid, tun_retried: bool) -> Result<(), String> {
         // 断开所有其他已连接的空间
         crate::log_debug!(format!("connect: 查询当前运行中的空间"), &space_id.to_string());
         let running_spaces: Vec<String> = match self.ipc_client.list_spaces().await {
@@ -380,6 +381,15 @@ Self {
                 Ok(())
             }
             Ok(crate::daemon::ipc::IpcResponse::Error { message }) => {
+                if !tun_retried && message.contains("TUN 设备不可用") {
+                    crate::log_info!("TUN 设备不可用，自动触发授权...", &space_id.to_string());
+                    let result = crate::platform::get_adapter().authorize_tun();
+                    if result.success {
+                        crate::log_info!("授权成功，等待守护进程重启...", &space_id.to_string());
+                        tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+                        return self.connect_inner(space_id, true).await;
+                    }
+                }
                 crate::log_error!(format!("connect: IPC 返回错误: {}", message), &space_id.to_string());
                 Err(message)
             }
