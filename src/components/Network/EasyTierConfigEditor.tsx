@@ -63,16 +63,16 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
   const set = (patch: Partial<NetworkConfig>) => onChange({ ...value, ...patch });
 
   const boolVal = (key: keyof NetworkConfig): boolean =>
-    (value as any)[key] === true;
+    value[key] === true;
 
   const setBool = (key: keyof NetworkConfig, val: boolean) =>
-    set({ [key]: val } as any);
+    set({ [key]: val });
 
   const strVal = (key: keyof NetworkConfig): string =>
-    ((value as any)[key] ?? "") as string;
+    (value[key] ?? "") as string;
 
   const setStr = (key: keyof NetworkConfig, val: string) =>
-    set({ [key]: val || undefined } as any);
+    set({ [key]: val || undefined });
 
   const port_forwards: PortForwardConfig[] = value.port_forwards ?? [];
 
@@ -308,7 +308,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
 
           {/* Boolean flags grid */}
           <div className="pt-2">
-            <Text size="1" weight="medium" className="mb-2 block">{t("network.flagsSwitch")}</Text>
+            <Text size="1" weight="medium" className="block mb-2">{t("network.flagsSwitch")}</Text>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 md:grid-cols-3">
               {boolFlags.filter(f => f.key !== "enable_socks5" && f.key !== "enable_manual_routes" && f.key !== "enable_relay_network_whitelist").map(({ key, labelKey }) => (
                 <Text as="label" size="1" className="flex items-center gap-2" key={key}>
@@ -373,7 +373,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                 }} />
               <Button variant="ghost" color="red" size="1"
                 onClick={() => {
-                  removeRow(i, port_forwards as any);
+                  removeRow(i, port_forwards);
                   setPortForwards([...port_forwards]);
                 }}>
                 <Trash2 size={14} />
@@ -382,7 +382,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           ))}
           <Button variant="ghost" color="blue" size="1"
             onClick={() => {
-              addRow(port_forwards as any);
+              addRow(port_forwards);
               setPortForwards([...port_forwards]);
             }}>
             <Plus size={14} className="mr-1" />{t("network.portForwardsAddBtn")}

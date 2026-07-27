@@ -95,10 +95,10 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
   };
 
   const setBool = (key: keyof NetworkConfig, val: boolean) =>
-    setConfig({ ...config, [key]: val } as any);
+    setConfig({ ...config, [key]: val });
 
   const setStr = (key: keyof NetworkConfig, val: string) =>
-    setConfig({ ...config, [key]: val } as any);
+    setConfig({ ...config, [key]: val });
 
   if (loading) {
     return (
@@ -110,9 +110,9 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <div className="text-red-800 font-medium">{t("settings.error")}</div>
-        <div className="text-red-600 text-sm">{error}</div>
+      <div className="p-4 border border-red-200 rounded-lg bg-red-50">
+        <div className="font-medium text-red-800">{t("settings.error")}</div>
+        <div className="text-sm text-red-600">{error}</div>
       </div>
     );
   }
@@ -124,7 +124,7 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
       </div>
       <div className="p-4 space-y-4">
         {showSuccess && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+          <div className="p-4 mb-4 border border-green-200 rounded-lg bg-green-50">
             <Text size="1" weight="bold" className="text-green-800">{t("settings.configSaved")}</Text>
           </div>
         )}
@@ -205,11 +205,11 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
               </Flex>
             </div>
             <div>
-              <Text size="1" weight="medium" className="mb-2 block">{t("settings.flags")}</Text>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              <Text size="1" weight="medium" className="block mb-2">{t("settings.flags")}</Text>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
                 {boolFlagKeys.map(({ key, labelKey }) => (
                   <label key={key as string} className="flex items-center gap-2 text-sm">
-                    <Switch checked={(config as any)[key] === true}
+                    <Switch checked={(config)[key] === true}
                       onCheckedChange={(c) => setBool(key, c)} />
                     {t(labelKey)}
                   </label>
@@ -240,7 +240,7 @@ export const NetworkConfigEditor: React.FC<NetworkConfigEditorProps> = ({ spaceI
           </Button>
           <Button onClick={handleSave} disabled={isSaving}>
             {isSaving ? (
-              <RefreshCw size={16} className="animate-spin mr-2" />
+              <RefreshCw size={16} className="mr-2 animate-spin" />
             ) : (
               <Save size={16} className="mr-2" />
             )}
