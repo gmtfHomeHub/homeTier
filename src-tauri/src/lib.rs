@@ -105,21 +105,26 @@ pub fn run() -> std::process::ExitCode {
                     Ok(child) => {
                         crate::log_info!("[GUI] daemon 子进程已启动");
                         app.manage(crate::DaemonGuard(std::sync::Mutex::new(Some(child))));
-                        // 等待 daemon 就绪（最多 5s）
-                        let client = daemon::client::IpcClient::default_port();
-                        let mut ready = false;
-                        for _ in 0..50 {
-                            if client.ping_sync() {
-                                ready = true;
-                                break;
+                        // 后台轮询 daemon 就绪（50 次 × 200ms = 10s），不阻塞窗口渲染
+                        std::thread::spawn(|| {
+                            let client = daemon::client::IpcClient::default_port();
+                            let mut ready = false;
+                            for i in 0..50 {
+                                if client.ping_sync() {
+                                    ready = true;
+                                    break;
+                                }
+                                if i % 10 == 9 {
+                                    crate::log_debug!(format!("[GUI] 等待 daemon 就绪中... ({}/50)", i + 1));
+                                }
+                                std::thread::sleep(std::time::Duration::from_millis(200));
                             }
-                            std::thread::sleep(std::time::Duration::from_millis(100));
-                        }
-                        if ready {
-                            crate::log_info!("[GUI] daemon 已就绪");
-                        } else {
-                            crate::log_warn!("[GUI] daemon 启动超时");
-                        }
+                            if ready {
+                                crate::log_info!("[GUI] daemon 已就绪");
+                            } else {
+                                crate::log_warn!("[GUI] daemon 启动超时");
+                            }
+                        });
                     }
                     Err(e) => {
                         crate::log_error!(format!("[GUI] 启动 daemon 失败: {}", e));

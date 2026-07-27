@@ -291,12 +291,30 @@ Self {
         Ok(ShareInfo { network_name, network_secret, host_hint: None })
     }
 
+    /// 等待 daemon 就绪（ping 轮询，最多 10s）
+    async fn wait_daemon_ready(&self) -> bool {
+        for i in 0..50 {
+            if self.ipc_client.ping().await {
+                return true;
+            }
+            if i % 10 == 0 {
+                crate::log_debug!(format!("connect: 等待 daemon 就绪 ({}/50)...", i + 1));
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+        false
+    }
+
     /// 连接空间（通过 IPC 通知 daemon）
     pub async fn connect(&self, space_id: &Uuid) -> Result<(), String> {
         crate::log_info!(format!("connect: 开始连接空间, space_id={}", space_id), &space_id.to_string());
 
         let mut tun_retried = false;
         loop {
+            if !self.ipc_client.ping().await {
+                crate::log_info!("connect: daemon 未就绪，等待...", &space_id.to_string());
+                self.wait_daemon_ready().await;
+            }
             crate::log_debug!(format!("connect: 查询当前运行中的空间"), &space_id.to_string());
             let running_spaces: Vec<String> = match self.ipc_client.list_spaces().await {
                 Ok(crate::daemon::ipc::IpcResponse::Ok { data }) => {
@@ -377,7 +395,9 @@ Self {
                         let result = crate::platform::get_adapter().authorize_tun();
                         if result.success {
                             crate::log_info!("授权成功，等待守护进程重启...", &space_id.to_string());
-                            tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+                            tokio::time::sleep(std::time::Duration::from_millis(5000)).await;
+                            crate::log_info!("等待新守护进程就绪...", &space_id.to_string());
+                            self.wait_daemon_ready().await;
                             tun_retried = true;
                             continue;
                         }
