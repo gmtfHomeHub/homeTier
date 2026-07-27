@@ -4,12 +4,13 @@ use std::time::Duration;
 /// TCP RPC 客户端
 pub struct IpcClient {
     port: u16,
+    stream: tokio::sync::Mutex<Option<tokio::net::TcpStream>>,
 }
 
 impl IpcClient {
     /// 创建新的 IPC 客户端
     pub fn new(port: u16) -> Self {
-        Self { port }
+        Self { port, stream: tokio::sync::Mutex::new(None) }
     }
 
     /// 创建默认端口的客户端
@@ -17,52 +18,80 @@ impl IpcClient {
         Self::new(DEFAULT_RPC_PORT)
     }
 
-    /// 发送请求到 daemon
+    /// 关闭长连接
+    pub async fn close(&self) {
+        *self.stream.lock().await = None;
+    }
+
+    /// 发送请求到 daemon（复用长连接，断线自动重连）
     pub async fn send(&self, request: &IpcRequest) -> Result<IpcResponse, String> {
         let addr = format!("127.0.0.1:{}", self.port);
-
-        // 设置连接超时
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::time::timeout;
-        let stream = timeout(Duration::from_secs(5), tokio::net::TcpStream::connect(&addr)).await
-            .map_err(|_| format!("连接 daemon 超时"))?
-            .map_err(|e| format!("连接 daemon 失败: {}", e))?;
-        let mut stream = stream;
 
-        // 使用 tokio::io::AsyncReadExt::read 配合 timeout 实现读超时
-        // write 的超时通过 tokio::io::AsyncWriteExt 配合 timeout 实现
+        let mut stream_guard = self.stream.lock().await;
+
+        // 确保有可用连接
+        if stream_guard.is_none() {
+            let stream = timeout(Duration::from_secs(5), tokio::net::TcpStream::connect(&addr)).await
+                .map_err(|_| "连接 daemon 超时".to_string())?
+                .map_err(|e| format!("连接 daemon 失败: {}", e))?;
+            *stream_guard = Some(stream);
+        }
 
         // 序列化请求
         let req_json = serde_json::to_string(request)
             .map_err(|e| format!("序列化请求失败: {}", e))?;
         let len = req_json.len() as u32;
 
+        let stream = stream_guard.as_mut().unwrap();
+
         // 发送长度 + 内容
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        stream.write_all(&len.to_le_bytes()).await
-            .map_err(|e| format!("发送请求长度失败: {}", e))?;
-        stream.write_all(req_json.as_bytes()).await
-            .map_err(|e| format!("发送请求内容失败: {}", e))?;
+        if let Err(e) = async {
+            stream.write_all(&len.to_le_bytes()).await?;
+            stream.write_all(req_json.as_bytes()).await?;
+            Ok::<_, std::io::Error>(())
+        }.await {
+            *stream_guard = None;
+            return Err(format!("发送请求失败: {}", e));
+        }
 
         // 读取响应长度（30s 超时）
         let mut len_buf = [0u8; 4];
-        timeout(Duration::from_secs(30), stream.read_exact(&mut len_buf)).await
-            .map_err(|_| "读取响应长度超时")?
-            .map_err(|e| format!("读取响应长度失败: {}", e))?;
+        match timeout(Duration::from_secs(30), stream.read_exact(&mut len_buf)).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => {
+                *stream_guard = None;
+                return Err(format!("读取响应长度失败: {}", e));
+            }
+            Err(_) => {
+                *stream_guard = None;
+                return Err("读取响应长度超时".to_string());
+            }
+        }
         let resp_len = u32::from_le_bytes(len_buf) as usize;
 
         if resp_len > 10 * 1024 * 1024 {
+            *stream_guard = None;
             return Err("响应过大".into());
         }
 
         // 读取响应内容（30s 超时）
         let mut resp_buf = vec![0u8; resp_len];
-        timeout(Duration::from_secs(30), stream.read_exact(&mut resp_buf)).await
-            .map_err(|_| "读取响应内容超时")?
-            .map_err(|e| format!("读取响应内容失败: {}", e))?;
-
-        // 反序列化
-        serde_json::from_slice(&resp_buf)
-            .map_err(|e| format!("反序列化响应失败: {}", e))
+        match timeout(Duration::from_secs(30), stream.read_exact(&mut resp_buf)).await {
+            Ok(Ok(_)) => {
+                serde_json::from_slice(&resp_buf)
+                    .map_err(|e| format!("反序列化响应失败: {}", e))
+            }
+            Ok(Err(e)) => {
+                *stream_guard = None;
+                Err(format!("读取响应内容失败: {}", e))
+            }
+            Err(_) => {
+                *stream_guard = None;
+                Err("读取响应内容超时".to_string())
+            }
+        }
     }
 
     /// 同步 Ping daemon（用于 setup 等非 async 上下文）

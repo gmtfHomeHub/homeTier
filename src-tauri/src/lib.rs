@@ -27,16 +27,16 @@ use proxy::{ActiveOrigin, ProxyHandler, ProxyKeyMap};
 /// 全局代理服务器，用于应用退出时关闭
 static PROXY_SERVER: OnceLock<Arc<proxy::ProxyServer>> = OnceLock::new();
 
-/// Windows UAC 提权标记，用于检测当前进程是否通过 runas 启动
-#[cfg(target_os = "windows")]
+/// UAC / macOS 提权标记，用于检测当前进程是否通过提权启动
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 static ELEVATED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// 管理 daemon 子进程生命周期，在 app 退出时自动清理
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub struct DaemonGuard(pub std::sync::Mutex<Option<std::process::Child>>);
 
-/// 检查当前进程是否以提权模式运行（Windows UAC）
-#[cfg(target_os = "windows")]
+/// 检查当前进程是否以提权模式运行（Windows UAC / macOS）
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 pub fn is_elevated_process() -> bool {
     ELEVATED.load(std::sync::atomic::Ordering::SeqCst)
 }
@@ -387,13 +387,13 @@ pub fn run() -> std::process::ExitCode {
     std::process::ExitCode::SUCCESS
 }
 
-/// 带参数的入口点，用于 Windows UAC 提权场景
+/// 带参数的入口点，用于 Windows UAC / macOS 提权场景
 pub fn run_with_args(elevated: bool) -> std::process::ExitCode {
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     {
         ELEVATED.store(elevated, std::sync::atomic::Ordering::SeqCst);
         if elevated {
-            log_info!("Windows UAC 提权进程已启动");
+            log_info!("提权进程已启动");
         }
     }
     run()

@@ -26,18 +26,53 @@ impl PlatformAdapter for MacOSAdapter {
     }
 
     fn authorize_tun(&self) -> AuthResult {
-        // macOS utun socket 创建不需要 root，但 ifconfig/route 网络配置需要 root
-        // 检测当前是否有 root 权限
         if self.is_elevated() {
-            AuthResult { success: true, message: "macOS 管理员权限已就绪".into(), needs_restart: false }
-        } else {
-            AuthResult {
+            return AuthResult { success: true, message: "macOS 管理员权限已就绪".into(), needs_restart: false };
+        }
+
+        // 通过 osascript 弹出 macOS 原生授权对话框，以 root 权限重启 daemon
+        let current_exe = match std::env::current_exe() {
+            Ok(p) => p,
+            Err(e) => return AuthResult {
                 success: false,
-                message: "macOS 配置虚拟网卡需要管理员权限。请使用守护进程模式:\n\
-                    sudo hometier --daemon\n\
-                    或者以管理员身份运行: sudo hometier".into(),
+                message: format!("无法获取当前可执行文件路径: {}", e),
                 needs_restart: false,
+            },
+        };
+
+        let exe_str = current_exe.to_string_lossy();
+        let escaped = exe_str.replace("\\", "\\\\").replace("\"", "\\\"");
+        let script = format!(
+            "do shell script \"{} --daemon --elevated\" with administrator privileges",
+            escaped
+        );
+
+        match std::process::Command::new("osascript")
+            .arg("-e")
+            .arg(&script)
+            .output()
+        {
+            Ok(output) => {
+                if output.status.success() {
+                    AuthResult {
+                        success: true,
+                        message: "macOS 管理员权限已获取，守护进程以 root 权限重启中...".into(),
+                        needs_restart: true,
+                    }
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    AuthResult {
+                        success: false,
+                        message: format!("授权失败: {}", stderr.trim()),
+                        needs_restart: false,
+                    }
+                }
             }
+            Err(e) => AuthResult {
+                success: false,
+                message: format!("启动 osascript 失败: {}", e),
+                needs_restart: false,
+            },
         }
     }
 }
