@@ -390,6 +390,7 @@ impl EasyTierManager {
         };
         match peer_service.list_peer(ctrl, list_req).await {
             Ok(resp) => {
+                crate::log_debug!(format!("[D20260728-V3] query_rpc_status response: my_info={:?}, peer_count={}", resp.my_info, resp.peer_infos.len()));
                 let peer_infos = resp;
                 let mut virtual_ip = None;
                 let mut connected_peers = 0u32;
@@ -500,6 +501,7 @@ impl EasyTierManager {
                 let result = peer_service.list_peer(ctrl, list_req).await;
                 match result {
                     Ok(resp) => {
+                        crate::log_debug!(format!("[D20260728-V3] query_peer_list response: my_info={:?}, peer_count={}", resp.my_info, resp.peer_infos.len()));
                         let mut peer_infos = Vec::new();
 
                         for peer in resp.peer_infos {
