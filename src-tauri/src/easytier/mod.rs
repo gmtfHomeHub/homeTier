@@ -369,8 +369,8 @@ impl EasyTierManager {
     async fn query_rpc_status(&self, instance_id: &Uuid, rpc_port: u16) -> Option<crate::daemon::ipc::SpaceRuntimeStatus> {
         use easytier::proto::rpc_impl::standalone::StandAloneClient;
         use easytier::proto::rpc_types::controller::BaseController;
-        use easytier::proto::api::instance::PeerManageRpcClientFactory;
         use easytier::tunnel::tcp::TcpTunnelConnector;
+        use easytier::proto::api::manage::WebClientServiceClientFactory;
 
         let addr = format!("tcp://127.0.0.1:{}", rpc_port);
         let url: url::Url = addr.parse().ok()?;
@@ -378,34 +378,31 @@ impl EasyTierManager {
         let connector = TcpTunnelConnector::new(url);
         let mut client = StandAloneClient::new(connector);
 
-        // 查询 peer 列表
+        // 通过 collect_network_info 获取实例状态（兼容 daemon 模式）
         let ctrl = BaseController::default();
-        let peer_service = client.scoped_client::<PeerManageRpcClientFactory<BaseController>>("".to_string()).await.ok()?;
+        let web_service = client.scoped_client::<WebClientServiceClientFactory<BaseController>>("".to_string()).await.ok()?;
 
-        let list_req = easytier::proto::api::instance::ListPeerRequest {
-            instance: Some(easytier::proto::api::instance::InstanceIdentifier {
-                selector: Some(easytier::proto::api::instance::instance_identifier::Selector::Id(instance_id.to_string())),
-            }),
-            ..Default::default()
+        let proto_uuid: easytier::proto::common::Uuid = (*instance_id).into();
+        let inst_id_str = instance_id.to_string();
+        let collect_req = easytier::proto::api::manage::CollectNetworkInfoRequest {
+            inst_ids: vec![proto_uuid],
         };
-        match peer_service.list_peer(ctrl, list_req).await {
+        match web_service.collect_network_info(ctrl, collect_req).await {
             Ok(resp) => {
-                crate::log_debug!(format!("[D20260728-V3] query_rpc_status response: my_info={:?}, peer_count={}", resp.my_info, resp.peer_infos.len()));
-                let peer_infos = resp;
+                let running_info = resp.info.as_ref()
+                    .and_then(|m| m.map.get(&inst_id_str))?;
+
                 let mut virtual_ip = None;
                 let mut connected_peers = 0u32;
 
-                if let Some(ref my_info) = peer_infos.my_info {
-                    if !my_info.ipv4_addr.is_empty() {
-                        virtual_ip = Some(my_info.ipv4_addr.clone());
-                    } else {
-                        crate::log_debug!(format!("query_rpc_status: my_info present but ipv4_addr empty, my_info={:?}", my_info));
+                if let Some(ref my_node) = running_info.my_node_info {
+                    if let Some(ref ipv4_inet) = my_node.virtual_ipv4 {
+                        if let Some(ref addr) = ipv4_inet.address {
+                            virtual_ip = Some(addr.to_string());
+                        }
                     }
-                } else {
-                    crate::log_warn!("query_rpc_status: my_info is None");
                 }
-                connected_peers = peer_infos.peer_infos.len() as u32;
-
+                connected_peers = running_info.peers.len() as u32;
 
                 // 计算平均延迟（从 PeerConnInfo.stats 聚合）
                 let mut total_latency = 0.0f64;
@@ -413,7 +410,7 @@ impl EasyTierManager {
                 let mut total_rx_bytes = 0u64;
                 let mut total_tx_bytes = 0u64;
 
-                for peer in &peer_infos.peer_infos {
+                for peer in &running_info.peers {
                     for conn in &peer.conns {
                         if let Some(stats) = &conn.stats {
                             total_latency += stats.latency_us as f64;
