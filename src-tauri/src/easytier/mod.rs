@@ -116,18 +116,10 @@ impl EasyTierManager {
     }
 
     /// Phase 1-1: 等待进程 RPC 端口就绪
-    async fn wait_for_rpc_ready(&self, instance_id: &Uuid, rpc_port: u16, timeout: std::time::Duration) -> Result<(), String> {
+    async fn wait_for_rpc_ready(&self, _instance_id: &Uuid, rpc_port: u16, timeout: std::time::Duration) -> Result<(), String> {
         let start = std::time::Instant::now();
         let mut last_err = String::new();
         while start.elapsed() < timeout {
-            // 检查进程是否还活着
-            let alive = self.processes.get(instance_id)
-                .map(|p| p.is_running())
-                .unwrap_or(false);
-            if !alive {
-                return Err("进程已退出".to_string());
-            }
-            // 尝试 TCP 连接 RPC 端口
             match tokio::net::TcpStream::connect(format!("127.0.0.1:{}", rpc_port)).await {
                 Ok(_) => {
                     crate::log_info!(format!("EasyTierManager.wait_for_rpc_ready: RPC 端口就绪, port={}, elapsed={:?}", rpc_port, start.elapsed()));
