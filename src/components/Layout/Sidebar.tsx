@@ -27,7 +27,7 @@ export function Sidebar() {
     if (!configJson) return undefined;
     try {
       const parsed = JSON.parse(configJson);
-      return parsed.ipv4 || undefined;
+      return parsed.virtual_ipv4 || undefined;
     } catch {
       return undefined;
     }
@@ -44,11 +44,11 @@ export function Sidebar() {
         {...swipeBind}
       >
         <div
-          className="absolute right-0 top-0 bottom-0 w-4 z-20 cursor-w-resize hidden md:block"
+          className="absolute top-0 bottom-0 right-0 z-20 hidden w-4 cursor-w-resize md:block"
           onClick={() => setSidebarOpen(false)}
         />
 
-        <div className="flex-1 p-3 overflow-y-auto overflow-x-hidden">
+        <div className="flex-1 p-3 overflow-x-hidden overflow-y-auto">
           <div className="flex items-center justify-between mb-3">
             <Flex gap="2">
               <Button
