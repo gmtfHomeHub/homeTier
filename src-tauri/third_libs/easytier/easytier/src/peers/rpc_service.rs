@@ -90,11 +90,13 @@ impl PeerManageRpc for PeerManagerRpcService {
     ) -> Result<ListPeerResponse, rpc_types::error::Error> {
         let mut reply = ListPeerResponse::default();
 
-        let peers =
-            PeerManagerRpcService::list_peers(weak_upgrade(&self.peer_manager)?.deref()).await;
+        let pm = weak_upgrade(&self.peer_manager)?;
+        let peers = PeerManagerRpcService::list_peers(pm.deref()).await;
         for peer in peers {
             reply.peer_infos.push(peer);
         }
+
+        reply.my_info = Some(pm.get_my_info().await);
 
         Ok(reply)
     }
