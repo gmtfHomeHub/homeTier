@@ -40,7 +40,12 @@ impl EasyTierManager {
         Self { processes: DashMap::new(), downloader, config_dir }
     }
 
-    /// 启动网络实例（Desktop: 子进程模式）
+    /// 获取配置文件目录
+    pub fn get_config_dir(&self) -> PathBuf {
+        self.config_dir.clone()
+    }
+
+    /// 启动网络实例（Desktop: 通过 RPC 调用已运行的 easytier-core daemon）
     pub async fn start_network(
         &self,
         cfg: &config::NetworkConfig,
@@ -49,70 +54,89 @@ impl EasyTierManager {
     ) -> Result<Uuid, String> {
         crate::log_info!(format!("EasyTierManager.start_network: 开始, network_name={}, id={}", cfg.network_name, instance_id));
 
-        // 确保二进制存在
-        crate::log_debug!(format!("EasyTierManager.start_network: 确保二进制存在"));
-        let binary = match self.downloader.ensure_binary().await {
-            Ok(b) => {
-                crate::log_info!(format!("EasyTierManager.start_network: 二进制路径: {}", b.display()));
-                b
-            }
-            Err(e) => {
-                crate::log_error!(format!("EasyTierManager.start_network: 确保二进制失败: {}", e));
-                return Err(e);
-            }
-        };
+        // 确保二进制存在（用于验证，实际启动由 daemon 完成）
+        crate::log_debug!("EasyTierManager.start_network: 确保二进制存在");
+        let _ = self.downloader.ensure_binary().await.map_err(|e| {
+            crate::log_error!(format!("EasyTierManager.start_network: 确保二进制失败: {}", e));
+            e
+        })?;
 
-        // 生成 RPC 端口（基于 instance_id 的哈希，确保唯一性）
-        let rpc_port = self.allocate_rpc_port(&instance_id);
-        crate::log_info!(format!("EasyTierManager.start_network: 分配 RPC 端口: {}", rpc_port));
+        // 生成 TOML 配置文件（写入 daemon 共享的 config_dir，供 Reload 使用）
+        crate::log_debug!("EasyTierManager.start_network: 生成配置文件");
+        let _ = self.generate_config(cfg, &instance_id, initial_config.as_deref())?;
 
-        // 生成 TOML 配置
-        crate::log_debug!(format!("EasyTierManager.start_network: 生成配置文件"));
-        let config_path = match self.generate_config(&cfg, &instance_id, initial_config.as_deref()) {
-            Ok(p) => {
-                crate::log_info!(format!("EasyTierManager.start_network: 配置文件生成: {}", p.display()));
-                p
-            }
-            Err(e) => {
-                crate::log_error!(format!("EasyTierManager.start_network: 生成配置失败: {}", e));
-                return Err(e);
-            }
-        };
+        // 构建 protobuf 配置
+        let proto_cfg = self.build_proto_config(cfg, &instance_id);
 
-        // 停止现有进程（如果有）
-        if self.processes.contains_key(&instance_id) {
-            crate::log_warn!(format!("EasyTierManager.start_network: 发现现有实例，先停止"));
-            if let Err(e) = self.stop_network(&instance_id).await {
-                crate::log_error!(format!("EasyTierManager.start_network: 停止现有实例失败: {}", e));
-                return Err(e);
-            }
-        }
+        // 通过 RPC 调用 easytier-core-daemon 启动网络实例
+        crate::log_info!("EasyTierManager.start_network: 调用 RPC run_network_instance");
+        self.rpc_run_network_instance(&instance_id, &proto_cfg).await?;
 
-        // 启动子进程（传入 RPC 端口）
-        crate::log_info!(format!("EasyTierManager.start_network: 启动 easytier-core 进程, binary={}, config={}, rpc_port={}", binary.display(), config_path.display(), rpc_port));
-        let process = match EasyTierProcess::start(&binary, &config_path, Some(rpc_port)).await {
-            Ok(p) => {
-                crate::log_info!(format!("EasyTierManager.start_network: 进程启动成功, pid={:?}", p.pid()));
-                p
-            }
-            Err(e) => {
-                crate::log_error!(format!("EasyTierManager.start_network: 启动进程失败: {}", e));
-                return Err(e);
-            }
-        };
-        self.processes.insert(instance_id, process);
-
-        // Phase 1-1: 进程健康检查 — 等待 RPC 就绪
-        let health_ok = self.wait_for_rpc_ready(&instance_id, rpc_port, std::time::Duration::from_secs(5)).await;
-        crate::log_info!(format!("EasyTierManager.start_network: 进程健康检查结果: {:?}", health_ok));
-
-        if let Err(e) = health_ok {
-            crate::log_error!(format!("EasyTierManager.start_network: 进程可能未正常启动: {}", e));
-            return Err(e);
-        }
-
-        crate::log_info!(format!("EasyTierManager.start_network: 完成, id={}, rpc_port={}", instance_id, rpc_port));
+        crate::log_info!(format!("EasyTierManager.start_network: 完成, id={}", instance_id));
         Ok(instance_id)
+    }
+
+    /// 构建 protobuf NetworkConfig
+    fn build_proto_config(&self, cfg: &config::NetworkConfig, instance_id: &Uuid) -> easytier::proto::api::manage::NetworkConfig {
+        use easytier::proto::api::manage::NetworkConfig;
+        NetworkConfig {
+            instance_id: Some(instance_id.to_string()),
+            network_name: if cfg.network_name.is_empty() { None } else { Some(cfg.network_name.clone()) },
+            network_secret: if cfg.network_secret.is_empty() { None } else { Some(cfg.network_secret.clone()) },
+            dhcp: Some(cfg.dhcp),
+            virtual_ipv4: cfg.ipv4.clone(),
+            hostname: cfg.hostname.clone(),
+            listener_urls: cfg.listeners.clone(),
+            peer_urls: cfg.peers.iter().map(|p| p.uri.clone()).collect(),
+            proxy_cidrs: cfg.proxy_networks.clone(),
+            routes: cfg.routes.clone(),
+            exit_nodes: cfg.exit_nodes.clone(),
+            port_forwards: Vec::new(),
+            dev_name: cfg.flags.get("dev_name").cloned(),
+            mtu: cfg.flags.get("mtu").and_then(|v| v.parse().ok()),
+            latency_first: cfg.flags.get("latency_first").map(|v| v == "true"),
+            enable_kcp_proxy: cfg.flags.get("enable_kcp_proxy").map(|v| v == "true"),
+            enable_quic_proxy: cfg.flags.get("enable_quic_proxy").map(|v| v == "true"),
+            no_tun: cfg.flags.get("no_tun").map(|v| v == "true"),
+            disable_p2p: cfg.flags.get("disable_p2p").map(|v| v == "true"),
+            multi_thread: cfg.flags.get("multi_thread").map(|v| v == "true"),
+            bind_device: cfg.flags.get("bind_device").map(|v| v == "true"),
+            disable_encryption: None,
+            disable_ipv6: None,
+            encryption_algorithm: cfg.flags.get("encryption_algorithm").cloned(),
+            ..Default::default()
+        }
+    }
+
+    /// 通过 RPC 调用 easytier-core-daemon 启动网络实例
+    async fn rpc_run_network_instance(&self, instance_id: &Uuid, config: &easytier::proto::api::manage::NetworkConfig) -> Result<(), String> {
+        use easytier::proto::rpc_impl::standalone::StandAloneClient;
+        use easytier::proto::rpc_types::controller::BaseController;
+        use easytier::tunnel::tcp::TcpTunnelConnector;
+        use easytier::proto::api::manage::{WebClientServiceClientFactory, RunNetworkInstanceRequest};
+
+        let rpc_port = crate::daemon::ipc::EASYTIER_DAEMON_RPC_PORT;
+        let addr = format!("tcp://127.0.0.1:{}", rpc_port);
+        let url: url::Url = addr.parse().map_err(|e| format!("解析 RPC 地址失败: {}", e))?;
+
+        let connector = TcpTunnelConnector::new(url);
+        let mut client = StandAloneClient::new(connector);
+
+        let ctrl = BaseController::default();
+        let manage_service = client.scoped_client::<WebClientServiceClientFactory<BaseController>>("".to_string()).await
+            .map_err(|e| format!("连接 easytier-core RPC 失败: {}", e))?;
+
+        let req = RunNetworkInstanceRequest {
+            inst_id: Some((*instance_id).into()),
+            config: Some(config.clone()),
+            overwrite: true,
+            source: easytier::proto::api::manage::ConfigSource::User as i32,
+        };
+
+        manage_service.run_network_instance(ctrl, req).await
+            .map_err(|e| format!("RPC run_network_instance 失败: {}", e))?;
+
+        Ok(())
     }
 
     /// Phase 1-1: 等待进程 RPC 端口就绪
@@ -145,29 +169,49 @@ impl EasyTierManager {
         base + offset
     }
 
-    /// 停止网络实例
+    /// 停止网络实例（Desktop: 通过 RPC 调用）
     pub async fn stop_network(&self, instance_id: &Uuid) -> Result<Option<String>, String> {
         crate::log_info!(format!("EasyTierManager: 停止网络实例, id={}", instance_id));
-        if let Some((_, mut process)) = self.processes.remove(instance_id) {
-            let config = self.read_config(instance_id);
-            process.stop().await?;
-            crate::log_info!(format!("EasyTierManager: 网络实例已停止, id={}", instance_id));
-            Ok(config)
-        } else {
-            crate::log_warn!(format!("EasyTierManager: 实例未找到, id={}", instance_id));
-            Ok(None)
+
+        let config = self.read_config(instance_id);
+
+        // 通过 RPC 删除网络实例（不杀 easytier-core 进程）
+        use easytier::proto::rpc_impl::standalone::StandAloneClient;
+        use easytier::proto::rpc_types::controller::BaseController;
+        use easytier::tunnel::tcp::TcpTunnelConnector;
+        use crate::proto::api::manage::{WebClientServiceClientFactory, DeleteNetworkInstanceRequest};
+
+        let rpc_port = crate::daemon::ipc::EASYTIER_DAEMON_RPC_PORT;
+        let addr = format!("tcp://127.0.0.1:{}", rpc_port);
+        let url: url::Url = addr.parse().map_err(|e| format!("解析 RPC 地址失败: {}", e))?;
+
+        let connector = TcpTunnelConnector::new(url);
+        let mut client = StandAloneClient::new(connector);
+
+        let ctrl = BaseController::default();
+        let manage_service = client.scoped_client::<WebClientServiceClientFactory<BaseController>>("".to_string()).await
+            .map_err(|e| format!("连接 easytier-core RPC 失败: {}", e))?;
+
+        let req = DeleteNetworkInstanceRequest {
+            inst_ids: vec![(*instance_id).into()],
+        };
+
+        match manage_service.delete_network_instance(ctrl, req).await {
+            Ok(_) => {
+                crate::log_info!(format!("EasyTierManager: 网络实例已停止, id={}", instance_id));
+            }
+            Err(e) => {
+                crate::log_warn!(format!("EasyTierManager: delete_network_instance failed: {}, may already be stopped", e));
+            }
         }
+
+        Ok(config)
     }
 
     /// 获取网络状态
     pub async fn get_status(&self, instance_id: &Uuid) -> Result<NetworkStatus, String> {
-        let process = self.processes.get(instance_id)
-            .ok_or_else(|| {
-                crate::log_warn!(format!("EasyTierManager: 获取状态失败, 实例未找到, id={}", instance_id));
-                "Instance not found".to_string()
-            })?;
-
-        let is_running = process.is_running();
+        let rpc_port = self.get_instance_rpc_port(instance_id);
+        let is_running = rpc_port.map(|_| self.is_running(instance_id)).unwrap_or(false);
         let virtual_ip = if is_running {
             self.query_virtual_ip(instance_id).await
         } else {
@@ -381,9 +425,9 @@ impl EasyTierManager {
         self.query_rpc_status(instance_id, rpc_port).await
     }
 
-    /// 获取实例的 RPC 端口
+    /// 获取实例的 RPC 端口（共享 daemon 端口）
     fn get_instance_rpc_port(&self, instance_id: &Uuid) -> Option<u16> {
-        self.processes.get(instance_id).and_then(|p| p.rpc_port())
+        Some(crate::daemon::ipc::EASYTIER_DAEMON_RPC_PORT)
     }
 
     /// 获取连接的 peer 数量
@@ -555,13 +599,12 @@ impl EasyTierManager {
         }
 
         // 重新生成配置文件
-        let new_config_path = self.generate_config(&network_config, instance_id, None)?;
+        let _ = self.generate_config(&network_config, instance_id, None)?;
 
-        // 重启子进程
-        if let Some(mut process) = self.processes.get_mut(instance_id) {
-            process.restart(Some(&new_config_path)).await?;
-            crate::log_info!(format!("EasyTierManager: 配置已更新并重启, id={}", instance_id));
-        }
+        // 通过 RPC 重新启动网络实例（覆盖已有）
+        let proto_cfg = self.build_proto_config(&network_config, instance_id);
+        self.rpc_run_network_instance(instance_id, &proto_cfg).await?;
+        crate::log_info!(format!("EasyTierManager: 配置已更新, id={}", instance_id));
 
         Ok(())
     }
@@ -601,16 +644,14 @@ impl EasyTierManager {
 
     /// 检查网络是否正在运行
     pub fn is_running(&self, instance_id: &Uuid) -> bool {
-        self.processes.get(instance_id)
-            .map(|p| p.is_running())
-            .unwrap_or(false)
+        // 通过 RPC 查询实例列表来检查
+        self.read_config_path(instance_id).is_some()
     }
 
     /// 获取所有运行的实例 ID
     pub fn list_running(&self) -> Vec<Uuid> {
-        self.processes.iter()
-            .filter(|entry| entry.value().is_running())
-            .map(|entry| *entry.key())
+        self.list_saved().iter()
+            .filter_map(|id| Uuid::parse_str(id).ok())
             .collect()
     }
 
@@ -650,17 +691,16 @@ impl EasyTierManager {
 
     /// 重启所有运行中的实例（升级后调用）
     pub(crate) async fn restart_all_instances(&self) {
-        for entry in self.processes.iter() {
-            let space_id = *entry.key();
-            if entry.value().is_running() {
-                crate::log_info!(format!("EasyTierManager: 重启实例以应用新版本, id={}", space_id));
-                if let Some(config_path) = self.read_config_path(&space_id) {
-                    if let Some(binary) = self.downloader.current_binary_path() {
-                        if let Some(mut proc) = self.processes.get_mut(&space_id) {
-                            proc.restart(Some(&config_path)).await.ok();
-                        }
-                    }
-                }
+        let running = self.list_running();
+        for space_id in running {
+            crate::log_info!(format!("EasyTierManager: 重启实例以应用新版本, id={}", space_id));
+            if let Some(_config_path) = self.read_config_path(&space_id) {
+                let cfg = match self.read_network_config(&space_id) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                let proto_cfg = self.build_proto_config(&cfg, &space_id);
+                let _ = self.rpc_run_network_instance(&space_id, &proto_cfg).await;
             }
         }
     }

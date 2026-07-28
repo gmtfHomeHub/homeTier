@@ -7,12 +7,32 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
 use crate::easytier::EasyTierManager;
 
+async fn wait_rpc_ready(rpc_port: u16, timeout: std::time::Duration) -> bool {
+    let start = std::time::Instant::now();
+    while start.elapsed() < timeout {
+        match tokio::net::TcpStream::connect(format!("127.0.0.1:{}", rpc_port)).await {
+            Ok(_) => {
+                crate::log_info!(format!("[Daemon] RPC 端口就绪，耗时 {:?}", start.elapsed()));
+                return true;
+            }
+            Err(_) => {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+        }
+    }
+    crate::log_error!(format!("[Daemon] RPC 端口 {} 就绪超时 {:?}", rpc_port, timeout));
+    false
+}
+
 /// Daemon 核心结构（参考 EasyTier daemon 模式）
 pub struct Daemon {
     status: Arc<RwLock<ipc::DaemonStatus>>,
     easytier: Arc<EasyTierManager>,
     rpc_port: u16,
     shutdown_tx: broadcast::Sender<()>,
+    /// macOS: 守护 easytier-core 进程句柄（应用启动时一次性授权，常驻后台）
+    #[cfg(target_os = "macos")]
+    _easytier_daemon: Option<crate::easytier::EasyTierProcess>,
 }
 
 impl Daemon {
@@ -36,11 +56,42 @@ impl Daemon {
             rpc_port: ipc::DEFAULT_RPC_PORT,
         };
 
+        #[cfg(target_os = "macos")]
+        let _easytier_daemon = {
+            let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+            rt.block_on(async {
+                let binary = easytier.downloader.ensure_binary().await
+                    .map_err(|e| crate::log_error!(format!("[Daemon] 获取 easytier 二进制失败: {}", e)))
+                    .ok();
+                match binary {
+                    Some(b) => {
+                        crate::log_info!(format!("[Daemon] 启动 easytier-core 守护进程, binary={}", b.display()));
+                        let config_dir = easytier.get_config_dir();
+                        let process = crate::easytier::EasyTierProcess::start_daemon(&b, &config_dir, ipc::EASYTIER_DAEMON_RPC_PORT).await;
+                        match process {
+                            Ok(p) => {
+                                crate::log_info!("[Daemon] easytier-core 守护进程已启动，等待 RPC 就绪...");
+                                self::wait_rpc_ready(ipc::EASYTIER_DAEMON_RPC_PORT, std::time::Duration::from_secs(10)).await;
+                                Some(p)
+                            }
+                            Err(e) => {
+                                crate::log_error!(format!("[Daemon] 启动守护进程失败: {}", e));
+                                None
+                            }
+                        }
+                    }
+                    None => None,
+                }
+            })
+        };
+
         Ok(Self {
             status: Arc::new(RwLock::new(status)),
             easytier,
             rpc_port: ipc::DEFAULT_RPC_PORT,
             shutdown_tx,
+            #[cfg(target_os = "macos")]
+            _easytier_daemon,
         })
     }
 

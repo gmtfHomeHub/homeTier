@@ -3,24 +3,30 @@ use std::process::Stdio;
 use std::sync::Mutex;
 use tokio::process::{Child, Command};
 
-/// EasyTier 子进程管理器
+/// EasyTier core 进程包装
+///
+/// macOS: 应用启动时通过 osascript 提权启动守护进程（idle, 无网络配置），
+///        后续通过 RPC run_network_instance / delete_network_instance 热切换网络，
+///        无需再次弹窗授权。
+/// 其他平台：直接作为子进程管理。
 pub struct EasyTierProcess {
     #[cfg(not(target_os = "macos"))]
     child: Mutex<Option<Child>>,
     #[cfg(target_os = "macos")]
     child: Mutex<Option<u32>>,
-    config_path: PathBuf,
     binary_path: PathBuf,
-    /// RPC 端口（用于查询运行时状态）
+    config_dir: PathBuf,
+    /// RPC 端口
     rpc_port: Option<u16>,
 }
 
 impl EasyTierProcess {
-    /// 启动 easytier-core 子进程
     #[cfg(not(target_os = "macos"))]
     pub async fn start(binary: &PathBuf, config: &PathBuf, rpc_port: Option<u16>) -> Result<Self, String> {
         let rpc_arg = rpc_port.unwrap_or(15888);
-        crate::log_info!(format!("[EasyTierProcess] 启动: {} → --config-file {} --rpc-portal {}", binary.display(), config.display(), rpc_arg));
+        crate::log_info!(format!("[EasyTierProcess] 启动: {} --config-file {} --rpc-portal {}", binary.display(), config.display(), rpc_arg));
+
+        let config_dir = config.parent().map(|p| p.to_path_buf()).unwrap_or_default();
 
         let mut cmd = Command::new(binary);
         cmd.arg("--config-file").arg(config);
@@ -62,10 +68,41 @@ impl EasyTierProcess {
         }
 
         crate::log_info!(format!("[EasyTierProcess] 进程已启动, pid={:?}, rpc_port={}", child.id(), rpc_arg));
-        Ok(Self { child: Mutex::new(Some(child)), config_path: config.clone(), binary_path: binary.clone(), rpc_port: Some(rpc_arg) })
+        Ok(Self { child: Mutex::new(Some(child)), binary_path: binary.clone(), config_dir, rpc_port: Some(rpc_arg) })
     }
 
-    /// macOS: 通过 osascript 以 root 权限启动 easytier-core
+    /// macOS: 通过 osascript 以 root 权限启动 easytier-core 守护进程（idle 模式）
+    /// 使用 --daemon + --config-dir 而非 --config-file，不自动创建网络实例。
+    /// 后续通过 RPC run_network_instance 动态加载配置，无需再次弹窗。
+    #[cfg(target_os = "macos")]
+    pub async fn start_daemon(binary: &PathBuf, config_dir: &PathBuf, rpc_port: u16) -> Result<Self, String> {
+        let _ = std::fs::create_dir_all(config_dir);
+        crate::log_info!(format!("[EasyTierProcess] macOS 守护进程启动: {} --rpc-portal {} --daemon --config-dir {}", binary.display(), rpc_port, config_dir.display()));
+
+        let escaped_binary = binary.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
+        let escaped_config_dir = config_dir.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
+        let script = format!(
+            "do shell script \"{} --rpc-portal {} --daemon --config-dir '{}' --no-log-file > /dev/null 2>&1 &\" with administrator privileges",
+            escaped_binary, rpc_port, escaped_config_dir
+        );
+
+        std::process::Command::new("osascript")
+            .arg("-e")
+            .arg(&script)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| {
+                let msg = format!("macOS 提权启动守护 easytier-core 失败: {}", e);
+                crate::log_error!(&msg);
+                msg
+            })?;
+
+        crate::log_info!(format!("[EasyTierProcess] macOS osascript 已触发, rpc_port={}", rpc_port));
+        Ok(Self { child: Mutex::new(Some(0)), binary_path: binary.clone(), config_dir: config_dir.clone(), rpc_port: Some(rpc_port) })
+    }
+
+    /// macOS: 通过 osascript 以 root 权限启动 easytier-core（带配置文件的单网络模式，保留兼容）
     #[cfg(target_os = "macos")]
     pub async fn start(binary: &PathBuf, config: &PathBuf, rpc_port: Option<u16>) -> Result<Self, String> {
         let rpc_arg = rpc_port.unwrap_or(15888);
@@ -90,8 +127,9 @@ impl EasyTierProcess {
                 msg
             })?;
 
+        let config_dir = config.parent().map(|p| p.to_path_buf()).unwrap_or_default();
         crate::log_info!(format!("[EasyTierProcess] macOS osascript 已触发, rpc_port={}", rpc_arg));
-        Ok(Self { child: Mutex::new(Some(0)), config_path: config.clone(), binary_path: binary.clone(), rpc_port: Some(rpc_arg) })
+        Ok(Self { child: Mutex::new(Some(0)), binary_path: binary.clone(), config_dir, rpc_port: Some(rpc_arg) })
     }
 
     /// 获取进程 ID
@@ -167,7 +205,7 @@ impl EasyTierProcess {
     /// 重启进程
     pub async fn restart(&mut self, new_config: Option<&PathBuf>) -> Result<(), String> {
         self.stop().await?;
-        let config = new_config.unwrap_or(&self.config_path);
+        let config = new_config.unwrap_or(&self.config_dir);
 
         #[cfg(target_os = "macos")]
         {
@@ -186,8 +224,7 @@ impl EasyTierProcess {
                 .spawn()
                 .map_err(|e| format!("重启 easytier-core 失败: {}", e))?;
             *self.child.lock().map_err(|e| format!("锁获取失败: {}", e))? = Some(0);
-            self.config_path = config.clone();
-            return Ok(());
+            Ok(())
         }
 
         #[cfg(not(target_os = "macos"))]
@@ -202,7 +239,6 @@ impl EasyTierProcess {
 
             crate::log_info!(format!("[EasyTierProcess] 进程已重启, pid={:?}", new_child.id()));
             *self.child.lock().map_err(|e| format!("锁获取失败: {}", e))? = Some(new_child);
-            self.config_path = config.clone();
             Ok(())
         }
     }
@@ -235,12 +271,12 @@ mod tests {
 
     #[test]
     fn test_process_not_running() {
-        let config = PathBuf::from("/tmp/test.toml");
+        let config_dir = PathBuf::from("/tmp");
         let binary = PathBuf::from("/tmp/test_binary");
         let proc = EasyTierProcess {
             child: Mutex::new(None),
-            config_path: config,
             binary_path: binary,
+            config_dir,
             rpc_port: None,
         };
         assert!(!proc.is_running());
