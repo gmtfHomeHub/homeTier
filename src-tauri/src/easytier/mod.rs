@@ -93,7 +93,7 @@ impl EasyTierManager {
             instance_id: Some(instance_id.to_string()),
             network_name: if cfg.network_name.is_empty() { None } else { Some(cfg.network_name.clone()) },
             network_secret: if cfg.network_secret.is_empty() { None } else { Some(cfg.network_secret.clone()) },
-            dhcp: Some(cfg.dhcp),
+            dhcp: Some(if cfg.ipv4.as_ref().is_some_and(|i| !i.is_empty()) { false } else { cfg.dhcp }),
             virtual_ipv4: cfg.ipv4.clone(),
             hostname: cfg.hostname.clone(),
             listener_urls: cfg.listeners.clone(),
