@@ -24,15 +24,11 @@ async fn wait_rpc_ready(rpc_port: u16, timeout: std::time::Duration) -> bool {
     false
 }
 
-/// Daemon 核心结构（参考 EasyTier daemon 模式）
 pub struct Daemon {
     status: Arc<RwLock<ipc::DaemonStatus>>,
     easytier: Arc<EasyTierManager>,
     rpc_port: u16,
     shutdown_tx: broadcast::Sender<()>,
-    /// macOS: 守护 easytier-core 进程句柄（应用启动时一次性授权，常驻后台）
-    #[cfg(target_os = "macos")]
-    _easytier_daemon: Option<crate::easytier::EasyTierProcess>,
 }
 
 impl Daemon {
@@ -56,42 +52,11 @@ impl Daemon {
             rpc_port: ipc::DEFAULT_RPC_PORT,
         };
 
-        #[cfg(target_os = "macos")]
-        let _easytier_daemon = {
-            let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
-            rt.block_on(async {
-                let binary = easytier.downloader.ensure_binary().await
-                    .map_err(|e| crate::log_error!(format!("[Daemon] 获取 easytier 二进制失败: {}", e)))
-                    .ok();
-                match binary {
-                    Some(b) => {
-                        crate::log_info!(format!("[Daemon] 启动 easytier-core 守护进程, binary={}", b.display()));
-                        let config_dir = easytier.get_config_dir();
-                        let process = crate::easytier::EasyTierProcess::start_daemon(&b, &config_dir, ipc::EASYTIER_DAEMON_RPC_PORT).await;
-                        match process {
-                            Ok(p) => {
-                                crate::log_info!("[Daemon] easytier-core 守护进程已启动，等待 RPC 就绪...");
-                                self::wait_rpc_ready(ipc::EASYTIER_DAEMON_RPC_PORT, std::time::Duration::from_secs(10)).await;
-                                Some(p)
-                            }
-                            Err(e) => {
-                                crate::log_error!(format!("[Daemon] 启动守护进程失败: {}", e));
-                                None
-                            }
-                        }
-                    }
-                    None => None,
-                }
-            })
-        };
-
         Ok(Self {
             status: Arc::new(RwLock::new(status)),
             easytier,
             rpc_port: ipc::DEFAULT_RPC_PORT,
             shutdown_tx,
-            #[cfg(target_os = "macos")]
-            _easytier_daemon,
         })
     }
 
@@ -126,6 +91,42 @@ impl Daemon {
             .map_err(|e| format!("绑定 TCP 端口失败: {}", e))?;
 
         crate::log_info!(format!("[Daemon] TCP RPC 服务器已启动: {}", addr));
+
+        // macOS: daemon IPC 就绪后，启动 easytier-core 守护进程（一次性 osascript 授权）
+        #[cfg(target_os = "macos")]
+        {
+            let easytier = self.easytier.clone();
+            tokio::spawn(async move {
+                crate::log_info!("[Daemon] 正在启动 easytier-core 守护进程...");
+                let binary = match easytier.downloader.ensure_binary().await {
+                    Ok(b) => b,
+                    Err(e) => {
+                        crate::log_error!(format!("[Daemon] 获取 easytier 二进制失败: {}", e));
+                        return;
+                    }
+                };
+                crate::log_info!(format!("[Daemon] easytier-core 守护进程 binary={}", binary.display()));
+                let config_dir = easytier.get_config_dir();
+                let process = match crate::easytier::EasyTierProcess::start_daemon(
+                    &binary, &config_dir, ipc::EASYTIER_DAEMON_RPC_PORT,
+                ).await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        crate::log_error!(format!("[Daemon] osascript 启动失败: {}", e));
+                        return;
+                    }
+                };
+                crate::log_info!(format!("[Daemon] osascript 已触发, 等待 easytier-core RPC 就绪 (port={})...", ipc::EASYTIER_DAEMON_RPC_PORT));
+                let ready = wait_rpc_ready(ipc::EASYTIER_DAEMON_RPC_PORT, std::time::Duration::from_secs(10)).await;
+                if ready {
+                    crate::log_info!("[Daemon] easytier-core 守护进程就绪");
+                } else {
+                    crate::log_error!("[Daemon] easytier-core 守护进程启动超时");
+                }
+                // 让 process 保持存活（不能 drop 触发 SIGKILL）
+                let _ = Box::into_raw(Box::new(process));
+            });
+        }
 
         // 监听 ctrl_c 信号（参考 EasyTier stop_check_notifier）
         let mut shutdown_rx = self.shutdown_tx.subscribe();

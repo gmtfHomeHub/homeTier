@@ -77,7 +77,8 @@ impl EasyTierProcess {
     #[cfg(target_os = "macos")]
     pub async fn start_daemon(binary: &PathBuf, config_dir: &PathBuf, rpc_port: u16) -> Result<Self, String> {
         let _ = std::fs::create_dir_all(config_dir);
-        crate::log_info!(format!("[EasyTierProcess] macOS 守护进程启动: {} --rpc-portal {} --daemon --config-dir {}", binary.display(), rpc_port, config_dir.display()));
+        crate::log_info!(format!("[EasyTierProcess] macOS 守护进程启动, config_dir={}", config_dir.display()));
+        crate::log_info!(format!("[EasyTierProcess] 二进制: {}, RPC端口: {}", binary.display(), rpc_port));
 
         let escaped_binary = binary.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
         let escaped_config_dir = config_dir.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
