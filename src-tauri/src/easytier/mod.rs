@@ -389,49 +389,72 @@ impl EasyTierManager {
         };
         match web_service.collect_network_info(ctrl, collect_req).await {
             Ok(resp) => {
-                let running_info = resp.info.as_ref()
-                    .and_then(|m| m.map.get(&inst_id_str))?;
+                crate::log_debug!(format!(
+                    "[D20260728-FIX] collect_network_info succeeded, info is Some={}, map_size={}",
+                    resp.info.is_some(),
+                    resp.info.as_ref().map(|m| m.map.len()).unwrap_or(0),
+                ));
+                let info_map = resp.info.as_ref();
+                let running_info = info_map
+                    .and_then(|m| m.map.get(&inst_id_str));
 
-                let mut virtual_ip = None;
-                let mut connected_peers = 0u32;
+                match running_info {
+                    Some(running_info) => {
+                        let mut virtual_ip = None;
+                        let mut connected_peers = 0u32;
 
-                if let Some(ref my_node) = running_info.my_node_info {
-                    if let Some(ref ipv4_inet) = my_node.virtual_ipv4 {
-                        if let Some(ref addr) = ipv4_inet.address {
-                            virtual_ip = Some(addr.to_string());
+                        if let Some(ref my_node) = running_info.my_node_info {
+                            if let Some(ref ipv4_inet) = my_node.virtual_ipv4 {
+                                if let Some(ref addr) = ipv4_inet.address {
+                                    virtual_ip = Some(addr.to_string());
+                                } else {
+                                    crate::log_debug!("[D20260728-FIX] collect_network_info OK, my_node_info has virtual_ipv4 but address is None");
+                                }
+                            } else {
+                                crate::log_debug!("[D20260728-FIX] collect_network_info OK, my_node_info present but virtual_ipv4 is None");
+                            }
+                        } else {
+                            crate::log_debug!("[D20260728-FIX] collect_network_info OK, running_info present but my_node_info is None");
                         }
+                        connected_peers = running_info.peers.len() as u32;
+
+                        let mut total_latency = 0.0f64;
+                        let mut latency_count = 0u32;
+                        let mut total_rx_bytes = 0u64;
+                        let mut total_tx_bytes = 0u64;
+
+                        for peer in &running_info.peers {
+                            for conn in &peer.conns {
+                                if let Some(stats) = &conn.stats {
+                                    total_latency += stats.latency_us as f64;
+                                    total_rx_bytes += stats.rx_bytes;
+                                    total_tx_bytes += stats.tx_bytes;
+                                    latency_count += 1;
+                                }
+                            }
+                        }
+
+                        let avg_latency_ms = if latency_count > 0 { total_latency / latency_count as f64 / 1000.0 } else { 0.0 };
+
+                        Some(crate::daemon::ipc::SpaceRuntimeStatus {
+                            space_id: instance_id.to_string(),
+                            is_running: true,
+                            virtual_ip,
+                            connected_peers,
+                            rx_bytes: total_rx_bytes,
+                            tx_bytes: total_tx_bytes,
+                            avg_latency_ms,
+                        })
+                    }
+                    None => {
+                        let map_keys: Vec<&str> = info_map.map(|m| m.map.keys().map(|s| s.as_str()).collect()).unwrap_or_default();
+                        crate::log_warn!(format!(
+                            "[D20260728-FIX] collect_network_info response: instance {} not found in info map, map has {} entries, keys: {:?}",
+                            inst_id_str, map_keys.len(), map_keys,
+                        ));
+                        None
                     }
                 }
-                connected_peers = running_info.peers.len() as u32;
-
-                // 计算平均延迟（从 PeerConnInfo.stats 聚合）
-                let mut total_latency = 0.0f64;
-                let mut latency_count = 0u32;
-                let mut total_rx_bytes = 0u64;
-                let mut total_tx_bytes = 0u64;
-
-                for peer in &running_info.peers {
-                    for conn in &peer.conns {
-                        if let Some(stats) = &conn.stats {
-                            total_latency += stats.latency_us as f64;
-                            total_rx_bytes += stats.rx_bytes;
-                            total_tx_bytes += stats.tx_bytes;
-                            latency_count += 1;
-                        }
-                    }
-                }
-
-                let avg_latency_ms = if latency_count > 0 { total_latency / latency_count as f64 / 1000.0 } else { 0.0 };
-
-                Some(crate::daemon::ipc::SpaceRuntimeStatus {
-                    space_id: instance_id.to_string(),
-                    is_running: true,
-                    virtual_ip,
-                    connected_peers,
-                    rx_bytes: total_rx_bytes,
-                    tx_bytes: total_tx_bytes,
-                    avg_latency_ms,
-                })
             }
             Err(e) => {
                 crate::log_warn!(format!("EasyTierManager: RPC 查询失败, port={}, error={}", rpc_port, e));
