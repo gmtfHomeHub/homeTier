@@ -380,9 +380,15 @@ impl EasyTierManager {
 
         // 查询 peer 列表
         let ctrl = BaseController::default();
-        let peer_service = client.scoped_client::<PeerManageRpcClientFactory<BaseController>>(instance_id.to_string()).await.ok()?;
+        let peer_service = client.scoped_client::<PeerManageRpcClientFactory<BaseController>>("".to_string()).await.ok()?;
 
-        match peer_service.list_peer(ctrl, easytier::proto::api::instance::ListPeerRequest::default()).await {
+        let list_req = easytier::proto::api::instance::ListPeerRequest {
+            instance: Some(easytier::proto::api::instance::InstanceIdentifier {
+                selector: Some(easytier::proto::api::instance::instance_identifier::Selector::Id(instance_id.to_string())),
+            }),
+            ..Default::default()
+        };
+        match peer_service.list_peer(ctrl, list_req).await {
             Ok(resp) => {
                 let peer_infos = resp;
                 let mut virtual_ip = None;
@@ -477,10 +483,16 @@ impl EasyTierManager {
             let mut client = StandAloneClient::new(connector);
 
             let ctrl = BaseController::default();
-            let peer_service = client.scoped_client::<PeerManageRpcClientFactory<BaseController>>(instance_id.to_string()).await;
+            let peer_service = client.scoped_client::<PeerManageRpcClientFactory<BaseController>>("".to_string()).await;
 
             if let Ok(peer_service) = peer_service {
-                let result = peer_service.list_peer(ctrl, easytier::proto::api::instance::ListPeerRequest::default()).await;
+                let list_req = easytier::proto::api::instance::ListPeerRequest {
+                    instance: Some(easytier::proto::api::instance::InstanceIdentifier {
+                        selector: Some(easytier::proto::api::instance::instance_identifier::Selector::Id(instance_id.to_string())),
+                    }),
+                    ..Default::default()
+                };
+                let result = peer_service.list_peer(ctrl, list_req).await;
                 match result {
                     Ok(resp) => {
                         let mut peer_infos = Vec::new();
