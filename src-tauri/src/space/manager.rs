@@ -536,7 +536,7 @@ Self {
                 if retries >= max_retries {
                     return Err("未获取到虚拟 IP".to_string());
                 }
-                let delay = RETRY_DELAYS.get_retries - 1];
+                let delay = RETRY_DELAYS[retries - 1];
                 tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
             }
         };
