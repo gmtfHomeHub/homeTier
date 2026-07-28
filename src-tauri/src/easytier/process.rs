@@ -113,7 +113,7 @@ exit 1
 
         let escaped_script = script_path.as_path().to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
         let osascript_program = format!(
-            "do shell script \"/bin/sh \"{}\"\" with administrator privileges",
+            "do shell script \"/bin/sh {}\" with administrator privileges",
             escaped_script
         );
 
