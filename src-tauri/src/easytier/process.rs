@@ -155,7 +155,6 @@ impl EasyTierProcess {
                 use tokio::io::AsyncWriteExt;
                 let _ = stream.writable().await;
                 let _ = stream.try_write(b"__RPC_SHUTDOWN__\n");
-                let _ = stream.shutdown().await;
             }
             Err(e) => {
                 crate::log_warn!(format!("[EasyTierProcess] RPC 端口不可达, 无法发送 shutdown: {}", e));
