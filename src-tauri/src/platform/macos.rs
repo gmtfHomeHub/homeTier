@@ -26,42 +26,15 @@ impl PlatformAdapter for MacOSAdapter {
     }
 
     fn authorize_tun(&self) -> AuthResult {
+        // Plan A: easytier-core 通过 osascript 直接提权启动，daemon 无需 root。
+        // 此方法保留兼容旧调用链，始终返回 success。
         if self.is_elevated() {
             return AuthResult { success: true, message: "macOS 管理员权限已就绪".into(), needs_restart: false };
         }
-
-        // 通过 osascript 弹出 macOS 原生授权对话框，以 root 权限重启 daemon
-        let current_exe = match std::env::current_exe() {
-            Ok(p) => p,
-            Err(e) => return AuthResult {
-                success: false,
-                message: format!("无法获取当前可执行文件路径: {}", e),
-                needs_restart: false,
-            },
-        };
-
-        let exe_str = current_exe.to_string_lossy();
-        let escaped = exe_str.replace("\\", "\\\\").replace("\"", "\\\"");
-        let script = format!(
-            "do shell script \"{} --daemon --elevated\" with administrator privileges",
-            escaped
-        );
-
-        match std::process::Command::new("osascript")
-            .arg("-e")
-            .arg(&script)
-            .spawn()
-        {
-            Ok(_child) => AuthResult {
-                success: true,
-                message: "macOS 管理员权限已获取，守护进程以 root 权限重启中...".into(),
-                needs_restart: true,
-            },
-            Err(e) => AuthResult {
-                success: false,
-                message: format!("启动 osascript 失败: {}", e),
-                needs_restart: false,
-            },
+        AuthResult {
+            success: true,
+            message: "macOS: easytier-core 将通过 osascript 提权启动".into(),
+            needs_restart: false,
         }
     }
 }

@@ -309,106 +309,91 @@ Self {
     pub async fn connect(&self, space_id: &Uuid) -> Result<(), String> {
         crate::log_info!(format!("connect: 开始连接空间, space_id={}", space_id), &space_id.to_string());
 
-        let mut tun_retried = false;
-        loop {
-            if !self.ipc_client.ping().await {
-                crate::log_info!("connect: daemon 未就绪，等待...", &space_id.to_string());
-                self.wait_daemon_ready().await;
+        if !self.ipc_client.ping().await {
+            crate::log_info!("connect: daemon 未就绪，等待...", &space_id.to_string());
+            self.wait_daemon_ready().await;
+        }
+        crate::log_debug!(format!("connect: 查询当前运行中的空间"), &space_id.to_string());
+        let running_spaces: Vec<String> = match self.ipc_client.list_spaces().await {
+            Ok(crate::daemon::ipc::IpcResponse::Ok { data }) => {
+                data.and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default()
             }
-            crate::log_debug!(format!("connect: 查询当前运行中的空间"), &space_id.to_string());
-            let running_spaces: Vec<String> = match self.ipc_client.list_spaces().await {
-                Ok(crate::daemon::ipc::IpcResponse::Ok { data }) => {
-                    data.and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default()
-                }
-                _ => Vec::new(),
-            };
-            crate::log_info!(format!("connect: 当前运行中空间: {:?}", running_spaces), &space_id.to_string());
-            for running_id in &running_spaces {
-                if running_id != &space_id.to_string() {
-                    crate::log_info!(format!("connect: 断开其他空间: {}", running_id), &space_id.to_string());
-                    let _ = self.ipc_client.disconnect_space(running_id).await;
-                }
+            _ => Vec::new(),
+        };
+        crate::log_info!(format!("connect: 当前运行中空间: {:?}", running_spaces), &space_id.to_string());
+        for running_id in &running_spaces {
+            if running_id != &space_id.to_string() {
+                crate::log_info!(format!("connect: 断开其他空间: {}", running_id), &space_id.to_string());
+                let _ = self.ipc_client.disconnect_space(running_id).await;
             }
+        }
 
-            let spaces = self.spaces.read().await;
-            let space = spaces.iter().find(|s| &s.id == space_id)
-                .ok_or_else(|| "Space not found".to_string())?;
+        let spaces = self.spaces.read().await;
+        let space = spaces.iter().find(|s| &s.id == space_id)
+            .ok_or_else(|| "Space not found".to_string())?;
 
-            let existing_config = self.db.get_space_config(&space_id.to_string()).ok().flatten();
-            if let Some(ref cfg) = existing_config {
-                crate::log_info!("connect: 从 DB 加载历史配置", &space_id.to_string());
-            } else {
-                crate::log_info!("connect: 无历史配置，使用默认配置", &space_id.to_string());
-            }
+        let existing_config = self.db.get_space_config(&space_id.to_string()).ok().flatten();
+        if let Some(ref cfg) = existing_config {
+            crate::log_info!("connect: 从 DB 加载历史配置", &space_id.to_string());
+        } else {
+            crate::log_info!("connect: 无历史配置，使用默认配置", &space_id.to_string());
+        }
 
-            crate::log_debug!(format!("connect: 调用 get_effective_config"), &space_id.to_string());
-            let cfg = self.get_effective_config(space_id).await?;
-            crate::log_info!(format!("connect: 有效配置生成完成, network_name={}, dhcp={}", cfg.network_name, cfg.dhcp), &space_id.to_string());
+        crate::log_debug!(format!("connect: 调用 get_effective_config"), &space_id.to_string());
+        let cfg = self.get_effective_config(space_id).await?;
+        crate::log_info!(format!("connect: 有效配置生成完成, network_name={}, dhcp={}", cfg.network_name, cfg.dhcp), &space_id.to_string());
 
-            let config_value = serde_json::to_value(&cfg).map_err(|e| format!("序列化配置失败: {}", e))?;
-            crate::log_info!(format!("connect: 发送 IPC ConnectSpace 请求, config_keys={:?}", config_value.as_object().map(|o| o.keys().collect::<Vec<_>>())), &space_id.to_string());
-            match self.ipc_client.connect_space(&space_id.to_string(), config_value).await {
-                Ok(crate::daemon::ipc::IpcResponse::Ok { .. }) => {
-                    crate::log_info!(format!("连接空间 IPC 成功: {}", space.name), &space_id.to_string());
-                    crate::log_debug!("connect: 清理旧聊天服务器");
-                    if let Some(old) = self.chat_servers.write().await.remove(space_id) {
-                        old.stop().await;
-                        crate::log_info!(format!("connect: 旧聊天服务器已停止"), &space_id.to_string());
-                    }
-                    crate::log_debug!("connect: 清理旧文件服务器");
-                    if let Some(old) = self.file_servers.write().await.remove(space_id) {
-                        old.stop().await;
-                        crate::log_info!(format!("connect: 旧文件服务器已停止"), &space_id.to_string());
-                    }
-                    crate::log_debug!("connect: 清理旧语音服务器");
-                    if let Some(mut old) = self.voice_servers.write().await.remove(space_id) {
-                        old.shutdown();
-                        crate::log_info!(format!("connect: 旧语音服务器已停止"), &space_id.to_string());
-                    }
-                    crate::log_debug!("connect: 清理旧屏幕共享服务器");
-                    if let Some(mut old) = self.screen_servers.write().await.remove(space_id) {
-                        old.shutdown();
-                        crate::log_info!(format!("connect: 旧屏幕共享服务器已停止"), &space_id.to_string());
-                    }
-                    crate::log_debug!(format!("connect: 启动聊天服务器"), &space_id.to_string());
-                    self.start_chat_server(*space_id).await?;
-                    crate::log_debug!(format!("connect: 启动文件服务器"), &space_id.to_string());
-                    self.start_file_server(*space_id).await?;
-                    crate::log_debug!(format!("connect: 启动语音服务器"), &space_id.to_string());
-                    self.start_voice_server(*space_id).await?;
-                    crate::log_debug!(format!("connect: 启动屏幕共享服务器"), &space_id.to_string());
-                    self.start_screen_share_server(*space_id).await?;
-                    tokio::spawn({
-                        let space_id = *space_id;
-                        let manager = self.clone();
-                        async move {
-                            if let Err(e) = manager.discover_and_connect_peers(&space_id).await {
-                                crate::log_error!(format!("discover_and_connect_peers 失败: {}", e));
-                            }
-                        }
-                    });
-                    return Ok(());
+        let config_value = serde_json::to_value(&cfg).map_err(|e| format!("序列化配置失败: {}", e))?;
+        crate::log_info!(format!("connect: 发送 IPC ConnectSpace 请求, config_keys={:?}", config_value.as_object().map(|o| o.keys().collect::<Vec<_>>())), &space_id.to_string());
+        match self.ipc_client.connect_space(&space_id.to_string(), config_value).await {
+            Ok(crate::daemon::ipc::IpcResponse::Ok { .. }) => {
+                crate::log_info!(format!("连接空间 IPC 成功: {}", space.name), &space_id.to_string());
+                crate::log_debug!("connect: 清理旧聊天服务器");
+                if let Some(old) = self.chat_servers.write().await.remove(space_id) {
+                    old.stop().await;
+                    crate::log_info!(format!("connect: 旧聊天服务器已停止"), &space_id.to_string());
                 }
-                Ok(crate::daemon::ipc::IpcResponse::Error { message }) => {
-                    if !tun_retried && message.contains("TUN 设备不可用") {
-                        crate::log_info!("TUN 设备不可用，自动触发授权...", &space_id.to_string());
-                        let result = crate::platform::get_adapter().authorize_tun();
-                        if result.success {
-                            crate::log_info!("授权成功，等待守护进程重启...", &space_id.to_string());
-                            tokio::time::sleep(std::time::Duration::from_millis(5000)).await;
-                            crate::log_info!("等待新守护进程就绪...", &space_id.to_string());
-                            self.wait_daemon_ready().await;
-                            tun_retried = true;
-                            continue;
+                crate::log_debug!("connect: 清理旧文件服务器");
+                if let Some(old) = self.file_servers.write().await.remove(space_id) {
+                    old.stop().await;
+                    crate::log_info!(format!("connect: 旧文件服务器已停止"), &space_id.to_string());
+                }
+                crate::log_debug!("connect: 清理旧语音服务器");
+                if let Some(mut old) = self.voice_servers.write().await.remove(space_id) {
+                    old.shutdown();
+                    crate::log_info!(format!("connect: 旧语音服务器已停止"), &space_id.to_string());
+                }
+                crate::log_debug!("connect: 清理旧屏幕共享服务器");
+                if let Some(mut old) = self.screen_servers.write().await.remove(space_id) {
+                    old.shutdown();
+                    crate::log_info!(format!("connect: 旧屏幕共享服务器已停止"), &space_id.to_string());
+                }
+                crate::log_debug!(format!("connect: 启动聊天服务器"), &space_id.to_string());
+                self.start_chat_server(*space_id).await?;
+                crate::log_debug!(format!("connect: 启动文件服务器"), &space_id.to_string());
+                self.start_file_server(*space_id).await?;
+                crate::log_debug!(format!("connect: 启动语音服务器"), &space_id.to_string());
+                self.start_voice_server(*space_id).await?;
+                crate::log_debug!(format!("connect: 启动屏幕共享服务器"), &space_id.to_string());
+                self.start_screen_share_server(*space_id).await?;
+                tokio::spawn({
+                    let space_id = *space_id;
+                    let manager = self.clone();
+                    async move {
+                        if let Err(e) = manager.discover_and_connect_peers(&space_id).await {
+                            crate::log_error!(format!("discover_and_connect_peers 失败: {}", e));
                         }
                     }
-                    crate::log_error!(format!("connect: IPC 返回错误: {}", message), &space_id.to_string());
-                    return Err(message);
-                }
-                Err(e) => {
-                    crate::log_error!(format!("connect: IPC 调用失败: {}", e), &space_id.to_string());
-                    return Err(e);
-                }
+                });
+                return Ok(());
+            }
+            Ok(crate::daemon::ipc::IpcResponse::Error { message }) => {
+                crate::log_error!(format!("connect: IPC 返回错误: {}", message), &space_id.to_string());
+                return Err(message);
+            }
+            Err(e) => {
+                crate::log_error!(format!("connect: IPC 调用失败: {}", e), &space_id.to_string());
+                return Err(e);
             }
         }
     }

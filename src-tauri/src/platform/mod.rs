@@ -107,11 +107,9 @@ fn check_tun_available_inner() -> bool {
 
     #[cfg(target_os = "macos")]
     {
-        let available = adapter.is_elevated();
-        if !available {
-            crate::log_warn!("macOS 非 root 权限，TUN 网络配置需要 root 权限");
-        }
-        available
+        // Plan A: easytier-core 通过 osascript 提权启动，GUI 进程不需要 root。
+        // TUN 能力由内核检查，此处始终返回 true。
+        true
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]

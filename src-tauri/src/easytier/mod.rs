@@ -88,18 +88,6 @@ impl EasyTierManager {
             }
         }
 
-        // Phase 0: TUN 可用性检查（no_tun 模式跳过）
-        if !cfg.no_tun && !crate::platform::check_tun_available() {
-            let hint = if cfg!(target_os = "macos") {
-                "macOS 上创建虚拟网卡需要 root 权限。请先点击「授权」按钮，或设置「无 TUN 模式」。"
-            } else {
-                "请确保进程有足够权限创建 TUN 设备，或设置「无 TUN 模式」。"
-            };
-            let msg = format!("TUN 设备不可用，无法启动网络。{}", hint);
-            crate::log_error!(format!("EasyTierManager.start_network: {}", msg));
-            return Err(msg);
-        }
-
         // 启动子进程（传入 RPC 端口）
         crate::log_info!(format!("EasyTierManager.start_network: 启动 easytier-core 进程, binary={}, config={}, rpc_port={}", binary.display(), config_path.display(), rpc_port));
         let process = match EasyTierProcess::start(&binary, &config_path, Some(rpc_port)).await {
