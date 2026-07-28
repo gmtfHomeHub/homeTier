@@ -491,7 +491,7 @@ impl EasyTierManager {
             if let Ok(peer_service) = peer_service {
                 let list_req = easytier::proto::api::instance::ListPeerRequest {
                     instance: Some(easytier::proto::api::instance::InstanceIdentifier {
-                        selector: Some(easytier::proto::api::instance::instance_identifier::Selector::Id(instance_id.to_string())),
+                        selector: Some(easytier::proto::api::instance::instance_identifier::Selector::Id(instance_id.to_string().into())),
                     }),
                     ..Default::default()
                 };
