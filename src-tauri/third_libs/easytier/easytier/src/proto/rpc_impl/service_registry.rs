@@ -80,6 +80,10 @@ impl ServiceRegistry {
             service_name: desc.name().to_string(),
             proto_name: desc.proto_name().to_string(),
         };
+        tracing::info!(
+            "ServiceRegistry::register: domain_name={:?}, service_name={:?}, proto_name={:?}",
+            key.domain_name, key.service_name, key.proto_name
+        );
         let entry = ServiceEntry::new(h);
         self.table.insert(key, entry);
     }
@@ -122,6 +126,19 @@ impl ServiceRegistry {
     ) -> rpc_types::error::Result<bytes::Bytes> {
         let service_key = ServiceKey::from(&rpc_desc);
         let method_index = rpc_desc.method_index as u8;
+        if self.table.get(&service_key).is_none() {
+            tracing::warn!(
+                "ServiceRegistry::call_method: MISS domain_name={:?}, service_name={:?}, proto_name={:?}",
+                service_key.domain_name, service_key.service_name, service_key.proto_name
+            );
+            for entry in self.table.iter() {
+                let (k, _) = entry.pair();
+                tracing::warn!(
+                    "  registered: domain_name={:?}, service_name={:?}, proto_name={:?}",
+                    k.domain_name, k.service_name, k.proto_name
+                );
+            }
+        }
         let entry = self
             .table
             .get(&service_key)
