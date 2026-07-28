@@ -126,6 +126,7 @@
     "connected": "已连接",
     "disconnected": "已断开",
     "disconnect": "断开",
+    "disconnecting": "断开中...",
     "virtualIp": "虚拟 IP",
     "online": "在线",
     "offline": "离线",

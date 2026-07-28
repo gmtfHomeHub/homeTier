@@ -446,42 +446,9 @@ impl EasyTierManager {
         }
     }
 
-    /// 查询空间运行时状态（带 DHCP 等待）
-    ///
-    /// 在 DHCP 模式下, instance 刚启动时 virtual_ipv4 可能尚未分配。
-    /// 最高等待 30s, 每 5s 通过 collect_network_info 轮询, 一旦 virtual_ip 出现立即返回。
+    /// 查询空间运行时状态（立即返回，不等待 DHCP）
     async fn query_rpc_status(&self, instance_id: &Uuid, rpc_port: u16) -> Option<crate::daemon::ipc::SpaceRuntimeStatus> {
-        const MAX_DHCP_WAIT: u64 = 30;
-        const DHCP_POLL_INTERVAL: u64 = 5;
-
-        let start = std::time::Instant::now();
-
-        loop {
-            let status = self.query_rpc_status_once(instance_id, rpc_port).await;
-
-            match status {
-                Some(ref s) if s.virtual_ip.is_some() => {
-                    return status;
-                }
-                None => {
-                    return None;
-                }
-                _ => {
-                    if start.elapsed() >= std::time::Duration::from_secs(MAX_DHCP_WAIT) {
-                        crate::log_warn!(format!(
-                            "query_rpc_status: DHCP wait timeout after {}s",
-                            start.elapsed().as_secs()
-                        ));
-                        return status;
-                    }
-                    crate::log_debug!(format!(
-                        "query_rpc_status: virtual_ip is None, DHCP in progress, sleeping {}s",
-                        DHCP_POLL_INTERVAL
-                    ));
-                    tokio::time::sleep(std::time::Duration::from_secs(DHCP_POLL_INTERVAL)).await;
-                }
-            }
-        }
+        self.query_rpc_status_once(instance_id, rpc_port).await
     }
 
     /// 获取详细的网络统计信息

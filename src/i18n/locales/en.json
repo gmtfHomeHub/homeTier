@@ -126,6 +126,7 @@
     "connected": "Connected",
     "disconnected": "Disconnected",
     "disconnect": "Disconnect",
+    "disconnecting": "Disconnecting...",
     "virtualIp": "Virtual IP",
     "online": "Online",
     "offline": "Offline",

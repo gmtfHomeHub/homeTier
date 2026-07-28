@@ -19,6 +19,7 @@ export function SpaceDetail() {
   const { spaces, deleteSpace, loadSpaces, connectSpace, disconnectSpace } = useSpaceStore();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [showMemberManager, setShowMemberManager] = useState(false);
   const { setSidebarOpen } = useLayoutStore();
 
@@ -38,6 +39,18 @@ export function SpaceDetail() {
     } finally {
       setDeleting(false);
       setShowDeleteConfirm(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!id) return;
+    setDisconnectingId(id);
+    try {
+      await disconnectSpace(id);
+    } catch (e) {
+      alert(String(e));
+    } finally {
+      setDisconnectingId(null);
     }
   };
 
@@ -81,11 +94,13 @@ export function SpaceDetail() {
           )}
           {space.status === "connected" && (
             <Button
-              onClick={() => disconnectSpace(space.id)}
+              onClick={handleDisconnect}
+              disabled={disconnectingId === id}
+              loading={disconnectingId === id}
               variant="outline"
               size="1"
             >
-              {t("space.disconnect")}
+              {disconnectingId === id ? t("space.disconnecting") : t("space.disconnect")}
             </Button>
           )}
           {space.virtual_ip && (

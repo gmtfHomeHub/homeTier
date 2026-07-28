@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::path::PathBuf;
 use uuid::Uuid;
 use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 use std::collections::HashMap;
 use crate::db::Database;
 use crate::types::{Space, SpaceStatus, Member, ShareInfo};
@@ -35,6 +36,10 @@ pub struct SpaceManager {
     storage_dir: Arc<RwLock<PathBuf>>,
     /// 本地配置映射: space_id -> NetworkConfig
     local_configs: Arc<RwLock<HashMap<Uuid, NetworkConfig>>>,
+    /// 取消令牌映射: space_id -> CancellationToken（用于取消 discover_and_connect_peers）
+    cancel_tokens: Arc<RwLock<HashMap<Uuid, CancellationToken>>>,
+    /// 连接任务句柄映射: space_id -> JoinHandle
+    connect_handles: Arc<RwLock<HashMap<Uuid, tokio::task::JoinHandle<()>>>>,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -51,6 +56,8 @@ impl Clone for SpaceManager {
             file_servers: self.file_servers.clone(),
             storage_dir: self.storage_dir.clone(),
             local_configs: self.local_configs.clone(),
+            cancel_tokens: self.cancel_tokens.clone(),
+            connect_handles: self.connect_handles.clone(),
         }
     }
 }
@@ -80,6 +87,8 @@ Self {
             file_servers: Arc::new(RwLock::new(HashMap::new())),
             storage_dir: Arc::new(RwLock::new(storage_dir)),
             local_configs: Arc::new(RwLock::new(HashMap::new())),
+            cancel_tokens: Arc::new(RwLock::new(HashMap::new())),
+            connect_handles: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -376,15 +385,18 @@ Self {
                 self.start_voice_server(*space_id).await?;
                 crate::log_debug!(format!("connect: 启动屏幕共享服务器"), &space_id.to_string());
                 self.start_screen_share_server(*space_id).await?;
-                tokio::spawn({
-                    let space_id = *space_id;
-                    let manager = self.clone();
-                    async move {
-                        if let Err(e) = manager.discover_and_connect_peers(&space_id).await {
-                            crate::log_error!(format!("discover_and_connect_peers 失败: {}", e));
-                        }
+
+                let cancel_token = CancellationToken::new();
+                self.cancel_tokens.write().await.insert(*space_id, cancel_token.clone());
+
+                let space_id_child = *space_id;
+                let manager = self.clone();
+                let handle = tokio::spawn(async move {
+                    if let Err(e) = manager.discover_and_connect_peers(&space_id_child, cancel_token).await {
+                        crate::log_error!(format!("discover_and_connect_peers 失败: {}", e));
                     }
                 });
+                self.connect_handles.write().await.insert(*space_id, handle);
                 return Ok(());
             }
             Ok(crate::daemon::ipc::IpcResponse::Error { message }) => {
@@ -398,17 +410,48 @@ Self {
         }
     }
 
-    /// 断开空间
+    /// 断开空间（取消背景任务、停止所有服务、通过 IPC 通知 daemon）
     pub async fn disconnect(&self, space_id: &Uuid) -> Result<(), String> {
         crate::log_info!(format!("断开空间: {}", space_id), &space_id.to_string());
 
-        // 关闭信号服务器
+        // 1. 取消 background discover_and_connect_peers 任务
+        if let Some(token) = self.cancel_tokens.write().await.remove(space_id) {
+            token.cancel();
+            crate::log_debug!(format!("disconnect: 已发送取消令牌"), &space_id.to_string());
+        }
+
+        // 2. 等待 background 任务结束（如果有句柄）
+        if let Some(handle) = self.connect_handles.write().await.remove(space_id) {
+            let _ = handle.await;
+            crate::log_debug!(format!("disconnect: background 任务已结束"), &space_id.to_string());
+        }
+
+        // 3. 停止所有本地服务
+        if let Some(old) = self.chat_servers.write().await.remove(space_id) {
+            old.stop().await;
+        }
+        if let Some(mut server) = self.voice_servers.write().await.remove(space_id) {
+            server.shutdown();
+        }
         if let Some(mut server) = self.screen_servers.write().await.remove(space_id) {
             server.shutdown();
         }
+        if let Some(old) = self.file_servers.write().await.remove(space_id) {
+            old.stop().await;
+        }
 
+        // 4. 清理 chat 客户端
+        self.chat_clients.write().await.remove(space_id);
+
+        // 5. 清理本地缓存
+        self.local_configs.write().await.remove(space_id);
+
+        // 6. 通过 IPC 通知 daemon 断开网络
         match self.ipc_client.disconnect_space(&space_id.to_string()).await {
-            Ok(crate::daemon::ipc::IpcResponse::Ok { .. }) => Ok(()),
+            Ok(crate::daemon::ipc::IpcResponse::Ok { .. }) => {
+                crate::log_info!(format!("断开空间完成: {}", space_id), &space_id.to_string());
+                Ok(())
+            }
             Ok(crate::daemon::ipc::IpcResponse::Error { message }) => Err(message),
             Err(e) => Err(e),
         }
@@ -495,16 +538,18 @@ Self {
         Ok(())
     }
 
-    /// 发现并连接到 peers
-    async fn discover_and_connect_peers(&self, space_id: &Uuid) -> Result<(), String> {
-        // 指数退避: 总时长约 38s，给 DHCP 足够的分配时间。
-        // Layer C (query_rpc_status) 内部的 DHCP 轮询最多等 30s，这里作为外层兜底。
+    /// 发现并连接到 peers（支持取消令牌）
+    async fn discover_and_connect_peers(&self, space_id: &Uuid, cancel_token: CancellationToken) -> Result<(), String> {
         const RETRY_DELAYS: &[u64] = &[1, 2, 3, 5, 7, 10, 10];
         let max_retries = RETRY_DELAYS.len();
 
         let virtual_ip = {
             let mut retries = 0;
             loop {
+                if cancel_token.is_cancelled() {
+                    return Err("连接已取消".to_string());
+                }
+
                 let status = match self.get_space_status(&space_id.to_string()).await {
                     Ok(s) => s,
                     Err(e) => {
@@ -521,7 +566,10 @@ Self {
                             "discover_and_connect_peers: get_space_status 失败(第{}次), 等待 {}s 重试: {}",
                             retries, delay, e
                         ));
-                        tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+                        tokio::select! {
+                            _ = cancel_token.cancelled() => return Err("连接已取消".to_string()),
+                            _ = tokio::time::sleep(std::time::Duration::from_secs(delay)) => {}
+                        }
                         continue;
                     }
                 };
@@ -537,7 +585,10 @@ Self {
                     return Err("未获取到虚拟 IP".to_string());
                 }
                 let delay = RETRY_DELAYS[retries - 1];
-                tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+                tokio::select! {
+                    _ = cancel_token.cancelled() => return Err("连接已取消".to_string()),
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(delay)) => {}
+                }
             }
         };
 

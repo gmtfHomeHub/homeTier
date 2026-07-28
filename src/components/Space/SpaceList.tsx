@@ -21,6 +21,7 @@ export function SpaceList() {
   const [spaceConfig, setSpaceConfig] = useState<Partial<NetworkConfig>>({});
   const [savingConfig, setSavingConfig] = useState(false);
   const [connectingId, setConnectingId] = useState<string | null>(null);
+  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [shareTarget, setShareTarget] = useState<string | null>(null);
 
   const configSpace = spaces.find(s => s.id === configTarget);
@@ -96,6 +97,17 @@ export function SpaceList() {
     }
   };
 
+  const handleDisconnect = async (spaceId: string) => {
+    setDisconnectingId(spaceId);
+    try {
+      await disconnectSpace(spaceId);
+    } catch (e) {
+      alert(String(e));
+    } finally {
+      setDisconnectingId(null);
+    }
+  };
+
   return (
     <div className="flex-1 p-6 overflow-y-auto">
       <h1 className="mb-6 text-2xl font-bold">{t('space.list')}</h1>
@@ -143,11 +155,13 @@ export function SpaceList() {
                     {t('space.open')}
                   </Button>
                   <Button
-                    onClick={() => disconnectSpace(space.id)}
+                    onClick={() => handleDisconnect(space.id)}
+                    disabled={disconnectingId === space.id}
+                    loading={disconnectingId === space.id}
                     variant="outline"
                     size="2"
                   >
-                    {t('space.leave')}
+                    {disconnectingId === space.id ? t('space.disconnecting') : t('space.leave')}
                   </Button>
                 </>
               ) : (
