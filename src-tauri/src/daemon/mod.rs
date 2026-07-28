@@ -107,24 +107,21 @@ impl Daemon {
                 };
                 crate::log_info!(format!("[Daemon] easytier-core 守护进程 binary={}", binary.display()));
                 let config_dir = easytier.get_config_dir();
-                let process = match crate::easytier::EasyTierProcess::start_daemon(
+                match crate::easytier::EasyTierProcess::start_daemon(
                     &binary, &config_dir, ipc::EASYTIER_DAEMON_RPC_PORT,
                 ).await {
-                    Ok(p) => p,
-                    Err(e) => {
-                        crate::log_error!(format!("[Daemon] osascript 启动失败: {}", e));
-                        return;
+                    Ok(_) => {
+                        crate::log_info!("[Daemon] easytier-core 守护进程就绪");
                     }
-                };
-                crate::log_info!(format!("[Daemon] osascript 已触发, 等待 easytier-core RPC 就绪 (port={})...", ipc::EASYTIER_DAEMON_RPC_PORT));
-                let ready = wait_rpc_ready(ipc::EASYTIER_DAEMON_RPC_PORT, std::time::Duration::from_secs(10)).await;
-                if ready {
-                    crate::log_info!("[Daemon] easytier-core 守护进程就绪");
-                } else {
-                    crate::log_error!("[Daemon] easytier-core 守护进程启动超时");
+                    Err(e) => {
+                        crate::log_error!(format!("[Daemon] easytier-core 守护进程启动失败: {}", e));
+                        let log_path = config_dir.join("easytier-daemon.log");
+                        if let Ok(content) = std::fs::read_to_string(&log_path) {
+                            crate::log_error!(format!("[Daemon] easytier-daemon.log 末尾:\n{}",
+                                if content.len() > 2000 { &content[content.len()-2000..] } else { &content }));
+                        }
+                    }
                 }
-                // 让 process 保持存活（不能 drop 触发 SIGKILL）
-                let _ = Box::into_raw(Box::new(process));
             });
         }
 

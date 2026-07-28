@@ -72,34 +72,84 @@ impl EasyTierProcess {
     }
 
     /// macOS: 通过 osascript 以 root 权限启动 easytier-core 守护进程（idle 模式）
-    /// 使用 --daemon + --config-dir 而非 --config-file，不自动创建网络实例。
-    /// 后续通过 RPC run_network_instance 动态加载配置，无需再次弹窗。
+    /// 先写入临时脚本到 /tmp/easytier-daemon.sh，再通过 osascript 执行该脚本。
+    /// 这样做的好处：避免 osascript 的复杂引号转义；可以用 nohup 保持进程；
+    /// easytier-core 的输出记录到日志文件，方便调试。
     #[cfg(target_os = "macos")]
     pub async fn start_daemon(binary: &PathBuf, config_dir: &PathBuf, rpc_port: u16) -> Result<Self, String> {
         let _ = std::fs::create_dir_all(config_dir);
         crate::log_info!(format!("[EasyTierProcess] macOS 守护进程启动, config_dir={}", config_dir.display()));
         crate::log_info!(format!("[EasyTierProcess] 二进制: {}, RPC端口: {}", binary.display(), rpc_port));
 
-        let escaped_binary = binary.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
-        let escaped_config_dir = config_dir.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
-        let script = format!(
-            "do shell script \"{} --rpc-portal {} --daemon --config-dir '{}' --no-log-file > /dev/null 2>&1 &\" with administrator privileges",
-            escaped_binary, rpc_port, escaped_config_dir
+        let log_file = config_dir.join("easytier-daemon.log");
+        let script_path = std::path::PathBuf::from("/tmp/easytier-daemon-launch.sh");
+        let script_content = format!(
+            r#"#!/bin/sh
+nohup "{}" --rpc-portal {} --daemon --config-dir "{}" --log-file "{}" > "{}" 2>&1 &
+EASETIERD_PID=$!
+echo "easytier-core pid=$EASETIERD_PID"
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    nc -z 127.0.0.1 {} > /dev/null 2>&1 && exit 0
+    sleep 1
+done
+echo "ERROR: easytier-core RPC port not ready after 20s" >&2
+echo "=== easytier-core stdout/stderr dump ===" >&2
+cat "{}" >&2
+exit 1
+"#,
+            binary.display(),
+            rpc_port,
+            config_dir.display(),
+            log_file.display(),
+            log_file.display(),
+            rpc_port,
+            log_file.display()
         );
 
-        std::process::Command::new("osascript")
+        std::fs::write(&script_path, &script_content)
+            .map_err(|e| format!("写入启动脚本失败: {}", e))?;
+
+        crate::log_info!(format!("[EasyTierProcess] 启动脚本已写入: {}", script_path.display()));
+
+        let escaped_script = script_path.as_path().to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
+        let osascript_program = format!(
+            "do shell script \"/bin/sh \"{}\"\" with administrator privileges",
+            escaped_script
+        );
+
+        crate::log_info!(format!("[EasyTierProcess] 正在弹出授权对话框..."));
+
+        let output = std::process::Command::new("osascript")
             .arg("-e")
-            .arg(&script)
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()
+            .arg(&osascript_program)
+            .output()
             .map_err(|e| {
-                let msg = format!("macOS 提权启动守护 easytier-core 失败: {}", e);
+                let msg = format!("macOS 提权启动守护进程失败: {}", e);
                 crate::log_error!(&msg);
                 msg
             })?;
 
-        crate::log_info!(format!("[EasyTierProcess] macOS osascript 已触发, rpc_port={}", rpc_port));
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr_str = String::from_utf8_lossy(&output.stderr);
+        crate::log_info!(format!("[EasyTierProcess] osascript stdout: {}", stdout.trim()));
+        if !stderr_str.is_empty() {
+            if stderr_str.contains("User canceled") || stderr_str.contains("canceled") {
+                return Err("用户取消了授权".to_string());
+            }
+            crate::log_error!(format!("[EasyTierProcess] osascript stderr: {}", stderr_str));
+            crate::log_error!(format!("[EasyTierProcess] easytier-daemon.log 内容: {}",
+                std::fs::read_to_string(&log_file).unwrap_or_else(|_| "(无法读取)".into())
+            ));
+            return Err(format!("守护进程启动脚本失败: {}", stderr_str));
+        }
+
+        if !output.status.success() {
+            let log_content = std::fs::read_to_string(&log_file).unwrap_or_else(|_| "(无法读取)".into());
+            crate::log_error!(format!("[EasyTierProcess] launchd 日志: {}", log_content));
+            return Err(format!("启动脚本退出码: {}", output.status));
+        }
+
+        crate::log_info!(format!("[EasyTierProcess] macOS osascript 授权成功, easytier-core 应在端口 {} 监听", rpc_port));
         Ok(Self { child: Mutex::new(Some(0)), binary_path: binary.clone(), config_dir: config_dir.clone(), rpc_port: Some(rpc_port) })
     }
 
