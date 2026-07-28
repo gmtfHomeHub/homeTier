@@ -737,6 +737,11 @@ Self {
             // DHCP / 静态 IP
             config.dhcp = local_config.dhcp;
 
+            // virtual_ipv4 (组配置)
+            if !local_config.virtual_ipv4.is_empty() {
+                config.virtual_ipv4 = local_config.virtual_ipv4.clone();
+            }
+
             // IPv4
             if let Some(ref ipv4) = local_config.ipv4 {
                 if !ipv4.is_empty() {

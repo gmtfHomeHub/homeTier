@@ -89,12 +89,19 @@ impl EasyTierManager {
             _ => (None, None),
         };
         
-        let effective_ipv4 = cfg.ipv4.clone()
-            .filter(|i| !i.is_empty())
-            .or_else(|| {
-                let v = &cfg.virtual_ipv4;
-                if v.is_empty() { None } else { Some(v.clone()) }
-            });
+        const DEFAULT_SPACE_IP: &str = "10.144.144.10";
+
+        let effective_ipv4 = if !cfg.virtual_ipv4.is_empty() {
+            Some(cfg.virtual_ipv4.clone())
+        } else if let Some(ref ipv4) = cfg.ipv4 {
+            if !ipv4.is_empty() { Some(ipv4.clone()) } else { None }
+        } else {
+            None
+        };
+
+        let effective_ipv4 = effective_ipv4.or_else(|| {
+            if !cfg.dhcp { Some(DEFAULT_SPACE_IP.to_string()) } else { None }
+        });
 
         NetworkConfig {
             instance_id: Some(instance_id.to_string()),
