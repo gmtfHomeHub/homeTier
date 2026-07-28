@@ -154,9 +154,7 @@ impl EasyTierProcess {
             Ok(stream) => {
                 use tokio::io::AsyncWriteExt;
                 let _ = stream.writable().await;
-                if let Ok(()) = stream.try_write(b"__RPC_SHUTDOWN__\n") {
-                    crate::log_info!("[EasyTierProcess] RPC shutdown 请求已发送");
-                }
+                let _ = stream.try_write(b"__RPC_SHUTDOWN__\n");
                 let _ = stream.shutdown().await;
             }
             Err(e) => {
