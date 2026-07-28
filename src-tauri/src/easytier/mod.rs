@@ -78,7 +78,17 @@ impl EasyTierManager {
 
     /// 构建 protobuf NetworkConfig
     fn build_proto_config(&self, cfg: &config::NetworkConfig, instance_id: &Uuid) -> easytier::proto::api::manage::NetworkConfig {
-        use easytier::proto::api::manage::NetworkConfig;
+        use easytier::proto::api::manage::{NetworkConfig, NetworkingMethod};
+        
+        // 映射 networking_method
+        let (networking_method, public_server_url) = match cfg.networking_method {
+            0 => (Some(NetworkingMethod::PublicServer as i32), 
+                  if cfg.public_server_url.is_empty() { None } else { Some(cfg.public_server_url.clone()) }),
+            1 => (Some(NetworkingMethod::Manual as i32), None),
+            2 => (Some(NetworkingMethod::Standalone as i32), None),
+            _ => (None, None),
+        };
+        
         NetworkConfig {
             instance_id: Some(instance_id.to_string()),
             network_name: if cfg.network_name.is_empty() { None } else { Some(cfg.network_name.clone()) },
@@ -104,6 +114,8 @@ impl EasyTierManager {
             disable_encryption: None,
             disable_ipv6: None,
             encryption_algorithm: cfg.flags.get("encryption_algorithm").cloned(),
+            networking_method,
+            public_server_url,
             ..Default::default()
         }
     }
