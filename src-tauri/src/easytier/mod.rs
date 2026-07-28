@@ -380,7 +380,7 @@ impl EasyTierManager {
 
         // 查询 peer 列表
         let ctrl = BaseController::default();
-        let peer_service = client.scoped_client::<PeerManageRpcClientFactory<BaseController>>("".to_string()).await.ok()?;
+        let peer_service = client.scoped_client::<PeerManageRpcClientFactory<BaseController>>(instance_id.to_string()).await.ok()?;
 
         match peer_service.list_peer(ctrl, easytier::proto::api::instance::ListPeerRequest::default()).await {
             Ok(resp) => {
@@ -477,7 +477,7 @@ impl EasyTierManager {
             let mut client = StandAloneClient::new(connector);
 
             let ctrl = BaseController::default();
-            let peer_service = client.scoped_client::<PeerManageRpcClientFactory<BaseController>>("".to_string()).await;
+            let peer_service = client.scoped_client::<PeerManageRpcClientFactory<BaseController>>(instance_id.to_string()).await;
 
             if let Ok(peer_service) = peer_service {
                 let result = peer_service.list_peer(ctrl, easytier::proto::api::instance::ListPeerRequest::default()).await;
