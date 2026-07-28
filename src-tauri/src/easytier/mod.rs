@@ -88,7 +88,7 @@ impl EasyTierManager {
             hostname: cfg.hostname.clone(),
             listener_urls: cfg.listeners.clone(),
             peer_urls: cfg.peers.iter().map(|p| p.uri.clone()).collect(),
-            proxy_cidrs: cfg.proxy_networks.clone(),
+            proxy_cidrs: cfg.proxy_networks.iter().map(|p| p.cidr.clone()).collect(),
             routes: cfg.routes.clone(),
             exit_nodes: cfg.exit_nodes.clone(),
             port_forwards: Vec::new(),
@@ -179,7 +179,7 @@ impl EasyTierManager {
         use easytier::proto::rpc_impl::standalone::StandAloneClient;
         use easytier::proto::rpc_types::controller::BaseController;
         use easytier::tunnel::tcp::TcpTunnelConnector;
-        use crate::proto::api::manage::{WebClientServiceClientFactory, DeleteNetworkInstanceRequest};
+        use easytier::proto::api::manage::{WebClientServiceClientFactory, DeleteNetworkInstanceRequest};
 
         let rpc_port = crate::daemon::ipc::EASYTIER_DAEMON_RPC_PORT;
         let addr = format!("tcp://127.0.0.1:{}", rpc_port);
