@@ -497,21 +497,31 @@ Self {
 
     /// 发现并连接到 peers
     async fn discover_and_connect_peers(&self, space_id: &Uuid) -> Result<(), String> {
+        // 指数退避: 总时长约 38s，给 DHCP 足够的分配时间。
+        // Layer C (query_rpc_status) 内部的 DHCP 轮询最多等 30s，这里作为外层兜底。
+        const RETRY_DELAYS: &[u64] = &[1, 2, 3, 5, 7, 10, 10];
+        let max_retries = RETRY_DELAYS.len();
+
         let virtual_ip = {
             let mut retries = 0;
-            let max_retries = 10;
             loop {
-                // Phase 1-4: get_space_status 失败时重试（区分"进程未就绪" vs "致命错误"）
                 let status = match self.get_space_status(&space_id.to_string()).await {
                     Ok(s) => s,
                     Err(e) => {
                         retries += 1;
                         if retries >= max_retries {
-                            crate::log_error!(format!("discover_and_connect_peers: get_space_status 已达最大重试次数, 最后错误: {}", e));
+                            crate::log_error!(format!(
+                                "discover_and_connect_peers: get_space_status retry exhausted after {} attempts, last error: {}",
+                                max_retries, e
+                            ));
                             return Err(format!("查询空间状态失败(已重试{}次): {}", max_retries, e));
                         }
-                        crate::log_warn!(format!("discover_and_connect_peers: get_space_status 失败(第{}次), 等待重试: {}", retries, e));
-                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        let delay = RETRY_DELAYS[retries - 1];
+                        crate::log_warn!(format!(
+                            "discover_and_connect_peers: get_space_status 失败(第{}次), 等待 {}s 重试: {}",
+                            retries, delay, e
+                        ));
+                        tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
                         continue;
                     }
                 };
@@ -526,7 +536,8 @@ Self {
                 if retries >= max_retries {
                     return Err("未获取到虚拟 IP".to_string());
                 }
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                let delay = RETRY_DELAYS.get_retries - 1];
+                tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
             }
         };
 

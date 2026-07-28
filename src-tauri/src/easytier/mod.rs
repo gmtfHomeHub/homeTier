@@ -366,7 +366,8 @@ impl EasyTierManager {
     }
 
     /// 通过 RPC 查询完整的运行时状态
-    async fn query_rpc_status(&self, instance_id: &Uuid, rpc_port: u16) -> Option<crate::daemon::ipc::SpaceRuntimeStatus> {
+    /// RPC 原始查询一次 collect_network_info（无 DHCP 等待循环）
+    async fn query_rpc_status_once(&self, instance_id: &Uuid, rpc_port: u16) -> Option<crate::daemon::ipc::SpaceRuntimeStatus> {
         use easytier::proto::rpc_impl::standalone::StandAloneClient;
         use easytier::proto::rpc_types::controller::BaseController;
         use easytier::tunnel::tcp::TcpTunnelConnector;
@@ -389,11 +390,6 @@ impl EasyTierManager {
         };
         match web_service.collect_network_info(ctrl, collect_req).await {
             Ok(resp) => {
-                crate::log_debug!(format!(
-                    "[D20260728-FIX] collect_network_info succeeded, info is Some={}, map_size={}",
-                    resp.info.is_some(),
-                    resp.info.as_ref().map(|m| m.map.len()).unwrap_or(0),
-                ));
                 let info_map = resp.info.as_ref();
                 let running_info = info_map
                     .and_then(|m| m.map.get(&inst_id_str));
@@ -407,14 +403,8 @@ impl EasyTierManager {
                             if let Some(ref ipv4_inet) = my_node.virtual_ipv4 {
                                 if let Some(ref addr) = ipv4_inet.address {
                                     virtual_ip = Some(addr.to_string());
-                                } else {
-                                    crate::log_debug!("[D20260728-FIX] collect_network_info OK, my_node_info has virtual_ipv4 but address is None");
                                 }
-                            } else {
-                                crate::log_debug!("[D20260728-FIX] collect_network_info OK, my_node_info present but virtual_ipv4 is None");
                             }
-                        } else {
-                            crate::log_debug!("[D20260728-FIX] collect_network_info OK, running_info present but my_node_info is None");
                         }
                         connected_peers = running_info.peers.len() as u32;
 
@@ -446,19 +436,50 @@ impl EasyTierManager {
                             avg_latency_ms,
                         })
                     }
-                    None => {
-                        let map_keys: Vec<&str> = info_map.map(|m| m.map.keys().map(|s| s.as_str()).collect()).unwrap_or_default();
-                        crate::log_warn!(format!(
-                            "[D20260728-FIX] collect_network_info response: instance {} not found in info map, map has {} entries, keys: {:?}",
-                            inst_id_str, map_keys.len(), map_keys,
-                        ));
-                        None
-                    }
+                    None => None
                 }
             }
             Err(e) => {
                 crate::log_warn!(format!("EasyTierManager: RPC 查询失败, port={}, error={}", rpc_port, e));
                 None
+            }
+        }
+    }
+
+    /// 查询空间运行时状态（带 DHCP 等待）
+    ///
+    /// 在 DHCP 模式下, instance 刚启动时 virtual_ipv4 可能尚未分配。
+    /// 最高等待 30s, 每 5s 通过 collect_network_info 轮询, 一旦 virtual_ip 出现立即返回。
+    async fn query_rpc_status(&self, instance_id: &Uuid, rpc_port: u16) -> Option<crate::daemon::ipc::SpaceRuntimeStatus> {
+        const MAX_DHCP_WAIT: u64 = 30;
+        const DHCP_POLL_INTERVAL: u64 = 5;
+
+        let start = std::time::Instant::now();
+
+        loop {
+            let status = self.query_rpc_status_once(instance_id, rpc_port).await;
+
+            match status {
+                Some(ref s) if s.virtual_ip.is_some() => {
+                    return status;
+                }
+                None => {
+                    return None;
+                }
+                _ => {
+                    if start.elapsed() >= std::time::Duration::from_secs(MAX_DHCP_WAIT) {
+                        crate::log_warn!(format!(
+                            "query_rpc_status: DHCP wait timeout after {}s",
+                            start.elapsed().as_secs()
+                        ));
+                        return status;
+                    }
+                    crate::log_debug!(format!(
+                        "query_rpc_status: virtual_ip is None, DHCP in progress, sleeping {}s",
+                        DHCP_POLL_INTERVAL
+                    ));
+                    tokio::time::sleep(std::time::Duration::from_secs(DHCP_POLL_INTERVAL)).await;
+                }
             }
         }
     }
