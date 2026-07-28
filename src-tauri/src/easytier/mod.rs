@@ -397,9 +397,14 @@ impl EasyTierManager {
                 if let Some(ref my_info) = peer_infos.my_info {
                     if !my_info.ipv4_addr.is_empty() {
                         virtual_ip = Some(my_info.ipv4_addr.clone());
+                    } else {
+                        crate::log_debug!(format!("query_rpc_status: my_info present but ipv4_addr empty, my_info={:?}", my_info));
                     }
+                } else {
+                    crate::log_warn!("query_rpc_status: my_info is None");
                 }
                 connected_peers = peer_infos.peer_infos.len() as u32;
+
 
                 // 计算平均延迟（从 PeerConnInfo.stats 聚合）
                 let mut total_latency = 0.0f64;
