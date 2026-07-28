@@ -85,7 +85,7 @@ impl EasyTierProcess {
         let script_path = std::path::PathBuf::from("/tmp/easytier-daemon-launch.sh");
         let script_content = format!(
             r#"#!/bin/sh
-"{}" --rpc-portal {} --daemon --config-dir "{}" --log-file "{}" < /dev/null > "{}" 2>&1 &
+"{}" --rpc-portal {} --daemon --config-dir "{}" < /dev/null > "{}" 2>&1 &
 EASETIERD_PID=$!
 echo "easytier-core pid=$EASETIERD_PID"
 for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
@@ -100,7 +100,6 @@ exit 1
             binary.display(),
             rpc_port,
             config_dir.display(),
-            log_file.display(),
             log_file.display(),
             rpc_port,
             log_file.display()
