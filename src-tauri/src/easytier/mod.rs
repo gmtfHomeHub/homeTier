@@ -89,12 +89,19 @@ impl EasyTierManager {
             _ => (None, None),
         };
         
+        let effective_ipv4 = cfg.ipv4.clone()
+            .filter(|i| !i.is_empty())
+            .or_else(|| {
+                let v = &cfg.virtual_ipv4;
+                if v.is_empty() { None } else { Some(v.clone()) }
+            });
+
         NetworkConfig {
             instance_id: Some(instance_id.to_string()),
             network_name: if cfg.network_name.is_empty() { None } else { Some(cfg.network_name.clone()) },
             network_secret: if cfg.network_secret.is_empty() { None } else { Some(cfg.network_secret.clone()) },
-            dhcp: Some(if cfg.ipv4.as_ref().is_some_and(|i| !i.is_empty()) { false } else { cfg.dhcp }),
-            virtual_ipv4: cfg.ipv4.clone(),
+            dhcp: Some(if effective_ipv4.is_some() { false } else { cfg.dhcp }),
+            virtual_ipv4: effective_ipv4,
             hostname: cfg.hostname.clone(),
             listener_urls: cfg.listeners.clone(),
             peer_urls: cfg.peers.iter().map(|p| p.uri.clone()).collect(),
@@ -539,8 +546,8 @@ impl EasyTierManager {
 
                             peer_infos.push(crate::easytier::launcher::PeerInfo {
                                 peer_id: peer.peer_id,
-                                virtual_ip: None,
-                                hostname: None,
+                                virtual_ip: if peer.virtual_ipv4.is_empty() { None } else { Some(peer.virtual_ipv4.clone()) },
+                                hostname: if peer.hostname.is_empty() { None } else { Some(peer.hostname.clone()) },
                                 latency_ms: avg_latency_ms,
                                 loss_rate: avg_loss_rate.map(|f| f as f64),
                                 rx_bytes: Some(total_rx),
