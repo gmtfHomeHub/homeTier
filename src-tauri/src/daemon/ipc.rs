@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// 默认 RPC 端口
-pub const DEFAULT_RPC_PORT: u16 = 15888;
+pub const DEFAULT_RPC_PORT: u16 = 15889;
 /// easytier-core daemon 的 RPC 端口（与 homeTier daemon IPC 端口分离）
-pub const EASYTIER_DAEMON_RPC_PORT: u16 = 15889;
+pub const EASYTIER_DAEMON_RPC_PORT: u16 = 15888;
 
 /// IPC 请求
 #[derive(Debug, Clone, Serialize, Deserialize)]

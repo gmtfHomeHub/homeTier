@@ -36,7 +36,7 @@ fn cleanup_stale_daemon() {
 
 #[cfg(target_os = "macos")]
 fn cleanup_easytier_root() {
-    let addr = "127.0.0.1:15889";
+    let addr = format!("127.0.0.1:{}", crate::daemon::ipc::EASYTIER_DAEMON_RPC_PORT);
     let name = "root easytier-core";
     std::thread::spawn(move || {
         let rt = match tokio::runtime::Builder::new_current_thread()
@@ -48,7 +48,7 @@ fn cleanup_easytier_root() {
         };
         rt.block_on(async {
             use tokio::io::AsyncWriteExt;
-            match tokio::net::TcpStream::connect(addr).await {
+            match tokio::net::TcpStream::connect(&addr).await {
                 Ok(mut stream) => {
                     let _ = stream.writable().await;
                     let _ = stream.try_write(b"__RPC_SHUTDOWN__\n");

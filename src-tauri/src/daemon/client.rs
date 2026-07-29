@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn test_client_creation() {
-        let client = IpcClient::new(15888);
-        assert_eq!(client.port, 15888);
+        let client = IpcClient::new(DEFAULT_RPC_PORT);
+        assert_eq!(client.port, DEFAULT_RPC_PORT);
     }
 }
