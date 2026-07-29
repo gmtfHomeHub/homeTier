@@ -77,7 +77,7 @@ pub fn run() -> std::process::ExitCode {
                 .unwrap_or_else(|_| std::path::PathBuf::from("."));
             let easytier_config_dir = app_data.join("easytier");
             crate::log_info!("[GUI] 应用启动，开始清理遗留进程...");
-            crate::cleanup::cleanup_all(&app_data, &easytier_config_dir);
+            crate::cleanup::startup_precheck(&easytier_config_dir);
             crate::log_info!("[GUI] 清理完成");
             let _ = std::fs::create_dir_all(&easytier_config_dir);
             let instance_manager = Arc::new(easytier::EasyTierManager::new(easytier_config_dir, app_data));
@@ -92,23 +92,30 @@ pub fn run() -> std::process::ExitCode {
                     Ok(child) => {
                         crate::log_info!("[GUI] daemon 子进程已启动");
                         app.manage(crate::DaemonGuard(std::sync::Mutex::new(Some(child))));
-                        // 同步等待 daemon 就绪，确保窗口打开时 daemon 已可用
+                        // 快速 3 次 poll daemon（600ms），就绪则立即继续；否则后台等待
                         let client = daemon::client::IpcClient::default_port();
                         let mut ready = false;
-                        for i in 0..50 {
+                        for i in 0..3 {
                             if client.ping_sync() {
                                 ready = true;
                                 break;
-                            }
-                            if i % 10 == 9 {
-                                crate::log_debug!(format!("[GUI] 等待 daemon 就绪中... ({}/50)", i + 1));
                             }
                             std::thread::sleep(std::time::Duration::from_millis(200));
                         }
                         if ready {
                             crate::log_info!("[GUI] daemon 已就绪");
                         } else {
-                            crate::log_warn!("[GUI] daemon 启动超时，10秒内未就绪");
+                            crate::log_info!("[GUI] daemon 后台等待中就绪...");
+                            std::thread::spawn(move || {
+                                for i in 3..50 {
+                                    if client.ping_sync() {
+                                        crate::log_info!("[GUI] daemon 后台就绪完成");
+                                        return;
+                                    }
+                                    std::thread::sleep(std::time::Duration::from_millis(200));
+                                }
+                                crate::log_warn!("[GUI] daemon 启动超时，10秒内未就绪");
+                            });
                         }
                     }
                     Err(e) => {

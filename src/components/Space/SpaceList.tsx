@@ -14,7 +14,7 @@ import { DEFAULT_NETWORK_CONFIG } from "../../types/network";
 import { Loading } from "../Common/Loading";
 
 export function SpaceList() {
-  const { spaces, loading, error, isReady, connectSpace, disconnectSpace, deleteSpace, loadSpaces } = useSpaceStore();
+  const { spaces, loading, error, isReady, connectSpace, disconnectSpace, deleteSpace, loadSpacesOnce } = useSpaceStore();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; ownerId?: string } | null>(null);
@@ -80,7 +80,8 @@ export function SpaceList() {
     if (!deleteTarget) return;
     try {
       await deleteSpace(deleteTarget.id, deleteTarget.ownerId || "");
-      await loadSpaces();
+      await new Promise((r) => setTimeout(r, 300));
+      await loadSpacesOnce();
       setDeleteTarget(null);
     } catch (e) {
       alert(String(e));

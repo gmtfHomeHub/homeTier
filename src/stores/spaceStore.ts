@@ -10,6 +10,7 @@ interface SpaceStore {
   isReady: boolean;
 
   loadSpaces: () => Promise<void>;
+  loadSpacesOnce: () => Promise<void>;
   createSpace: (name: string, networkSecret: string, ownerId: string, description?: string) => Promise<Space>;
   joinSpace: (networkName: string, networkSecret: string) => Promise<Space>;
   leaveSpace: (spaceId: string) => Promise<void>;
@@ -42,6 +43,15 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
           set({ loading: false, error: String(e), isReady: false });
         }
       }
+    }
+  },
+
+  loadSpacesOnce: async () => {
+    try {
+      const spaces = await api.listSpaces();
+      set({ spaces });
+    } catch (e) {
+      set({ error: String(e) });
     }
   },
 

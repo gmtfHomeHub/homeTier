@@ -1,17 +1,5 @@
 use std::path::Path;
 
-pub fn cleanup_all(_app_data_dir: &Path, easytier_config_dir: &Path) {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    cleanup_stale_daemon();
-
-    #[cfg(target_os = "macos")]
-    cleanup_easytier_root();
-
-    cleanup_temp_files();
-    cleanup_toml_configs(easytier_config_dir);
-    cleanup_orphan_easytier();
-}
-
 /// 应用退出时的最终清理（不检查端口、不需要重启 daemon）
 pub fn shutdown_exit_cleanup() {
     crate::log_info!("[退出] 开始清理...");
@@ -32,6 +20,18 @@ pub fn shutdown_exit_cleanup() {
 
     cleanup_temp_files();
     crate::log_info!("[退出] 清理完成");
+}
+
+/// 启动时 pre-check + 实用清理（杀死旧 daemon 进程 + 清理临时文件）
+pub fn startup_precheck(toml_dir: &Path) {
+    cleanup_stale_daemon();
+
+    #[cfg(target_os = "macos")]
+    cleanup_easytier_root();
+
+    cleanup_temp_files();
+    cleanup_orphan_toml_configs(toml_dir);
+    cleanup_easytier_process_snapshot();
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -121,19 +121,25 @@ fn cleanup_temp_files() {
     crate::log_info!(format!("[Cleanup] 已清理 {} 个临时文件/目录", removed));
 }
 
-fn cleanup_toml_configs(dir: &Path) {
+fn cleanup_orphan_toml_configs(dir: &Path) {
+    let mut removed = Vec::new();
     if let Ok(entries) = std::fs::read_dir(dir) {
-        let mut count = 0u32;
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) == Some("toml") {
+                if let Some(name) = path.file_stem().and_then(|n| n.to_str()) {
+                    removed.push(name.to_string());
+                }
                 let _ = std::fs::remove_file(&path);
-                count += 1;
             }
         }
-        if count > 0 {
-            crate::log_info!(format!("[Cleanup] 已清理 {} 个残留 TOML 配置", count));
-        }
+    }
+    if !removed.is_empty() {
+        crate::log_info!(format!(
+            "[Cleanup] 已清理 {} 个残留 TOML 配置: {}",
+            removed.len(),
+            removed.join(", ")
+        ));
     }
 }
 
@@ -141,18 +147,24 @@ fn cleanup_toml_configs(dir: &Path) {
 fn cleanup_orphan_easytier() {
     #[cfg(target_os = "linux")]
     {
+        crate::log_info!("[Cleanup] 检查孤儿 easytier-core 进程...");
         let result = std::process::Command::new("pkill")
             .args(["-f", "easytier-core.*--rpc-portal"])
             .output();
         if let Ok(output) = result {
             if output.status.success() {
                 crate::log_info!("[Cleanup] 已清理孤儿 easytier-core 进程");
+            } else {
+                crate::log_info!("[Cleanup] 未发现孤儿 easytier-core 进程");
             }
+        } else {
+            crate::log_info!("[Cleanup] pkill 命令不可用，跳过孤儿进程清理");
         }
     }
 
     #[cfg(target_os = "windows")]
     {
+        crate::log_info!("[Cleanup] 检查孤儿 easytier-core 进程...");
         let _ = std::process::Command::new("taskkill")
             .args(["/F", "/IM", "easytier-core.exe", "/T"])
             .output();
