@@ -132,6 +132,14 @@ pub fn is_process_alive(pid: u32) -> bool {
     }
 }
 
+/// 获取 daemon 就绪 signal 文件路径
+pub fn get_signal_path() -> PathBuf {
+    let app_data = directories::BaseDirs::new()
+        .map(|d| d.data_dir().join("com.hometier.app"))
+        .unwrap_or_else(|| PathBuf::from("."));
+    app_data.join("daemon_ready.signal")
+}
+
 /// 检查 daemon 是否正在运行
 pub fn is_daemon_running() -> bool {
     if let Some((pid, _port)) = load_daemon_state() {

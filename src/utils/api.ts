@@ -398,6 +398,10 @@ export async function isDaemonReady(): Promise<boolean> {
   return invoke("is_daemon_ready");
 }
 
+export async function getDaemonErrorReason(): Promise<string | null> {
+  return invoke("get_daemon_error_reason");
+}
+
 // === Daemon Logs ===
 
 export async function getDaemonLogs(level?: string): Promise<LogEntry[]> {

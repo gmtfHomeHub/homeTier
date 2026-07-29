@@ -70,42 +70,26 @@ impl Daemon {
     pub async fn run(&self) -> Result<(), String> {
         crate::log_info!("[Daemon] 守护进程启动");
 
-        // 清除旧状态文件，然后保存新状态
-        ipc::clear_daemon_state();
-        ipc::save_daemon_state(std::process::id(), self.rpc_port)?;
-
-        // 清理已有 daemon（处理 osascript root 授权后端口冲突）
         let addr = format!("127.0.0.1:{}", self.rpc_port);
-        if let Ok(mut stream) = tokio::net::TcpStream::connect(&addr).await {
-            crate::log_info!("[Daemon] 检测到已有守护进程，发送关闭命令");
-            use tokio::io::AsyncWriteExt;
-            let req = serde_json::to_string(&ipc::IpcRequest::Shutdown).unwrap_or_default();
-            let len = (req.len() as u32).to_le_bytes();
-            let _ = stream.write_all(&len).await;
-            let _ = stream.write_all(req.as_bytes()).await;
-            drop(stream);
 
-            // 轮询等待旧进程释放端口（最多 2s），避免 bind 冲突
-            let poll_start = std::time::Instant::now();
-            let poll_timeout = std::time::Duration::from_secs(2);
-            loop {
-                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-                if tokio::net::TcpStream::connect(&addr).await.is_err() {
-                    crate::log_info!(format!("[Daemon] 旧守护进程已退出，耗时 {:?}", poll_start.elapsed()));
-                    break;
-                }
-                if poll_start.elapsed() >= poll_timeout {
-                    crate::log_warn!("[Daemon] 旧守护进程端口释放超时，继续启动");
-                    break;
-                }
-            }
-        }
-
-        // 启动 TCP RPC 服务器
+        // 1. 先绑定监听端口（核心能力）
         let listener = tokio::net::TcpListener::bind(&addr).await
-            .map_err(|e| format!("绑定 TCP 端口失败: {}", e))?;
-
+            .map_err(|e| {
+                crate::log_error!(format!("[Daemon] 绑定端口失败: {}", e));
+                format!("绑定 TCP 端口失败: {}", e)
+            })?;
         crate::log_info!(format!("[Daemon] TCP RPC 服务器已启动: {}", addr));
+
+        // 2. 写入 signal 文件（GUI 由此确认 daemon 已就绪）
+        let signal_path = ipc::get_signal_path();
+        let _ = std::fs::write(&signal_path, format!("{}", std::process::id()));
+        crate::log_info!(format!("[Daemon] signal 文件已写入: {}", signal_path.display()));
+
+        // 3. 离线写状态文件（失败不致命）
+        ipc::clear_daemon_state();
+        if let Err(e) = ipc::save_daemon_state(std::process::id(), self.rpc_port) {
+            crate::log_info!(format!("[Daemon] daemon_state.json 写入失败（非致命）: {}", e));
+        }
 
         // macOS: daemon IPC 就绪后，启动 easytier-core 守护进程（一次性 osascript 授权）
         #[cfg(target_os = "macos")]

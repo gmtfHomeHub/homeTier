@@ -22,7 +22,7 @@ pub fn shutdown_exit_cleanup() {
     crate::log_info!("[退出] 清理完成");
 }
 
-/// 启动时 pre-check + 实用清理（清理临时文件 + 孤立配置）
+/// 启动时 pre-check + 实用清理（清理临时文件 + 孤立配置 + 遗留 signal 文件）
 /// 注意：不再清理 daemon 进程 — daemon 由自身 run() 中的端口冲突检查处理
 pub fn startup_precheck(toml_dir: &Path) {
     #[cfg(target_os = "macos")]
@@ -31,6 +31,7 @@ pub fn startup_precheck(toml_dir: &Path) {
     cleanup_temp_files();
     cleanup_orphan_toml_configs(toml_dir);
     cleanup_orphan_easytier();
+    cleanup_signal_file();
 }
 
 
@@ -152,4 +153,12 @@ fn cleanup_orphan_easytier() {
 fn cleanup_orphan_easytier() {
     // macOS: cleanup_easytier_root() 已通过 RPC 关闭守护进程
     // Android/iOS: 无需清理
+}
+
+fn cleanup_signal_file() {
+    let path = crate::daemon::ipc::get_signal_path();
+    if path.exists() {
+        let _ = std::fs::remove_file(&path);
+        crate::log_info!("[Cleanup] 已清除遗留 signal 文件");
+    }
 }

@@ -28,7 +28,10 @@ use proxy::{ActiveOrigin, ProxyHandler, ProxyKeyMap};
 use crate::space::manager::SpaceManager;
 
 /// daemon 就绪标志（从后台线程标记，前端通过 Tauri command 轮询）
-pub struct DaemonReadyState(pub Arc<AtomicBool>);
+pub struct DaemonReadyState {
+    pub ready: Arc<AtomicBool>,
+    pub reason: Arc<std::sync::Mutex<Option<String>>>,
+}
 
 /// 全局代理服务器，用于应用退出时关闭
 static PROXY_SERVER: OnceLock<Arc<proxy::ProxyServer>> = OnceLock::new();
@@ -90,8 +93,12 @@ pub fn run() -> std::process::ExitCode {
             crate::log_info!("[GUI] EasyTier 管理器已初始化");
 
             // daemon 就绪标志（前端通过 Tauri command 轮询）
-            let daemon_ready = Arc::new(AtomicBool::new(false));
-            app.manage(DaemonReadyState(daemon_ready.clone()));
+            let daemon_ready = {
+                let ready = Arc::new(AtomicBool::new(false));
+                let reason: Arc<std::sync::Mutex<Option<String>>> = Arc::new(std::sync::Mutex::new(None));
+                app.manage(DaemonReadyState { ready: ready.clone(), reason: reason.clone() });
+                (ready, reason)
+            };
 
             // Desktop: 启动 daemon 子进程并创建 IPC 客户端
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -102,24 +109,31 @@ pub fn run() -> std::process::ExitCode {
                         crate::log_info!("[GUI] daemon 子进程已启动");
                         let child_arc = Arc::new(std::sync::Mutex::new(Some(child)));
                         app.manage(crate::DaemonGuard(child_arc.clone()));
-                        // 后台轮询 daemon 就绪，同时监控子进程存活
+                        // 后台轮询 daemon 就绪（signal 文件 + 子进程存活检测）
                         let app_handle = app.handle().clone();
+                        let daemon_ready_flag = daemon_ready.clone();
+                        let child_arc_thread = child_arc.clone();
+                        let signal_path = crate::daemon::ipc::get_signal_path();
                         std::thread::spawn(move || {
-                            let client = daemon::client::IpcClient::default_port();
+                            let daemon_ready_bool = daemon_ready_flag.0;
+                            let daemon_ready_reason = daemon_ready_flag.1;
                             for i in 0..60 {
-                                if client.ping_sync() {
-                                    daemon_ready.store(true, Ordering::SeqCst);
+                                // 方式一：检查 signal 文件（daemon bind 成功后写入）
+                                if signal_path.exists() {
+                                    daemon_ready_bool.store(true, Ordering::SeqCst);
                                     let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": true }));
-                                    crate::log_info!("[GUI] daemon 已就绪");
+                                    crate::log_info!("[GUI] daemon 已就绪（signal 文件检测到）");
                                     return;
                                 }
-                                // 检查子进程是否已退出
-                                if let Ok(ref mut child_opt) = child_arc.lock() {
+                                // 方式二：检查子进程是否已退出
+                                if let Ok(ref mut child_opt) = child_arc_thread.lock() {
                                     if let Some(ref mut child) = child_opt.as_mut() {
                                         match child.try_wait() {
                                             Ok(Some(status)) => {
+                                                let reason_str = format!("daemon 进程退出: {}", status);
                                                 crate::log_error!(format!("[GUI] daemon 子进程意外退出: {:?}", status));
-                                                let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": false, "reason": format!("daemon 进程退出: {}", status) }));
+                                                *daemon_ready_reason.lock().unwrap() = Some(reason_str.clone());
+                                                let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": false, "reason": reason_str }));
                                                 return;
                                             }
                                             Ok(None) => {}
@@ -134,7 +148,9 @@ pub fn run() -> std::process::ExitCode {
                                     crate::log_debug!(format!("[GUI] 等待 daemon 就绪中... ({}/60)", i + 1));
                                 }
                             }
-                            let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": false, "reason": "daemon 启动超时（12s）" }));
+                            let reason_str = "daemon 启动超时（12s）".to_string();
+                            *daemon_ready_reason.lock().unwrap() = Some(reason_str.clone());
+                            let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": false, "reason": reason_str }));
                             crate::log_warn!("[GUI] daemon 启动超时");
                         });
                     }
@@ -324,6 +340,7 @@ pub fn run() -> std::process::ExitCode {
             commands::daemon::check_daemon_running,
             commands::daemon::get_daemon_status,
             commands::daemon::is_daemon_ready,
+            commands::daemon::get_daemon_error_reason,
             commands::daemon::daemon_connect_space,
             commands::daemon::daemon_disconnect_space,
             commands::daemon::daemon_list_spaces,

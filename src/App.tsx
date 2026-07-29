@@ -14,7 +14,8 @@ import { useSpaceStore } from "./stores/spaceStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useEffect, useState } from "react";
 import { Theme } from "@radix-ui/themes";
-import { isDaemonReady } from "./utils/api";
+import { isDaemonReady, getDaemonErrorReason } from "./utils/api";
+import { listen } from "@tauri-apps/api/event";
 
 const POLL_INTERVAL_MS = 1000;
 const POLL_MAX_ATTEMPTS = 30;
@@ -62,19 +63,44 @@ export default function App() {
       const ok = await check();
       if (ok) return;
 
+      // 监听 daemon-ready 事件，获取后端精确错误信息
+      const unlisten = await listen<{ ready: boolean; reason?: string }>(
+        "daemon-ready",
+        (event) => {
+          if (!event.payload.ready) {
+            setAppError(`daemon 启动失败: ${event.payload.reason || "未知原因"}`);
+          }
+        }
+      );
+
       const timerId = setInterval(async () => {
         attempts++;
         if (cancelled) {
           clearInterval(timerId);
+          unlisten();
           return;
         }
         if (attempts > POLL_MAX_ATTEMPTS) {
           clearInterval(timerId);
-          setAppError("daemon 启动超时");
+          unlisten();
+          // 超时后尝试读后端记录的错误原因
+          try {
+            const reason = await getDaemonErrorReason();
+            setAppError(
+              reason 
+                ? `daemon 启动超时: ${reason}` 
+                : "daemon 启动超时（超过30秒），请重试"
+            );
+          } catch {
+            setAppError("daemon 启动超时（超过30秒），请重试");
+          }
           return;
         }
         const ok = await check();
-        if (ok) clearInterval(timerId);
+        if (ok) {
+          clearInterval(timerId);
+          unlisten();
+        }
       }, POLL_INTERVAL_MS);
     };
 

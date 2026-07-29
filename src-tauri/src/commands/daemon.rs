@@ -6,7 +6,13 @@ use crate::DaemonReadyState;
 /// 查询 daemon 是否就绪（前端轮询用，不依赖事件系统）
 #[tauri::command]
 pub fn is_daemon_ready(ready_state: State<'_, DaemonReadyState>) -> bool {
-    ready_state.0.load(std::sync::atomic::Ordering::SeqCst)
+    ready_state.ready.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// 获取 daemon 启动失败的原因（供前端展示具体错误信息）
+#[tauri::command]
+pub fn get_daemon_error_reason(ready_state: State<'_, DaemonReadyState>) -> Option<String> {
+    ready_state.reason.lock().ok()?.clone()
 }
 
 /// 检查守护进程是否正在运行
