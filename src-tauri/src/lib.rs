@@ -462,8 +462,6 @@ pub fn run() -> std::process::ExitCode {
                 cleanup::cleanup_all();
                 crate::log_info!("[GUI] 应用退出清理完成");
             }
-                crate::log_info!("[GUI] 应用退出清理完成");
-            }
             _ => {}
         }
     });
