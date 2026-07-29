@@ -514,54 +514,35 @@ impl EasyTierManager {
             let peer_service = client.scoped_client::<PeerManageRpcClientFactory<BaseController>>("".to_string()).await;
 
             if let Ok(peer_service) = peer_service {
-                let list_req = easytier::proto::api::instance::ListPeerRequest {
+                let list_req = easytier::proto::api::instance::ListRouteRequest {
                     instance: Some(easytier::proto::api::instance::InstanceIdentifier {
                         selector: Some(easytier::proto::api::instance::instance_identifier::Selector::Id(instance_id.to_string().into())),
                     }),
                     ..Default::default()
                 };
-                let result = peer_service.list_peer(ctrl, list_req).await;
+                let result = peer_service.list_route(ctrl, list_req).await;
                 match result {
                     Ok(resp) => {
-                        crate::log_debug!(format!("[D20260728-V3] query_peer_list response: my_info={:?}, peer_count={}", resp.my_info, resp.peer_infos.len()));
+                        crate::log_debug!(format!("[D20260728-V3] query_peer_list response: route_count={}", resp.routes.len()));
                         let mut peer_infos = Vec::new();
 
-                        for peer in resp.peer_infos {
-                            let mut total_rx = 0u64;
-                            let mut total_tx = 0u64;
-                            let mut total_latency_us = 0u64;
-                            let mut total_loss_rate = 0.0f32;
-                            let mut conn_count = 0u32;
-                            let mut tunnel_proto = None;
-
-                            for conn in &peer.conns {
-                                if let Some(stats) = &conn.stats {
-                                    total_rx += stats.rx_bytes;
-                                    total_tx += stats.tx_bytes;
-                                    total_latency_us += stats.latency_us;
-                                    total_loss_rate += conn.loss_rate;
-                                    conn_count += 1;
-                                }
-                                if let Some(ref tunnel) = conn.tunnel {
-                                    tunnel_proto = Some(tunnel.tunnel_type.clone());
-                                }
-                            }
-
-                            let avg_latency_ms = if conn_count > 0 { Some(total_latency_us as f64 / conn_count as f64 / 1000.0) } else { None };
-                            let avg_loss_rate = if conn_count > 0 { Some(total_loss_rate / conn_count as f32) } else { None };
-                            let any_connected = peer.conns.iter().any(|c| !c.is_closed);
+                        for route in resp.routes {
+                            let virtual_ip = if route.ipv4_addr.ip.is_empty() { None } else { Some(route.ipv4_addr.ip.clone()) };
+                            let hostname = if route.hostname.is_empty() { None } else { Some(route.hostname.clone()) };
+                            let version = if route.version.is_empty() { None } else { Some(route.version.clone()) };
+                            let tunnel_proto = None;
 
                             peer_infos.push(crate::easytier::launcher::PeerInfo {
-                                peer_id: peer.peer_id,
-                                virtual_ip: if peer.ipv4_addr.is_empty() { None } else { Some(peer.ipv4_addr.clone()) },
-                                hostname: if peer.hostname.is_empty() { None } else { Some(peer.hostname.clone()) },
-                                latency_ms: avg_latency_ms,
-                                loss_rate: avg_loss_rate.map(|f| f as f64),
-                                rx_bytes: Some(total_rx),
-                                tx_bytes: Some(total_tx),
-                                connected: any_connected,
+                                peer_id: route.peer_id,
+                                virtual_ip,
+                                hostname,
+                                latency_ms: Some(route.path_latency as f64),
+                                loss_rate: None,
+                                rx_bytes: None,
+                                tx_bytes: None,
+                                connected: true,
                                 is_local: false,
-                                version: if peer.version.is_empty() { None } else { Some(peer.version.clone()) },
+                                version,
                                 tunnel_proto,
                                 nat_type: None,
                             });
