@@ -388,14 +388,25 @@ impl EasyTierManager {
         use easytier::proto::api::manage::WebClientServiceClientFactory;
 
         let addr = format!("tcp://127.0.0.1:{}", rpc_port);
-        let url: url::Url = addr.parse().ok()?;
+        let url: url::Url = match addr.parse() {
+            Ok(u) => u,
+            Err(e) => {
+                crate::log_warn!(format!("EasyTierManager: RPC 地址解析失败, addr={}, error={}", addr, e));
+                return None;
+            }
+        };
 
         let connector = TcpTunnelConnector::new(url);
         let mut client = StandAloneClient::new(connector);
 
-        // 通过 collect_network_info 获取实例状态（兼容 daemon 模式）
         let ctrl = BaseController::default();
-        let web_service = client.scoped_client::<WebClientServiceClientFactory<BaseController>>("".to_string()).await.ok()?;
+        let web_service = match client.scoped_client::<WebClientServiceClientFactory<BaseController>>("".to_string()).await {
+            Ok(svc) => svc,
+            Err(e) => {
+                crate::log_warn!(format!("EasyTierManager: RPC 连接失败, port={}, error={}", rpc_port, e));
+                return None;
+            }
+        };
 
         let proto_uuid: easytier::proto::common::Uuid = (*instance_id).into();
         let inst_id_str = instance_id.to_string();
@@ -450,7 +461,10 @@ impl EasyTierManager {
                             avg_latency_ms,
                         })
                     }
-                    None => None
+                    None => {
+                        crate::log_warn!(format!("EasyTierManager: 实例不在 collect_network_info 响应中, instance_id={}", instance_id));
+                        None
+                    }
                 }
             }
             Err(e) => {
@@ -504,7 +518,13 @@ impl EasyTierManager {
         use easytier::proto::api::manage::WebClientServiceClientFactory;
 
         let addr = format!("tcp://127.0.0.1:{}", rpc_port);
-        let url: url::Url = addr.parse().ok()?;
+        let url: url::Url = match addr.parse() {
+            Ok(u) => u,
+            Err(e) => {
+                crate::log_warn!(format!("EasyTierManager: query_peer_list RPC 地址解析失败, addr={}, error={}", addr, e));
+                return None;
+            }
+        };
 
         let max_retries = 3;
         for attempt in 1..=max_retries {
@@ -533,9 +553,11 @@ impl EasyTierManager {
                             Some(info) => info,
                             None => {
                                 if attempt < max_retries {
+                                    crate::log_warn!(format!("EasyTierManager: query_peer_list 实例未在 collect_network_info 响应中 (第{}/{}次), 即将重试", attempt, max_retries));
                                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                                     continue;
                                 }
+                                crate::log_warn!(format!("EasyTierManager: query_peer_list 实例不在 collect_network_info 响应中 (已重试{}次), 返回空列表", max_retries));
                                 return Some(Vec::new());
                             }
                         };

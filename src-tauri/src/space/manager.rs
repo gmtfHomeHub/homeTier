@@ -596,6 +596,10 @@ Self {
                     return Err("未获取到虚拟 IP".to_string());
                 }
                 let delay = RETRY_DELAYS[retries - 1];
+                crate::log_info!(format!(
+                    "discover_and_connect_peers: 虚拟 IP 尚未就绪 (第{}次), 等待 {}s 重试",
+                    retries, delay
+                ));
                 tokio::select! {
                     _ = cancel_token.cancelled() => return Err("连接已取消".to_string()),
                     _ = tokio::time::sleep(std::time::Duration::from_secs(delay)) => {}
