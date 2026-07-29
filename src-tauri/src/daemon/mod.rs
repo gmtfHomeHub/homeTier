@@ -34,6 +34,8 @@ pub struct Daemon {
 
 impl Daemon {
     pub fn new(config_dir: PathBuf, data_dir: PathBuf) -> Result<Self, String> {
+        // daemon 启动时清空历史日志
+        crate::log::clear();
         let easytier_dir = config_dir.join("easytier");
         std::fs::create_dir_all(&easytier_dir)
             .map_err(|e| format!("创建 EasyTier 配置目录失败: {}", e))?;
@@ -391,6 +393,10 @@ impl Daemon {
                     Ok(v) => ipc::IpcResponse::Ok { data: Some(v) },
                     Err(e) => ipc::IpcResponse::Error { message: format!("序列化日志失败: {}", e) },
                 }
+            }
+            ipc::IpcRequest::ClearDaemonLogs => {
+                crate::log::clear();
+                ipc::IpcResponse::Ok { data: None }
             }
             ipc::IpcRequest::CheckBinary => {
                 crate::log_info!("[Daemon] 检查 EasyTier 二进制");

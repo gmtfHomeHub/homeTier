@@ -249,6 +249,11 @@ impl IpcClient {
         }).await
     }
 
+    /// 清空 daemon 日志
+    pub async fn clear_daemon_logs(&self) -> Result<IpcResponse, String> {
+        self.send(&IpcRequest::ClearDaemonLogs).await
+    }
+
     /// 检查 EasyTier 二进制
     pub async fn check_binary(&self) -> Result<IpcResponse, String> {
         self.send(&IpcRequest::CheckBinary).await

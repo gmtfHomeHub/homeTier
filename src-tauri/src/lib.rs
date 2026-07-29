@@ -60,6 +60,8 @@ pub fn run() -> std::process::ExitCode {
     let builder = proxy::hometier_protocol::register_protocol(builder);
 
     let builder = builder.setup(|app| {
+            // 应用启动时清空历史日志，确保只记录本次会话的日志
+            crate::log::clear();
             log_info!("homeTier 应用启动");
 
             // 初始化文件日志

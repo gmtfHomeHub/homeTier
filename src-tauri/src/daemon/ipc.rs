@@ -39,6 +39,7 @@ pub enum IpcRequest {
     GetDaemonLogs {
         level: Option<String>,
     },
+    ClearDaemonLogs,
     CheckBinary,
     Shutdown,
 }

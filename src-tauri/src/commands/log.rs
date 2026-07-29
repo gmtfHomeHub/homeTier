@@ -47,6 +47,12 @@ pub fn get_space_logs(space_id: String, level: Option<String>) -> Vec<log::LogEn
 }
 
 #[tauri::command]
-pub fn clear_logs() {
+pub async fn clear_logs() {
     log::clear();
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let client = crate::daemon::client::IpcClient::get_global();
+        client.clear_daemon_logs().await.ok();
+    }
 }
