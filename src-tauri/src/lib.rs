@@ -24,6 +24,7 @@ use tauri::{Emitter, Manager};
 use commands::app_view::AppWebview;
 use proxy::plugins::*;
 use proxy::{ActiveOrigin, ProxyHandler, ProxyKeyMap};
+use crate::space::manager::SpaceManager;
 
 /// 全局代理服务器，用于应用退出时关闭
 static PROXY_SERVER: OnceLock<Arc<proxy::ProxyServer>> = OnceLock::new();

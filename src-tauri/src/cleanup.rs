@@ -31,7 +31,7 @@ pub fn startup_precheck(toml_dir: &Path) {
 
     cleanup_temp_files();
     cleanup_orphan_toml_configs(toml_dir);
-    cleanup_easytier_process_snapshot();
+    cleanup_orphan_easytier();
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
