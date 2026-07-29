@@ -48,7 +48,9 @@ static DAEMON_CHILD: OnceLock<Arc<std::sync::Mutex<Option<std::process::Child>>>
 pub fn is_elevated_process() -> bool {
     ELEVATED.load(std::sync::atomic::Ordering::SeqCst)
 }
-
+// fn tray_icon() -> tauri::image::Image<'static> {
+//     tauri::image::Image::from_bytes(include_bytes!("../icons/gray/template_128.png")).unwrap()
+// }
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> std::process::ExitCode {
     let builder = tauri::Builder::default()
@@ -237,6 +239,7 @@ pub fn run() -> std::process::ExitCode {
                     .text("quit", "退出")
                     .build()?;
                 let app_handle = app.handle().clone();
+                // let icon = tray_icon();
                 let _tray = tauri::tray::TrayIconBuilder::with_id("main")
                     .menu(&tray_menu)
                     .on_menu_event(move |_app, event| {
@@ -261,6 +264,7 @@ pub fn run() -> std::process::ExitCode {
                     .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))
                         .expect("托盘图标加载失败"))
                     .build(app)?;
+                    // .icon_as_template(true)
             }
 
             // 启动 HTTP 代理服务器（用于绕过 iframe 安全限制）

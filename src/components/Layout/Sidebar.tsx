@@ -1,11 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { useNavigate, useLocation } from "react-router-dom";
-import { MessageSquare, LogIn, Settings, Plus, House } from "lucide-react";
-import { useState } from "react";
-import { CreateSpaceDialog } from "../Space/CreateSpaceDialog";
-import { JoinSpaceDialog } from "../Space/JoinSpaceDialog";
-import { Button, Badge, Flex } from "@radix-ui/themes";
+import { Button, Badge } from "@radix-ui/themes";
 import { useLayoutStore } from "../../stores/layoutStore";
 import { useSwipe } from "../../hooks/useSwipe";
 
@@ -14,8 +10,6 @@ export function Sidebar() {
   const { spaces, setCurrentSpace } = useSpaceStore();
   const navigate = useNavigate();
   const location = useLocation();
-  const [showCreate, setShowCreate] = useState(false);
-  const [showJoin, setShowJoin] = useState(false);
   const { setSidebarOpen } = useLayoutStore();
 
   const handleSpaceClick = (spaceId: string) => {
@@ -40,7 +34,7 @@ export function Sidebar() {
   return (
     <>
       <aside
-        className="w-64 bg-[var(--color-surface)] border-r border-[var(--color-border)] flex flex-col h-full relative"
+        className="flex flex-col h-full relative"
         {...swipeBind}
       >
         <div
@@ -49,52 +43,9 @@ export function Sidebar() {
         />
 
         <div className="flex-1 p-3 overflow-x-hidden overflow-y-auto">
-          <div className="flex items-center justify-between mb-3">
-            <Flex gap="2">
-              <Button
-                onClick={() => navigate("/")}
-                variant="ghost"
-                size="2"
-                className="flex-1"
-              >
-                <Flex align="center" gap="2">
-                  <House size={16} />
-                  {t("space.spaces")}
-                </Flex>
-              </Button>
-            </Flex>
-            <Flex gap="3">
-              <Button
-                onClick={() => setShowJoin(true)}
-                variant="ghost"
-                size="2"
-                title={t("space.join")}
-              >
-                <LogIn size={16} />
-              </Button>
-              <Button
-                onClick={() => setShowCreate(true)}
-                variant="ghost"
-                size="2"
-                title={t("space.create")}
-              >
-                <Plus size={16} />
-              </Button>
-            </Flex>
-          </div>
-
           {spaces.length === 0 && (
             <div className="text-center py-8 text-[var(--color-text-secondary)] text-sm">
               {t("space.noSpaces")}
-              <br />
-              <Button
-                onClick={() => setShowCreate(true)}
-                variant="ghost"
-                size="1"
-                className="text-[var(--color-primary)]"
-              >
-                {t("space.createFirstSpace")}
-              </Button>
             </div>
           )}
 
@@ -132,27 +83,7 @@ export function Sidebar() {
             ))}
           </div>
         </div>
-
-        <div className="p-3 border-t border-[var(--color-border)]">
-          <Flex gap="2">
-            <Button onClick={() => navigate("/")} variant="ghost" size="2" className="flex-1">
-              <Flex align="center" gap="2" justify="center">
-                <MessageSquare size={16} />
-                <span>{t("chat.title")}</span>
-              </Flex>
-            </Button>
-            <Button onClick={() => navigate("/settings")} variant="ghost" size="2" className="flex-1">
-              <Flex align="center" gap="2" justify="center">
-                <Settings size={16} />
-                <span>{t("settings.title")}</span>
-              </Flex>
-            </Button>
-          </Flex>
-        </div>
       </aside>
-
-      {showCreate && <CreateSpaceDialog onClose={() => setShowCreate(false)} />}
-      {showJoin && <JoinSpaceDialog onClose={() => setShowJoin(false)} />}
     </>
   );
 }
