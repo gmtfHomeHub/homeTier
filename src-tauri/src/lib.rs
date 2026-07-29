@@ -440,8 +440,10 @@ pub fn run() -> std::process::ExitCode {
                     }
                 }
 
-                // 4. 最终清理（macOS root daemon + temp files）
-                cleanup::shutdown_exit_cleanup();
+                // 4. 最终清理（移除 signal/state 文件 + macOS root daemon + temp files）
+                let app_data = app_handle.path().app_data_dir()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                cleanup::shutdown_exit_cleanup(&app_data);
                 crate::log_info!("[GUI] 应用退出清理完成");
             }
             _ => {}
