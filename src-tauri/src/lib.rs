@@ -199,24 +199,41 @@ pub fn run() -> std::process::ExitCode {
             // 初始化 TUN 能力检查
             platform::init_tun_cap_check();
 
-            // 托盘图标
+            // 托盘图标与菜单
             #[cfg(not(target_os = "android"))]
-            let _tray = tauri::tray::TrayIconBuilder::with_id("main")
-                .show_menu_on_left_click(false)
-                .on_tray_icon_event(|tray, event| {
-                    if let tauri::tray::TrayIconEvent::Click {
-                        button: tauri::tray::MouseButton::Left,
-                        button_state: tauri::tray::MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        toggle_window_visibility(app);
-                    }
-                })
-                .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))
-                    .expect("托盘图标加载失败"))
-                .build(app)?;
+            {
+                use tauri::menu::MenuBuilder;
+                let tray_menu = MenuBuilder::new(app)
+                    .text("show", "显示/隐藏")
+                    .separator()
+                    .text("quit", "退出")
+                    .build()?;
+                let app_handle = app.handle().clone();
+                let _tray = tauri::tray::TrayIconBuilder::with_id("main")
+                    .menu(&tray_menu)
+                    .on_menu_event(move |_app, event| {
+                        if event.id() == "quit" {
+                            std::process::exit(0);
+                        }
+                        if event.id() == "show" {
+                            toggle_window_visibility(&app_handle);
+                        }
+                    })
+                    .on_tray_icon_event(|tray, event| {
+                        if let tauri::tray::TrayIconEvent::Click {
+                            button: tauri::tray::MouseButton::Left,
+                            button_state: tauri::tray::MouseButtonState::Up,
+                            ..
+                        } = event
+                        {
+                            let app = tray.app_handle();
+                            toggle_window_visibility(app);
+                        }
+                    })
+                    .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))
+                        .expect("托盘图标加载失败"))
+                    .build(app)?;
+            }
 
             // 启动 HTTP 代理服务器（用于绕过 iframe 安全限制）
             let active_origin: ActiveOrigin = Arc::new(RwLock::new(None));
@@ -388,11 +405,6 @@ pub fn run() -> std::process::ExitCode {
         .on_window_event(|_win, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let _ = _win.hide();
-                #[cfg(target_os = "macos")]
-                {
-                    use tauri::ActivationPolicy;
-                    let _ = _win.app_handle().set_activation_policy(ActivationPolicy::Accessory);
-                }
                 api.prevent_close();
             }
         });
@@ -490,6 +502,11 @@ fn toggle_window_visibility(app: &tauri::AppHandle) {
                 let _ = app.set_activation_policy(ActivationPolicy::Accessory);
             }
         } else {
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::ActivationPolicy;
+                let _ = app.set_activation_policy(ActivationPolicy::Regular);
+            }
             let _ = window.show();
             let _ = window.unminimize();
             let _ = window.set_focus();

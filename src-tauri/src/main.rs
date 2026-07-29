@@ -78,12 +78,17 @@ fn main() -> std::process::ExitCode {
             .map(|s| std::path::PathBuf::from(s))
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
         home_tier_lib::run_daemon(config_dir, data_dir)
-    } else if !elevated && !is_elevated() {
-        if elevate_self() {
-            std::process::exit(0);
-        }
-        home_tier_lib::run_with_args(false)
     } else {
-        home_tier_lib::run_with_args(elevated)
+        #[cfg(debug_assertions)]
+        home_tier_lib::run_with_args(false);
+        #[cfg(not(debug_assertions))]
+        if !elevated && !is_elevated() {
+            if elevate_self() {
+                std::process::exit(0);
+            }
+            home_tier_lib::run_with_args(false)
+        } else {
+            home_tier_lib::run_with_args(elevated)
+        }
     }
 }
