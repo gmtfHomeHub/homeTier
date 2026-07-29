@@ -14,18 +14,17 @@ import { useSpaceStore } from "./stores/spaceStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useEffect, useState } from "react";
 import { Theme } from "@radix-ui/themes";
+import { listen } from "@tauri-apps/api/event";
 
 export default function App() {
   const loadSpaces = useSpaceStore((s) => s.loadSpaces);
-  const loading = useSpaceStore((s) => s.loading);
-  const error = useSpaceStore((s) => s.error);
-  const isReady = useSpaceStore((s) => s.isReady);
   const theme = useSettingsStore((s) => s.theme);
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia("(prefers-color-scheme: dark)").matches
   );
+  const [appReady, setAppReady] = useState(false);
+  const [appError, setAppError] = useState("");
 
-  // 监听系统主题变化
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = (e: MediaQueryListEvent) => setSystemDark(e.matches);
@@ -33,18 +32,34 @@ export default function App() {
     return () => mq.removeEventListener("change", handler);
   }, []);
 
-  // 根据设置解析实际外观值
   const appearance: "light" | "dark" =
     theme === "dark" ? "dark" :
     theme === "light" ? "light" :
     systemDark ? "dark" : "light";
 
   useEffect(() => {
-    loadSpaces();
-  }, [loadSpaces]);
+    let cancelled = false;
+    const setup = async () => {
+      const unlisten = await listen<{ ready: boolean; reason?: string }>("daemon-ready", (event) => {
+        if (cancelled) return;
+        if (event.payload.ready) {
+          loadSpaces().then(() => {
+            if (!cancelled) setAppReady(true);
+          });
+        } else {
+          setAppError(event.payload.reason ?? "daemon 未就绪");
+        }
+      });
+      return unlisten;
+    };
+    const promise = setup();
+    return () => {
+      cancelled = true;
+      promise.then((unlisten) => unlisten?.());
+    };
+  }, []);
 
-  // 首次加载 loading screen
-  if (!isReady && loading) {
+  if (!appReady && !appError) {
     return (
       <Theme accentColor="blue" grayColor="slate" radius="medium" appearance={appearance} hasBackground>
         <AppLoadingScreen />
@@ -52,11 +67,10 @@ export default function App() {
     );
   }
 
-  // 首次加载失败 screen
-  if (error && !isReady) {
+  if (appError) {
     return (
       <Theme accentColor="blue" grayColor="slate" radius="medium" appearance={appearance} hasBackground>
-        <AppErrorScreen message={error} onRetry={loadSpaces} />
+        <AppErrorScreen message={appError} onRetry={() => { setAppError(""); setAppReady(false); loadSpaces(); }} />
       </Theme>
     );
   }

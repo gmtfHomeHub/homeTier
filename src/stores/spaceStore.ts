@@ -5,9 +5,6 @@ import type { Space } from "../types";
 interface SpaceStore {
   spaces: Space[];
   currentSpaceId: string | null;
-  loading: boolean;
-  error: string | null;
-  isReady: boolean;
 
   loadSpaces: () => Promise<void>;
   loadSpacesOnce: () => Promise<void>;
@@ -25,25 +22,10 @@ interface SpaceStore {
 export const useSpaceStore = create<SpaceStore>((set, get) => ({
   spaces: [],
   currentSpaceId: null,
-  loading: false,
-  error: null,
-  isReady: false,
 
   loadSpaces: async () => {
-    set({ loading: true, error: null });
-    for (let i = 0; i < 6; i++) {
-      try {
-        const spaces = await api.listSpaces();
-        set({ spaces, loading: false, isReady: true, error: null });
-        return;
-      } catch (e) {
-        if (i < 5) {
-          await new Promise((r) => setTimeout(r, 2000));
-        } else {
-          set({ loading: false, error: String(e), isReady: false });
-        }
-      }
-    }
+    const spaces = await api.listSpaces();
+    set({ spaces });
   },
 
   loadSpacesOnce: async () => {
@@ -51,7 +33,7 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
       const spaces = await api.listSpaces();
       set({ spaces });
     } catch (e) {
-      set({ error: String(e) });
+      // silently ignore
     }
   },
 

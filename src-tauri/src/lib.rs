@@ -93,34 +93,30 @@ pub fn run() -> std::process::ExitCode {
                     Ok(child) => {
                         crate::log_info!("[GUI] daemon 子进程已启动");
                         app.manage(crate::DaemonGuard(std::sync::Mutex::new(Some(child))));
-                        // 快速 3 次 poll daemon（600ms），就绪则立即继续；否则后台等待
-                        let client = daemon::client::IpcClient::default_port();
-                        let mut ready = false;
-                        for i in 0..3 {
-                            if client.ping_sync() {
-                                ready = true;
-                                break;
-                            }
-                            std::thread::sleep(std::time::Duration::from_millis(200));
-                        }
-                        if ready {
-                            crate::log_info!("[GUI] daemon 已就绪");
-                        } else {
-                            crate::log_info!("[GUI] daemon 后台等待中就绪...");
-                            std::thread::spawn(move || {
-                                for i in 3..50 {
-                                    if client.ping_sync() {
-                                        crate::log_info!("[GUI] daemon 后台就绪完成");
-                                        return;
-                                    }
-                                    std::thread::sleep(std::time::Duration::from_millis(200));
+                        // 后台轮询 daemon 就绪，通过事件通知前端
+                        let app_handle = app.handle().clone();
+                        std::thread::spawn(move || {
+                            let client = daemon::client::IpcClient::default_port();
+                            for i in 0..60 {
+                                if client.ping_sync() {
+                                    let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": true }));
+                                    crate::log_info!("[GUI] daemon 已就绪，已通知前端");
+                                    return;
                                 }
-                                crate::log_warn!("[GUI] daemon 启动超时，10秒内未就绪");
-                            });
-                        }
+                                std::thread::sleep(std::time::Duration::from_millis(200));
+                                if i % 10 == 9 {
+                                    crate::log_debug!(format!("[GUI] 等待 daemon 就绪中... ({}/60)", i + 1));
+                                }
+                            }
+                            let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": false, "reason": "daemon 启动超时（12s）" }));
+                            crate::log_warn!("[GUI] daemon 启动超时，已通知前端");
+                        });
                     }
                     Err(e) => {
                         crate::log_error!(format!("[GUI] 启动 daemon 失败: {}", e));
+                        let app_handle = app.handle().clone();
+                        let reason = format!("daemon 启动失败: {}", e);
+                        let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": false, "reason": reason }));
                     }
                 }
                 // 创建 IPC 客户端供 Tauri 命令使用
