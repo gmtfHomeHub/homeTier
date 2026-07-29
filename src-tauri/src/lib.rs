@@ -40,9 +40,9 @@ static PROXY_SERVER: OnceLock<Arc<proxy::ProxyServer>> = OnceLock::new();
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 static ELEVATED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// 管理 daemon 子进程生命周期，在 app 退出时自动清理
+// 全局 daemon 子进程引用（供 Exit 事件兜底 kill 使用，try_state 在 Exit 时可能失效）
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub struct DaemonGuard(pub Arc<std::sync::Mutex<Option<std::process::Child>>>);
+static DAEMON_CHILD: OnceLock<Arc<std::sync::Mutex<Option<std::process::Child>>>> = OnceLock::new();
 
 /// 检查当前进程是否以提权模式运行（Windows UAC / macOS）
 #[cfg(any(target_os = "windows", target_os = "macos"))]
@@ -108,7 +108,9 @@ pub fn run() -> std::process::ExitCode {
                     Ok(mut child) => {
                         crate::log_info!("[GUI] daemon 子进程已启动");
                         let child_arc = Arc::new(std::sync::Mutex::new(Some(child)));
-                        app.manage(crate::DaemonGuard(child_arc.clone()));
+                        // 存到全局 OnceLock（Exit 事件兜底 kill 用）
+                        let _ = DAEMON_CHILD.set(child_arc.clone());
+                        app.manage(child_arc.clone());
                         // 后台轮询 daemon 就绪（signal 文件 + 子进程存活检测）
                         let app_handle = app.handle().clone();
                         let daemon_ready_flag = daemon_ready.clone();
@@ -423,15 +425,29 @@ pub fn run() -> std::process::ExitCode {
                         rt.block_on(async {
                             crate::log_info!("[退出] 发送 IPC Shutdown 到 daemon");
                             let _ = client.shutdown().await;
-                            // 等待 daemon 完全关闭（它需要时间停止网络实例）
-                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                            // 等待 daemon 完全关闭（最长 2 秒）
+                            let wait_future = async {
+                                let addr = format!("127.0.0.1:{}", crate::daemon::ipc::DEFAULT_RPC_PORT);
+                                loop {
+                                    match tokio::net::TcpStream::connect(&addr).await {
+                                        Ok(_) => {
+                                            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                                        }
+                                        Err(_) => break,
+                                    }
+                                }
+                            };
+                            let _ = tokio::time::timeout(
+                                std::time::Duration::from_secs(2),
+                                wait_future,
+                            ).await;
                         });
                     }
                 }
 
-                // 3. 强制终止 daemon 子进程（备降兜底）
-                if let Some(guard) = app_handle.try_state::<DaemonGuard>() {
-                    if let Ok(mut child_opt) = guard.0.lock() {
+                // 3. 强制终止 daemon 子进程（兜底）
+                if let Some(guard) = DAEMON_CHILD.get() {
+                    if let Ok(mut child_opt) = guard.lock() {
                         if let Some(mut child) = child_opt.take() {
                             let _ = child.kill();
                             let _ = child.wait();

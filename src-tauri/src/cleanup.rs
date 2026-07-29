@@ -15,9 +15,53 @@ pub fn shutdown_exit_cleanup(data_dir: &std::path::Path) {
     crate::log_info!("[退出] 清理完成");
 }
 
-/// 启动前仅清理临时文件（不再干预任何进程）
+/// 启动前清理：释放被旧 daemon 占用的端口 + 清理临时文件
 pub fn startup_precheck(_toml_dir: &std::path::Path) {
+    kill_any_daemon_occupying_port();
     cleanup_temp_files();
+}
+
+/// 连接 15889 → 发送 Shutdown → 轮询等待端口释放（最长 5s）
+fn kill_any_daemon_occupying_port() {
+    let addr = format!("127.0.0.1:{}", crate::daemon::ipc::DEFAULT_RPC_PORT);
+    let sock_addr: std::net::SocketAddr = match addr.parse() {
+        Ok(a) => a,
+        Err(_) => return,
+    };
+
+    // 1. 连接旧 daemon
+    let mut stream = match std::net::TcpStream::connect_timeout(
+        &sock_addr,
+        std::time::Duration::from_millis(500),
+    ) {
+        Ok(s) => {
+            crate::log_info!("[启动] 发现残留 daemon 进程，发送关闭指令");
+            s
+        }
+        Err(_) => return, // 无残留进程
+    };
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(2000)));
+    let _ = stream.set_write_timeout(Some(std::time::Duration::from_millis(2000)));
+
+    // 发送 Shutdown
+    let shutdown_json = serde_json::json!({"type": "Shutdown"});
+    if let Ok(json) = serde_json::to_string(&shutdown_json) {
+        let len = json.len() as u32;
+        use std::io::Write;
+        let _ = stream.write_all(&len.to_le_bytes());
+        let _ = stream.write_all(json.as_bytes());
+    }
+
+    // 2. 轮询端口是否已释放（最长 5 秒）
+    let start = std::time::Instant::now();
+    while start.elapsed() < std::time::Duration::from_secs(5) {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        if std::net::TcpStream::connect_timeout(&sock_addr, std::time::Duration::from_millis(200)).is_err() {
+            crate::log_info!("[启动] 残留 daemon 已释放端口");
+            return;
+        }
+    }
+    crate::log_info!("[启动] 残留 daemon 端口未在 5 秒内释放，继续启动");
 }
 
 fn remove_file_if_exists(path: &std::path::Path) {
