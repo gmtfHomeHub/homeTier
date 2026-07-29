@@ -21,8 +21,12 @@ impl VoiceServer {
 
     /// 启动信令服务器
     pub async fn start(&mut self) -> Result<(), String> {
-        let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port))
-            .await
+        let socket = tokio::net::TcpSocket::new_v4()
+            .map_err(|e| format!("创建 socket 失败: {}", e))?;
+        let _ = socket.set_reuseaddr(true);
+        socket.bind(format!("0.0.0.0:{}", self.port).parse().unwrap())
+            .map_err(|e| format!("绑定信令端口失败: {}", e))?;
+        let listener = socket.listen(1024)
             .map_err(|e| format!("监听信令端口失败: {}", e))?;
 
         let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();

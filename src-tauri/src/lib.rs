@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod chat;
+pub mod cleanup;
 pub mod daemon;
 pub mod db;
 pub mod easytier;
@@ -74,6 +75,7 @@ pub fn run() -> std::process::ExitCode {
                 .path()
                 .app_data_dir()
                 .unwrap_or_else(|_| std::path::PathBuf::from("."));
+            crate::cleanup::cleanup_all(&app_data);
             let easytier_config_dir = app_data.join("easytier");
             let _ = std::fs::create_dir_all(&easytier_config_dir);
             let instance_manager = Arc::new(easytier::EasyTierManager::new(easytier_config_dir, app_data));
@@ -82,25 +84,6 @@ pub fn run() -> std::process::ExitCode {
             // Desktop: 启动 daemon 子进程并创建 IPC 客户端
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
-                // 清理旧 daemon 进程（上次会话残留）
-                // 先直接 Ping 端口（不依赖 state file，旧版曾错存 PID=15888）
-                let old_client = daemon::client::IpcClient::default_port();
-                if old_client.ping_sync() {
-                    crate::log_info!("[GUI] 清理旧 daemon 进程...");
-                    old_client.shutdown_sync();
-                    std::thread::sleep(std::time::Duration::from_millis(300));
-                }
-                // 再检查 state file 兜底 SIGTERM
-                #[cfg(unix)]
-                if let Some((pid, _)) = daemon::ipc::load_daemon_state() {
-                    if daemon::ipc::is_process_alive(pid) {
-                        crate::log_info!(format!("[GUI] 强制终止旧 daemon 进程 pid={}", pid));
-                        unsafe { libc::kill(pid as i32, libc::SIGTERM); }
-                        std::thread::sleep(std::time::Duration::from_millis(300));
-                    }
-                }
-                daemon::ipc::clear_daemon_state();
-
                 match spawn_daemon() {
                     Ok(child) => {
                         crate::log_info!("[GUI] daemon 子进程已启动");

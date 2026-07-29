@@ -28,8 +28,12 @@ impl FileServer {
         let running = self.running.clone();
         let storage_dir = self.storage_dir.clone();
 
-        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
-            .await
+        let socket = tokio::net::TcpSocket::new_v4()
+            .map_err(|e| format!("创建 socket 失败: {}", e))?;
+        let _ = socket.set_reuseaddr(true);
+        socket.bind(format!("0.0.0.0:{}", port).parse().unwrap())
+            .map_err(|e| format!("绑定端口 {} 失败: {}", port, e))?;
+        let listener = socket.listen(1024)
             .map_err(|e| format!("监听端口 {} 失败: {}", port, e))?;
 
         tokio::spawn(async move {

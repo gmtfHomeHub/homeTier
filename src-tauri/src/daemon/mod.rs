@@ -83,7 +83,21 @@ impl Daemon {
             let _ = stream.write_all(&len).await;
             let _ = stream.write_all(req.as_bytes()).await;
             drop(stream);
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+            // 轮询等待旧进程释放端口（最多 2s），避免 bind 冲突
+            let poll_start = std::time::Instant::now();
+            let poll_timeout = std::time::Duration::from_secs(2);
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                if tokio::net::TcpStream::connect(&addr).await.is_err() {
+                    crate::log_info!(format!("[Daemon] 旧守护进程已退出，耗时 {:?}", poll_start.elapsed()));
+                    break;
+                }
+                if poll_start.elapsed() >= poll_timeout {
+                    crate::log_warn!("[Daemon] 旧守护进程端口释放超时，继续启动");
+                    break;
+                }
+            }
         }
 
         // 启动 TCP RPC 服务器
