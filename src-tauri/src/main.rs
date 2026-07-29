@@ -40,7 +40,7 @@ fn elevate_self() -> bool {
         return std::process::Command::new("osascript")
             .arg("-e")
             .arg(format!(
-                "do shell script \"\\\"{}\" --elevated\" with administrator privileges",
+                r#"do shell script "{} --elevated" with administrator privileges"#,
                 exe.display()
             ))
             .spawn()
