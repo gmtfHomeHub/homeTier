@@ -84,7 +84,7 @@ pub fn run() -> std::process::ExitCode {
                 .app_data_dir()
                 .unwrap_or_else(|_| std::path::PathBuf::from("."));
             let easytier_config_dir = app_data.join("easytier");
-            crate::log_info!("[GUI] 应用启动，开始清理遗留进程...");
+            crate::log_info!("[GUI] 应用启动，清理临时文件...");
             crate::cleanup::startup_precheck(&easytier_config_dir);
             crate::log_info!("[GUI] 清理完成");
             let _ = std::fs::create_dir_all(&easytier_config_dir);
@@ -104,7 +104,7 @@ pub fn run() -> std::process::ExitCode {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
                 crate::log_info!("[GUI] 启动 daemon 子进程...");
-                match spawn_daemon() {
+                match spawn_daemon(&app_data) {
                     Ok(mut child) => {
                         crate::log_info!("[GUI] daemon 子进程已启动");
                         let child_arc = Arc::new(std::sync::Mutex::new(Some(child)));
@@ -113,7 +113,7 @@ pub fn run() -> std::process::ExitCode {
                         let app_handle = app.handle().clone();
                         let daemon_ready_flag = daemon_ready.clone();
                         let child_arc_thread = child_arc.clone();
-                        let signal_path = crate::daemon::ipc::get_signal_path();
+                        let signal_path = app_data.join("daemon_ready.signal");
                         std::thread::spawn(move || {
                             let daemon_ready_bool = daemon_ready_flag.0;
                             let daemon_ready_reason = daemon_ready_flag.1;
@@ -473,14 +473,12 @@ pub fn run_with_args(elevated: bool) -> std::process::ExitCode {
     run()
 }
 
-/// 守护进程入口点（--daemon 模式）
-pub fn run_daemon() -> std::process::ExitCode {
-    // 创建 tokio 运行时
+/// 守护进程入口点（--daemon 模式，路径从 CLI 参数传入）
+pub fn run_daemon(config_dir: std::path::PathBuf, data_dir: std::path::PathBuf) -> std::process::ExitCode {
     let rt = tokio::runtime::Runtime::new()
         .expect("创建 tokio 运行时失败");
 
-    // 运行守护进程
-    let result = rt.block_on(daemon::run_daemon_async());
+    let result = rt.block_on(daemon::run_daemon_async(config_dir, data_dir));
 
     match result {
         Ok(()) => {
@@ -496,16 +494,22 @@ pub fn run_daemon() -> std::process::ExitCode {
 
 /// Desktop: 启动 daemon 子进程
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn spawn_daemon() -> Result<std::process::Child, String> {
+fn spawn_daemon(data_dir: &std::path::Path) -> Result<std::process::Child, String> {
+    use std::io::BufRead;
     use std::process::{Command, Stdio};
 
     let current_exe = std::env::current_exe().map_err(|e| format!("获取当前可执行文件路径失败: {}", e))?;
 
     crate::log_info!("[GUI] 启动 daemon 子进程");
 
-    let mut cmd = Command::new(current_exe);
-    cmd.arg("--daemon");
-    cmd.stdout(Stdio::null()).stderr(Stdio::null());
+    let mut cmd = Command::new(&current_exe);
+    cmd.arg("--daemon")
+       .arg("--daemon-config")
+       .arg(data_dir)
+       .arg("--daemon-data")
+       .arg(data_dir)
+       .stdout(Stdio::null())
+       .stderr(Stdio::piped());
 
     #[cfg(target_os = "windows")]
     {
@@ -514,9 +518,23 @@ fn spawn_daemon() -> Result<std::process::Child, String> {
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
-    cmd.spawn().map_err(|e| {
+    let mut child = cmd.spawn().map_err(|e| {
         let msg = format!("启动 daemon 失败: {}", e);
         crate::log_error!(&msg);
         msg
-    })
+    })?;
+
+    // 将 daemon 子进程的 stderr 转发到 GUI 日志
+    if let Some(stderr) = child.stderr.take() {
+        let reader = std::io::BufReader::new(stderr);
+        std::thread::spawn(move || {
+            for line in reader.lines() {
+                if let Ok(l) = line {
+                    crate::log_info!(format!("[Daemon-stderr] {}", l));
+                }
+            }
+        });
+    }
+
+    Ok(child)
 }

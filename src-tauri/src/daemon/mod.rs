@@ -29,19 +29,16 @@ pub struct Daemon {
     easytier: Arc<EasyTierManager>,
     rpc_port: u16,
     shutdown_tx: broadcast::Sender<()>,
+    data_dir: PathBuf,
 }
 
 impl Daemon {
-    pub fn new() -> Result<Self, String> {
-        let config_dir = Self::get_config_dir()?;
+    pub fn new(config_dir: PathBuf, data_dir: PathBuf) -> Result<Self, String> {
         let easytier_dir = config_dir.join("easytier");
         std::fs::create_dir_all(&easytier_dir)
             .map_err(|e| format!("创建 EasyTier 配置目录失败: {}", e))?;
 
-        let app_data_dir = directories::BaseDirs::new()
-            .map(|d| d.data_dir().join("com.hometier.app"))
-            .unwrap_or_else(|| PathBuf::from("."));
-        let easytier = Arc::new(EasyTierManager::new(easytier_dir, app_data_dir));
+        let easytier = Arc::new(EasyTierManager::new(easytier_dir, data_dir.clone()));
         let (shutdown_tx, _) = broadcast::channel(1);
 
         let status = ipc::DaemonStatus {
@@ -57,13 +54,8 @@ impl Daemon {
             easytier,
             rpc_port: ipc::DEFAULT_RPC_PORT,
             shutdown_tx,
+            data_dir,
         })
-    }
-
-    fn get_config_dir() -> Result<std::path::PathBuf, String> {
-        directories::BaseDirs::new()
-            .map(|d| d.config_dir().join("homeTier"))
-            .ok_or_else(|| "无法获取配置目录".into())
     }
 
     /// daemon 主循环（参考 EasyTier daemon 模式：block_on, 监听 ctrl_c）
@@ -81,13 +73,15 @@ impl Daemon {
         crate::log_info!(format!("[Daemon] TCP RPC 服务器已启动: {}", addr));
 
         // 2. 写入 signal 文件（GUI 由此确认 daemon 已就绪）
-        let signal_path = ipc::get_signal_path();
+        let signal_path = self.data_dir.join("daemon_ready.signal");
         let _ = std::fs::write(&signal_path, format!("{}", std::process::id()));
         crate::log_info!(format!("[Daemon] signal 文件已写入: {}", signal_path.display()));
 
         // 3. 离线写状态文件（失败不致命）
-        ipc::clear_daemon_state();
-        if let Err(e) = ipc::save_daemon_state(std::process::id(), self.rpc_port) {
+        let state_path = self.data_dir.join("daemon_state.json");
+        let _ = std::fs::remove_file(&state_path);
+        let state_json = serde_json::json!({ "pid": std::process::id(), "rpc_port": self.rpc_port });
+        if let Err(e) = std::fs::write(&state_path, serde_json::to_string_pretty(&state_json).unwrap_or_default()) {
             crate::log_info!(format!("[Daemon] daemon_state.json 写入失败（非致命）: {}", e));
         }
 
@@ -148,7 +142,8 @@ impl Daemon {
                 _ = shutdown_rx.recv() => {
                     crate::log_info!("[Daemon] 收到关闭信号，停止所有实例");
                     self.stop_all().await;
-                    ipc::clear_daemon_state();
+                    let _ = std::fs::remove_file(self.data_dir.join("daemon_state.json"));
+                    let _ = std::fs::remove_file(self.data_dir.join("daemon_ready.signal"));
                     break;
                 }
             }
@@ -457,8 +452,8 @@ impl Daemon {
     }
 }
 
-/// daemon 入口点（从 main.rs 调用）
-pub async fn run_daemon_async() -> Result<(), String> {
-    let daemon = Daemon::new()?;
+/// daemon 入口点（路径由 GUI 通过 CLI 传入）
+pub async fn run_daemon_async(config_dir: PathBuf, data_dir: PathBuf) -> Result<(), String> {
+    let daemon = Daemon::new(config_dir, data_dir)?;
     daemon.run().await
 }
