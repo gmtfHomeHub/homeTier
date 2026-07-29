@@ -80,15 +80,17 @@ fn main() -> std::process::ExitCode {
         home_tier_lib::run_daemon(config_dir, data_dir)
     } else {
         #[cfg(debug_assertions)]
-        home_tier_lib::run_with_args(false);
+        return home_tier_lib::run_with_args(false);
         #[cfg(not(debug_assertions))]
-        if !elevated && !is_elevated() {
-            if elevate_self() {
-                std::process::exit(0);
+        {
+            if !elevated && !is_elevated() {
+                if elevate_self() {
+                    std::process::exit(0);
+                }
+                home_tier_lib::run_with_args(false)
+            } else {
+                home_tier_lib::run_with_args(elevated)
             }
-            home_tier_lib::run_with_args(false)
-        } else {
-            home_tier_lib::run_with_args(elevated)
         }
     }
 }
