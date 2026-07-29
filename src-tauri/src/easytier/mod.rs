@@ -527,7 +527,15 @@ impl EasyTierManager {
                         let mut peer_infos = Vec::new();
 
                         for route in resp.routes {
-                            let virtual_ip = if route.ipv4_addr.ip.is_empty() { None } else { Some(route.ipv4_addr.ip.clone()) };
+                            let virtual_ip = if route.ipv4_addr.address.addr == 0 { None } else {
+                                let addr = route.ipv4_addr.address.addr;
+                                Some(format!("{}.{}.{}.{}",
+                                    (addr >> 24) & 0xFF,
+                                    (addr >> 16) & 0xFF,
+                                    (addr >> 8) & 0xFF,
+                                    addr & 0xFF
+                                ))
+                            };
                             let hostname = if route.hostname.is_empty() { None } else { Some(route.hostname.clone()) };
                             let version = if route.version.is_empty() { None } else { Some(route.version.clone()) };
                             let tunnel_proto = None;
