@@ -116,7 +116,7 @@ pub fn run() -> std::process::ExitCode {
                                 // 检查子进程是否已退出
                                 if let Some(guard) = daemon_guard {
                                     if let Ok(ref mut child_opt) = guard.0.lock() {
-                                        if let Some(ref mut child) = *child_opt {
+                                        if let Some(ref mut child) = child_opt.as_mut() {
                                             match child.try_wait() {
                                                 Ok(Some(status)) => {
                                                     crate::log_error!(format!("[GUI] daemon 子进程意外退出: {:?}", status));
