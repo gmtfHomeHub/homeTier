@@ -642,8 +642,8 @@ impl EasyTierManager {
                         Some(current) => current.min(conn_latency),
                         None => conn_latency,
                     });
-                    info.loss_rate = Some(stats.loss_rate as f64);
                 }
+                info.loss_rate = Some(conn.loss_rate as f64);
                 if conn.tunnel.is_some() {
                     info.tunnel_proto = conn.tunnel.as_ref().map(|t| t.tunnel_type.clone());
                 }
