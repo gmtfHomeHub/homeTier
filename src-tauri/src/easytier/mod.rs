@@ -523,12 +523,12 @@ impl EasyTierManager {
                 let result = peer_service.list_route(ctrl, list_req).await;
                 match result {
                     Ok(resp) => {
-                        crate::log_debug!(format!("[D20260728-V3] query_peer_list response: route_count={}", resp.routes.len()));
+                        crate::log_debug!(format!("query_peer_list response: route_count={}", resp.routes.len()));
                         let mut peer_infos = Vec::new();
 
                         for route in resp.routes {
-                            let virtual_ip = if route.ipv4_addr.address.addr == 0 { None } else {
-                                let addr = route.ipv4_addr.address.addr;
+                            let virtual_ip = if route.ipv4_addr.unwrap().address.unwrap().addr == 0 { None } else {
+                                let addr = route.ipv4_addr.unwrap().address.unwrap().addr;
                                 Some(format!("{}.{}.{}.{}",
                                     (addr >> 24) & 0xFF,
                                     (addr >> 16) & 0xFF,

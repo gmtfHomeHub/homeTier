@@ -13,7 +13,7 @@ import type { NetworkConfig } from "../../types/network";
 import { DEFAULT_NETWORK_CONFIG } from "../../types/network";
 
 export function SpaceList() {
-  const { spaces, connectSpace, disconnectSpace, deleteSpace, loadSpacesOnce } = useSpaceStore();
+  const { spaces, connectSpace, disconnectSpace, deleteSpace, loadSpaces, loadSpacesOnce } = useSpaceStore();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; ownerId?: string } | null>(null);
