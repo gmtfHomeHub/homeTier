@@ -553,15 +553,15 @@ impl EasyTierManager {
 
                             peer_infos.push(crate::easytier::launcher::PeerInfo {
                                 peer_id: peer.peer_id,
-                                virtual_ip: None,
-                                hostname: None,
+                                virtual_ip: if peer.ipv4_addr.is_empty() { None } else { Some(peer.ipv4_addr.clone()) },
+                                hostname: if peer.hostname.is_empty() { None } else { Some(peer.hostname.clone()) },
                                 latency_ms: avg_latency_ms,
                                 loss_rate: avg_loss_rate.map(|f| f as f64),
                                 rx_bytes: Some(total_rx),
                                 tx_bytes: Some(total_tx),
                                 connected: any_connected,
                                 is_local: false,
-                                version: None,
+                                version: if peer.version.is_empty() { None } else { Some(peer.version.clone()) },
                                 tunnel_proto,
                                 nat_type: None,
                             });
