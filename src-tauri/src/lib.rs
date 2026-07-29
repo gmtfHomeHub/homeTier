@@ -39,7 +39,7 @@ static ELEVATED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::
 
 /// 管理 daemon 子进程生命周期，在 app 退出时自动清理
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub struct DaemonGuard(pub std::sync::Mutex<Option<std::process::Child>>);
+pub struct DaemonGuard(pub Arc<std::sync::Mutex<Option<std::process::Child>>>);
 
 /// 检查当前进程是否以提权模式运行（Windows UAC / macOS）
 #[cfg(any(target_os = "windows", target_os = "macos"))]
@@ -100,10 +100,10 @@ pub fn run() -> std::process::ExitCode {
                 match spawn_daemon() {
                     Ok(mut child) => {
                         crate::log_info!("[GUI] daemon 子进程已启动");
-                        app.manage(crate::DaemonGuard(std::sync::Mutex::new(Some(child))));
+                        let child_arc = Arc::new(std::sync::Mutex::new(Some(child)));
+                        app.manage(crate::DaemonGuard(child_arc.clone()));
                         // 后台轮询 daemon 就绪，同时监控子进程存活
                         let app_handle = app.handle().clone();
-                        let daemon_guard = app.try_state::<crate::DaemonGuard>();
                         std::thread::spawn(move || {
                             let client = daemon::client::IpcClient::default_port();
                             for i in 0..60 {
@@ -114,19 +114,17 @@ pub fn run() -> std::process::ExitCode {
                                     return;
                                 }
                                 // 检查子进程是否已退出
-                                if let Some(guard) = daemon_guard {
-                                    if let Ok(ref mut child_opt) = guard.0.lock() {
-                                        if let Some(ref mut child) = child_opt.as_mut() {
-                                            match child.try_wait() {
-                                                Ok(Some(status)) => {
-                                                    crate::log_error!(format!("[GUI] daemon 子进程意外退出: {:?}", status));
-                                                    let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": false, "reason": format!("daemon 进程退出: {}", status) }));
-                                                    return;
-                                                }
-                                                Ok(None) => { /* still running */ }
-                                                Err(e) => {
-                                                    crate::log_error!(format!("[GUI] try_wait 失败: {}", e));
-                                                }
+                                if let Ok(ref mut child_opt) = child_arc.lock() {
+                                    if let Some(ref mut child) = child_opt.as_mut() {
+                                        match child.try_wait() {
+                                            Ok(Some(status)) => {
+                                                crate::log_error!(format!("[GUI] daemon 子进程意外退出: {:?}", status));
+                                                let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": false, "reason": format!("daemon 进程退出: {}", status) }));
+                                                return;
+                                            }
+                                            Ok(None) => {}
+                                            Err(e) => {
+                                                crate::log_error!(format!("[GUI] try_wait 失败: {}", e));
                                             }
                                         }
                                     }
