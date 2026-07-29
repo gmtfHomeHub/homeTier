@@ -380,7 +380,7 @@ impl Daemon {
                 easytier.restart_all_instances().await;
                 ipc::IpcResponse::Ok { data: None }
             }
-            ipc::IpcRequest::GetDaemonLogs { level } => {
+            ipc::IpcRequest::GetLogs { level, since_seq } => {
                 let level_filter = level.and_then(|l| match l.to_lowercase().as_str() {
                     "debug" => Some(crate::log::LogLevel::Debug),
                     "info" => Some(crate::log::LogLevel::Info),
@@ -389,10 +389,20 @@ impl Daemon {
                     _ => None,
                 });
                 let logs = crate::log::get_all(level_filter);
-                match serde_json::to_value(&logs) {
+                let filtered: Vec<crate::log::LogEntry> = match since_seq {
+                    Some(s) => logs.into_iter().filter(|e| e.seq > s).collect(),
+                    None => logs,
+                };
+                match serde_json::to_value(&filtered) {
                     Ok(v) => ipc::IpcResponse::Ok { data: Some(v) },
                     Err(e) => ipc::IpcResponse::Error { message: format!("序列化日志失败: {}", e) },
                 }
+            }
+            ipc::IpcRequest::WriteLog { entries } => {
+                for e in entries {
+                    crate::log::log(e.level, &e.module, e.message, e.space_id);
+                }
+                ipc::IpcResponse::Ok { data: None }
             }
             ipc::IpcRequest::ClearDaemonLogs => {
                 crate::log::clear();

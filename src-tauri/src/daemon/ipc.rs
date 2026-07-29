@@ -36,8 +36,12 @@ pub enum IpcRequest {
         source_path: Option<String>,
     },
     SwitchBinary,
-    GetDaemonLogs {
+    GetLogs {
         level: Option<String>,
+        since_seq: Option<u64>,
+    },
+    WriteLog {
+        entries: Vec<crate::log::LogEntry>,
     },
     ClearDaemonLogs,
     CheckBinary,

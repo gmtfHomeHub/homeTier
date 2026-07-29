@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { getLogs, getSpaceLogs, clearLogs } from "../../utils/api";
 import type { LogEntry } from "../../types";
 import { RefreshCw, Trash2, Filter } from "lucide-react";
@@ -17,22 +17,32 @@ const LEVEL_COLORS: Record<string, ButtonProps['color']> = {
 
 export function LogViewer({ spaceId }: LogViewerProps) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const lastSeqRef = useRef(0);
   const [levelFilter, setLevelFilter] = useState<string>("all");
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   const fetchLogs = useCallback(async () => {
     try {
       const level = levelFilter === "all" ? undefined : levelFilter;
-      const data = spaceId
-        ? await getSpaceLogs(spaceId, level)
-        : await getLogs(level);
-      setLogs(data);
+      if (spaceId) {
+        const data = await getSpaceLogs(spaceId, level);
+        setLogs([...data].reverse());
+      } else {
+        const data = await getLogs(level, lastSeqRef.current || undefined);
+        if (data.length > 0) {
+          const maxSeq = Math.max(...data.map((l) => l.seq));
+          lastSeqRef.current = Math.max(lastSeqRef.current, maxSeq);
+          setLogs((prev) => [...data.reverse(), ...prev]);
+        }
+      }
     } catch (e) {
       console.error("Failed to fetch logs:", e);
     }
   }, [spaceId, levelFilter]);
 
   useEffect(() => {
+    setLogs([]);
+    lastSeqRef.current = 0;
     fetchLogs();
     if (!autoRefresh) return;
     const timer = setInterval(fetchLogs, 2000);
@@ -42,6 +52,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
   const handleClear = async () => {
     await clearLogs();
     setLogs([]);
+    lastSeqRef.current = 0;
   };
 
   const filtered = levelFilter === "all"

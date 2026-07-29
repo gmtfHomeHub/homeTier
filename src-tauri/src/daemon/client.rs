@@ -204,7 +204,7 @@ impl IpcClient {
     }
 
     /// 同步发送 IPC 请求（通用，用于非 async 上下文）
-    fn send_sync(&self, request: &IpcRequest) -> Result<IpcResponse, String> {
+    pub fn send_sync(&self, request: &IpcRequest) -> Result<IpcResponse, String> {
         let addr = format!("127.0.0.1:{}", self.port);
         use std::io::{Read, Write};
         let mut stream = std::net::TcpStream::connect_timeout(
@@ -242,11 +242,17 @@ impl IpcClient {
             .map_err(|e| format!("反序列化响应失败: {}", e))
     }
 
-    /// 获取 daemon 日志
-    pub async fn get_daemon_logs(&self, level: Option<&str>) -> Result<IpcResponse, String> {
-        self.send(&IpcRequest::GetDaemonLogs {
+    /// 获取 daemon 日志（增量）
+    pub async fn get_logs(&self, level: Option<&str>, since_seq: Option<u64>) -> Result<IpcResponse, String> {
+        self.send(&IpcRequest::GetLogs {
             level: level.map(|s| s.to_string()),
+            since_seq,
         }).await
+    }
+
+    /// 转发日志条目到 daemon（GUI 进程使用）
+    pub async fn write_log(&self, entries: Vec<crate::log::LogEntry>) -> Result<IpcResponse, String> {
+        self.send(&IpcRequest::WriteLog { entries }).await
     }
 
     /// 清空 daemon 日志

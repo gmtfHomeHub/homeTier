@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(target_os = "windows")]
 use windows::Win32::System::Diagnostics::Debug::OutputDebugStringA;
@@ -18,6 +19,7 @@ pub enum LogLevel {
 /// 单条日志条目
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
+    pub seq: u64,
     pub timestamp: String,
     pub level: LogLevel,
     pub module: String,
@@ -26,6 +28,15 @@ pub struct LogEntry {
 }
 
 static LOG_STORE: OnceLock<Mutex<Vec<LogEntry>>> = OnceLock::new();
+static NEXT_SEQ: AtomicU64 = AtomicU64::new(1);
+
+/// 转发通道：GUI 进程的 log_info! 将日志发送到 daemon
+static FORWARD_TX: OnceLock<std::sync::mpsc::Sender<LogEntry>> = OnceLock::new();
+
+/// 初始化日志转发（GUI 进程使用），所有 log_info! 将同步转发到 daemon
+pub fn init_forward(tx: std::sync::mpsc::Sender<LogEntry>) {
+    let _ = FORWARD_TX.set(tx);
+}
 
 fn store() -> &'static Mutex<Vec<LogEntry>> {
     LOG_STORE.get_or_init(|| Mutex::new(Vec::new()))
@@ -93,7 +104,9 @@ pub fn log_system(tag: &str, message: &str) {
 
 /// 记录一条日志
 pub fn log(level: LogLevel, module: &str, message: String, space_id: Option<String>) {
+    let seq = NEXT_SEQ.fetch_add(1, Ordering::Relaxed);
     let entry = LogEntry {
+        seq,
         timestamp: chrono::Local::now().format("%H:%M:%S%.3f").to_string(),
         level,
         module: module.to_string(),
@@ -101,7 +114,11 @@ pub fn log(level: LogLevel, module: &str, message: String, space_id: Option<Stri
         space_id,
     };
     if let Ok(mut logs) = store().lock() {
-        logs.push(entry);
+        logs.push(entry.clone());
+    }
+    // 转发到 daemon（仅 GUI 进程）
+    if let Some(tx) = FORWARD_TX.get() {
+        let _ = tx.send(entry);
     }
 }
 

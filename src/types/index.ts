@@ -157,6 +157,7 @@ export interface LogConfig {
 }
 
 export interface LogEntry {
+  seq: number;
   timestamp: string;
   level: "debug" | "info" | "warning" | "error";
   module: string;

@@ -124,7 +124,7 @@ pub async fn is_daemon_service_running() -> Result<bool, String> {
 pub async fn get_daemon_logs(level: Option<String>) -> Result<Vec<crate::log::LogEntry>, String> {
     crate::log_debug!("获取守护进程日志");
     let client = IpcClient::get_global();
-    match client.get_daemon_logs(level.as_deref()).await {
+    match client.get_logs(level.as_deref(), None).await {
         Ok(IpcResponse::Ok { data }) => {
             match data {
                 Some(v) => serde_json::from_value(v).map_err(|e| format!("反序列化日志失败: {}", e)),

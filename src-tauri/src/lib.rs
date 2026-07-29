@@ -169,6 +169,32 @@ pub fn run() -> std::process::ExitCode {
                 let ipc_client = Arc::new(daemon::client::IpcClient::default_port());
                 app.manage(ipc_client);
                 crate::log_info!("[GUI] IPC 客户端已创建");
+
+                // 初始化日志转发：GUI 日志 → daemon（单一存储）
+                let cached_logs = crate::log::get_all(None);
+                std::thread::spawn(move || {
+                    let (tx, rx) = std::sync::mpsc::channel::<crate::log::LogEntry>();
+                    crate::log::init_forward(tx);
+                    // 等待 daemon 就绪
+                    let client = crate::daemon::client::IpcClient::default_port();
+                    let mut ready = false;
+                    for _ in 0..60 {
+                        if client.ping_sync() {
+                            ready = true;
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(200));
+                    }
+                    if !ready { return; }
+                    // Flush 启动前缓存的日志
+                    if !cached_logs.is_empty() {
+                        let _ = client.send_sync(&crate::daemon::ipc::IpcRequest::WriteLog { entries: cached_logs });
+                    }
+                    // 持续转发后续 GUI 日志
+                    while let Ok(entry) = rx.recv() {
+                        let _ = client.send_sync(&crate::daemon::ipc::IpcRequest::WriteLog { entries: vec![entry] });
+                    }
+                });
             }
 
             // 初始化空间管理器

@@ -199,8 +199,8 @@ export function onTransferProgress(callback: (progress: TransferProgress) => voi
 
 // === Log Commands ===
 
-export async function getLogs(level?: string): Promise<LogEntry[]> {
-  return invoke("get_logs", { level: level ?? null });
+export async function getLogs(level?: string, sinceSeq?: number): Promise<LogEntry[]> {
+  return invoke("get_logs", { level: level ?? null, sinceSeq: sinceSeq ?? null });
 }
 
 export async function getSpaceLogs(spaceId: string, level?: string): Promise<LogEntry[]> {
