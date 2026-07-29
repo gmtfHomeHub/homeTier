@@ -70,7 +70,8 @@ impl Daemon {
     pub async fn run(&self) -> Result<(), String> {
         crate::log_info!("[Daemon] 守护进程启动");
 
-        // 保存状态到文件（供 GUI 检测）
+        // 清除旧状态文件，然后保存新状态
+        ipc::clear_daemon_state();
         ipc::save_daemon_state(std::process::id(), self.rpc_port)?;
 
         // 清理已有 daemon（处理 osascript root 授权后端口冲突）

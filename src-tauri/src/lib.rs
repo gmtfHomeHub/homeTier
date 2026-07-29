@@ -98,11 +98,12 @@ pub fn run() -> std::process::ExitCode {
             {
                 crate::log_info!("[GUI] 启动 daemon 子进程...");
                 match spawn_daemon() {
-                    Ok(child) => {
+                    Ok(mut child) => {
                         crate::log_info!("[GUI] daemon 子进程已启动");
                         app.manage(crate::DaemonGuard(std::sync::Mutex::new(Some(child))));
-                        // 后台轮询 daemon 就绪，标记状态 + 发射事件（双通道）
+                        // 后台轮询 daemon 就绪，同时监控子进程存活
                         let app_handle = app.handle().clone();
+                        let daemon_guard = app.try_state::<crate::DaemonGuard>();
                         std::thread::spawn(move || {
                             let client = daemon::client::IpcClient::default_port();
                             for i in 0..60 {
@@ -111,6 +112,24 @@ pub fn run() -> std::process::ExitCode {
                                     let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": true }));
                                     crate::log_info!("[GUI] daemon 已就绪");
                                     return;
+                                }
+                                // 检查子进程是否已退出
+                                if let Some(guard) = daemon_guard {
+                                    if let Ok(ref mut child_opt) = guard.0.lock() {
+                                        if let Some(ref mut child) = *child_opt {
+                                            match child.try_wait() {
+                                                Ok(Some(status)) => {
+                                                    crate::log_error!(format!("[GUI] daemon 子进程意外退出: {:?}", status));
+                                                    let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": false, "reason": format!("daemon 进程退出: {}", status) }));
+                                                    return;
+                                                }
+                                                Ok(None) => { /* still running */ }
+                                                Err(e) => {
+                                                    crate::log_error!(format!("[GUI] try_wait 失败: {}", e));
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 std::thread::sleep(std::time::Duration::from_millis(200));
                                 if i % 10 == 9 {
@@ -471,7 +490,7 @@ fn spawn_daemon() -> Result<std::process::Child, String> {
 
     let mut cmd = Command::new(current_exe);
     cmd.arg("--daemon");
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.stdout(Stdio::null()).stderr(Stdio::null());
 
     #[cfg(target_os = "windows")]
     {

@@ -22,10 +22,9 @@ pub fn shutdown_exit_cleanup() {
     crate::log_info!("[退出] 清理完成");
 }
 
-/// 启动时 pre-check + 实用清理（杀死旧 daemon 进程 + 清理临时文件）
+/// 启动时 pre-check + 实用清理（清理临时文件 + 孤立配置）
+/// 注意：不再清理 daemon 进程 — daemon 由自身 run() 中的端口冲突检查处理
 pub fn startup_precheck(toml_dir: &Path) {
-    cleanup_stale_daemon();
-
     #[cfg(target_os = "macos")]
     cleanup_easytier_root();
 
@@ -34,29 +33,7 @@ pub fn startup_precheck(toml_dir: &Path) {
     cleanup_orphan_easytier();
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn cleanup_stale_daemon() {
-    use crate::daemon;
 
-    let old_client = daemon::client::IpcClient::default_port();
-    if old_client.ping_sync() {
-        crate::log_info!("[Cleanup] 清理旧 daemon 进程...");
-        old_client.shutdown_sync();
-        std::thread::sleep(std::time::Duration::from_millis(300));
-    }
-
-    #[cfg(unix)]
-    if let Some((pid, _)) = daemon::ipc::load_daemon_state() {
-        if daemon::ipc::is_process_alive(pid) {
-            crate::log_info!(format!("[Cleanup] 强制终止旧 daemon 进程 pid={}", pid));
-            unsafe { libc::kill(pid as i32, libc::SIGTERM); }
-            std::thread::sleep(std::time::Duration::from_millis(300));
-        }
-    }
-
-    daemon::ipc::clear_daemon_state();
-    crate::log_info!("[Cleanup] daemon 状态文件已清除");
-}
 
 #[cfg(target_os = "macos")]
 fn cleanup_easytier_root() {
