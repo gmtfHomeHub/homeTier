@@ -38,6 +38,31 @@ pub fn clear() {
     }
 }
 
+/// 初始化文件日志系统（将日志同时输出到磁盘文件）
+pub fn init_file_logging(log_dir: &std::path::Path) {
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+    use tracing_subscriber::fmt::layer;
+    use std::fs::File;
+
+    let _ = std::fs::create_dir_all(log_dir);
+    let log_file = log_dir.join("hometier.log");
+
+    let file = match File::create(&log_file) {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+
+    let file_layer = layer()
+        .with_writer(std::sync::Mutex::new(file))
+        .with_ansi(false)
+        .with_target(true);
+
+    let _ = tracing_subscriber::registry()
+        .with(file_layer)
+        .try_init();
+}
+
 /// 将消息同时写入应用内存日志和 OS 系统日志。
 /// 适用于授权失败等重要错误。
 pub fn log_system(tag: &str, message: &str) {

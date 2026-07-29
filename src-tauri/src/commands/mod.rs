@@ -5,7 +5,6 @@ pub mod chat;
 pub mod daemon;
 pub mod easytier;
 pub mod file;
-pub mod hotkey;
 pub mod log;
 pub mod network;
 pub mod network_acls;

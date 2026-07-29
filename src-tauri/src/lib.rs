@@ -5,7 +5,6 @@ pub mod daemon;
 pub mod db;
 pub mod easytier;
 pub mod file;
-pub mod hotkey;
 pub mod log;
 pub mod platform;
 pub mod proxy;
@@ -56,13 +55,17 @@ pub fn run() -> std::process::ExitCode {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_os::init());
 
     let builder = proxy::hometier_protocol::register_protocol(builder);
 
     let builder = builder.setup(|app| {
             log_info!("homeTier 应用启动");
+
+            // 初始化文件日志
+            if let Ok(log_dir) = app.path().app_log_dir() {
+                crate::log::init_file_logging(&log_dir);
+            }
 
             // 初始化数据库
             let db_path = app
@@ -85,7 +88,7 @@ pub fn run() -> std::process::ExitCode {
                 .unwrap_or_else(|_| std::path::PathBuf::from("."));
             let easytier_config_dir = app_data.join("easytier");
             crate::log_info!("[GUI] 应用启动，清理临时文件...");
-            crate::cleanup::startup_precheck(&easytier_config_dir);
+            crate::cleanup::cleanup_all();
             crate::log_info!("[GUI] 清理完成");
             let _ = std::fs::create_dir_all(&easytier_config_dir);
             let instance_manager = Arc::new(easytier::EasyTierManager::new(easytier_config_dir, app_data.clone()));
@@ -185,11 +188,6 @@ pub fn run() -> std::process::ExitCode {
             let voice_manager = voice::engine::VoiceManager::new();
             app.manage(voice_manager);
 
-            // 初始化快捷键管理器
-            let hotkey_manager = hotkey::platform::HotkeyManager::new();
-            hotkey_manager.init(app.handle());
-            app.manage(hotkey_manager);
-
             // 初始化文件传输管理器
             let file_manager = Arc::new(file::transfer::FileTransferManager::new());
             app.manage(file_manager);
@@ -200,6 +198,25 @@ pub fn run() -> std::process::ExitCode {
 
             // 初始化 TUN 能力检查
             platform::init_tun_cap_check();
+
+            // 托盘图标
+            #[cfg(not(target_os = "android"))]
+            let _tray = tauri::tray::TrayIconBuilder::with_id("main")
+                .show_menu_on_left_click(false)
+                .on_tray_icon_event(|tray, event| {
+                    if let tauri::tray::TrayIconEvent::Click {
+                        button: tauri::tray::MouseButton::Left,
+                        button_state: tauri::tray::MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        toggle_window_visibility(app);
+                    }
+                })
+                .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))
+                    .expect("托盘图标加载失败"))
+                .build(app)?;
 
             // 启动 HTTP 代理服务器（用于绕过 iframe 安全限制）
             let active_origin: ActiveOrigin = Arc::new(RwLock::new(None));
@@ -299,10 +316,6 @@ pub fn run() -> std::process::ExitCode {
             commands::screen::stop_screen_share,
             commands::screen::is_screen_sharing,
             commands::screen::get_screen_share_viewers,
-            // 快捷键
-            commands::hotkey::register_hotkey,
-            commands::hotkey::unregister_hotkey,
-            commands::hotkey::list_hotkeys,
             // 工具
             commands::util::get_app_version,
             commands::util::get_system_config,
@@ -375,6 +388,11 @@ pub fn run() -> std::process::ExitCode {
         .on_window_event(|_win, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let _ = _win.hide();
+                #[cfg(target_os = "macos")]
+                {
+                    use tauri::ActivationPolicy;
+                    let _ = _win.app_handle().set_activation_policy(ActivationPolicy::Accessory);
+                }
                 api.prevent_close();
             }
         });
@@ -401,7 +419,7 @@ pub fn run() -> std::process::ExitCode {
             tauri::RunEvent::Exit => {
                 crate::log_info!("[GUI] 应用退出，开始清理...");
 
-                // 1. 断开所有运行中的空间（停止服务、通知 daemon）
+                // 1. 断开所有运行中的空间
                 if let Some(space_mgr) = app_handle.try_state::<Arc<SpaceManager>>() {
                     let space_mgr_clone = space_mgr.inner().clone();
                     std::thread::spawn(move || {
@@ -425,22 +443,6 @@ pub fn run() -> std::process::ExitCode {
                         rt.block_on(async {
                             crate::log_info!("[退出] 发送 IPC Shutdown 到 daemon");
                             let _ = client.shutdown().await;
-                            // 等待 daemon 完全关闭（最长 2 秒）
-                            let wait_future = async {
-                                let addr = format!("127.0.0.1:{}", crate::daemon::ipc::DEFAULT_RPC_PORT);
-                                loop {
-                                    match tokio::net::TcpStream::connect(&addr).await {
-                                        Ok(_) => {
-                                            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-                                        }
-                                        Err(_) => break,
-                                    }
-                                }
-                            };
-                            let _ = tokio::time::timeout(
-                                std::time::Duration::from_secs(2),
-                                wait_future,
-                            ).await;
                         });
                     }
                 }
@@ -456,10 +458,10 @@ pub fn run() -> std::process::ExitCode {
                     }
                 }
 
-                // 4. 最终清理（移除 signal/state 文件 + macOS root daemon + temp files）
-                let app_data = app_handle.path().app_data_dir()
-                    .unwrap_or_else(|_| std::path::PathBuf::from("."));
-                cleanup::shutdown_exit_cleanup(&app_data);
+                // 4. 最终清理
+                cleanup::cleanup_all();
+                crate::log_info!("[GUI] 应用退出清理完成");
+            }
                 crate::log_info!("[GUI] 应用退出清理完成");
             }
             _ => {}
