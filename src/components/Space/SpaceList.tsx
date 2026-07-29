@@ -11,9 +11,10 @@ import { Button, Flex } from "@radix-ui/themes";
 import { getSystemConfig, updateSpaceConfig, getRelayPrefix } from "../../utils/api";
 import type { NetworkConfig } from "../../types/network";
 import { DEFAULT_NETWORK_CONFIG } from "../../types/network";
+import { Loading } from "../Common/Loading";
 
 export function SpaceList() {
-  const { spaces, connectSpace, disconnectSpace, deleteSpace, loadSpaces } = useSpaceStore();
+  const { spaces, loading, error, isReady, connectSpace, disconnectSpace, deleteSpace, loadSpaces } = useSpaceStore();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; ownerId?: string } | null>(null);
@@ -112,7 +113,25 @@ export function SpaceList() {
     <div className="flex-1 p-6 overflow-y-auto">
       <h1 className="mb-6 text-2xl font-bold">{t('space.list')}</h1>
 
-      {spaces.length === 0 && (
+      {loading && !isReady && (
+        <div className="flex items-center justify-center py-20">
+          <Loading />
+        </div>
+      )}
+      {!loading && error && !isReady && (
+        <div className="text-center py-20 text-[var(--color-text-secondary)]">
+          <div className="mb-4 text-5xl">⚠️</div>
+          <p className="mb-2 text-lg">服务未就绪</p>
+          <p className="mb-4 text-sm">{error}</p>
+          <button
+            onClick={() => loadSpaces()}
+            className="px-4 py-2 text-sm rounded-lg bg-[var(--color-primary)] text-white hover:opacity-90"
+          >
+            重试
+          </button>
+        </div>
+      )}
+      {!loading && !error && spaces.length === 0 && (
         <div className="text-center py-20 text-[var(--color-text-secondary)]">
           <div className="mb-4 text-5xl">🏠</div>
           <p className="mb-2 text-lg">{t('space.notJoined')}</p>

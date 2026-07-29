@@ -8,10 +8,11 @@ import { JoinSpaceDialog } from "../Space/JoinSpaceDialog";
 import { Button, Badge, Flex } from "@radix-ui/themes";
 import { useLayoutStore } from "../../stores/layoutStore";
 import { useSwipe } from "../../hooks/useSwipe";
+import { Loading } from "../Common/Loading";
 
 export function Sidebar() {
   const { t } = useTranslation();
-  const { spaces, setCurrentSpace } = useSpaceStore();
+  const { spaces, loading, error, isReady, setCurrentSpace } = useSpaceStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [showCreate, setShowCreate] = useState(false);
@@ -83,7 +84,15 @@ export function Sidebar() {
             </Flex>
           </div>
 
-          {spaces.length === 0 && (
+          {loading && !isReady && (
+            <div className="py-8"><Loading /></div>
+          )}
+          {!loading && error && !isReady && (
+            <div className="text-center py-8 text-[var(--color-text-secondary)] text-sm">
+              ⚠️ {t("settings.loadError") ?? "服务未就绪"}
+            </div>
+          )}
+          {!loading && !error && spaces.length === 0 && (
             <div className="text-center py-8 text-[var(--color-text-secondary)] text-sm">
               {t("space.noSpaces")}
               <br />

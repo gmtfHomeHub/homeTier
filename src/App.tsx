@@ -9,6 +9,7 @@ import { FileList } from "./components/FileShare/FileList";
 import { SettingsPage } from "./components/Settings/SettingsPage";
 import { SpaceLogView } from "./components/Log/SpaceLogView";
 import { NotFoundPage } from "./components/Common/NotFoundPage";
+import { AppLoadingScreen, AppErrorScreen } from "./components/Common/AppLoadingScreen";
 import { useSpaceStore } from "./stores/spaceStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useEffect, useState } from "react";
@@ -16,6 +17,9 @@ import { Theme } from "@radix-ui/themes";
 
 export default function App() {
   const loadSpaces = useSpaceStore((s) => s.loadSpaces);
+  const loading = useSpaceStore((s) => s.loading);
+  const error = useSpaceStore((s) => s.error);
+  const isReady = useSpaceStore((s) => s.isReady);
   const theme = useSettingsStore((s) => s.theme);
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -38,6 +42,24 @@ export default function App() {
   useEffect(() => {
     loadSpaces();
   }, [loadSpaces]);
+
+  // 首次加载 loading screen
+  if (!isReady && loading) {
+    return (
+      <Theme accentColor="blue" grayColor="slate" radius="medium" appearance={appearance} hasBackground>
+        <AppLoadingScreen />
+      </Theme>
+    );
+  }
+
+  // 首次加载失败 screen
+  if (error && !isReady) {
+    return (
+      <Theme accentColor="blue" grayColor="slate" radius="medium" appearance={appearance} hasBackground>
+        <AppErrorScreen message={error} onRetry={loadSpaces} />
+      </Theme>
+    );
+  }
 
   return (
     <Theme accentColor="blue" grayColor="slate" radius="medium" appearance={appearance} hasBackground>
