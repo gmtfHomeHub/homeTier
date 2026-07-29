@@ -88,7 +88,7 @@ pub fn run() -> std::process::ExitCode {
             crate::cleanup::startup_precheck(&easytier_config_dir);
             crate::log_info!("[GUI] 清理完成");
             let _ = std::fs::create_dir_all(&easytier_config_dir);
-            let instance_manager = Arc::new(easytier::EasyTierManager::new(easytier_config_dir, app_data));
+            let instance_manager = Arc::new(easytier::EasyTierManager::new(easytier_config_dir, app_data.clone()));
             app.manage(instance_manager.clone());
             crate::log_info!("[GUI] EasyTier 管理器已初始化");
 
