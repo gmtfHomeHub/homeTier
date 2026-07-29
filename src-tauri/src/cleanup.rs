@@ -1,6 +1,6 @@
 use std::path::Path;
 
-pub fn cleanup_all(_app_data_dir: &Path) {
+pub fn cleanup_all(_app_data_dir: &Path, easytier_config_dir: &Path) {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     cleanup_stale_daemon();
 
@@ -8,6 +8,8 @@ pub fn cleanup_all(_app_data_dir: &Path) {
     cleanup_easytier_root();
 
     cleanup_temp_files();
+    cleanup_toml_configs(easytier_config_dir);
+    cleanup_orphan_easytier();
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -95,4 +97,48 @@ fn cleanup_temp_files() {
     }
 
     crate::log_info!(format!("[Cleanup] 已清理 {} 个临时文件/目录", removed));
+}
+
+fn cleanup_toml_configs(dir: &Path) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        let mut count = 0u32;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("toml") {
+                let _ = std::fs::remove_file(&path);
+                count += 1;
+            }
+        }
+        if count > 0 {
+            crate::log_info!(format!("[Cleanup] 已清理 {} 个残留 TOML 配置", count));
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios", target_os = "macos")))]
+fn cleanup_orphan_easytier() {
+    #[cfg(target_os = "linux")]
+    {
+        let result = std::process::Command::new("pkill")
+            .args(["-f", "easytier-core.*--rpc-portal"])
+            .output();
+        if let Ok(output) = result {
+            if output.status.success() {
+                crate::log_info!("[Cleanup] 已清理孤儿 easytier-core 进程");
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/IM", "easytier-core.exe", "/T"])
+            .output();
+    }
+}
+
+#[cfg(any(target_os = "android", target_os = "ios", target_os = "macos"))]
+fn cleanup_orphan_easytier() {
+    // macOS: cleanup_easytier_root() 已通过 RPC 关闭守护进程
+    // Android/iOS: 无需清理
 }

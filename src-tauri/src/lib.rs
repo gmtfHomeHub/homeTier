@@ -75,8 +75,8 @@ pub fn run() -> std::process::ExitCode {
                 .path()
                 .app_data_dir()
                 .unwrap_or_else(|_| std::path::PathBuf::from("."));
-            crate::cleanup::cleanup_all(&app_data);
             let easytier_config_dir = app_data.join("easytier");
+            crate::cleanup::cleanup_all(&app_data, &easytier_config_dir);
             let _ = std::fs::create_dir_all(&easytier_config_dir);
             let instance_manager = Arc::new(easytier::EasyTierManager::new(easytier_config_dir, app_data));
             app.manage(instance_manager.clone());

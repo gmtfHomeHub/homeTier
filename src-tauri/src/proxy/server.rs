@@ -91,9 +91,14 @@ impl ProxyServer {
 
         let (shutdown_tx, port, proxy_prefix) = rt.block_on(async {
             let addr: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
-            let listener = TcpListener::bind(addr)
-                .await
+            let socket = tokio::net::TcpSocket::new_v4()
+                .map_err(|e| format!("Failed to create socket: {}", e))?;
+            socket.set_reuseaddr(true)
+                .map_err(|e| format!("Failed to set SO_REUSEADDR: {}", e))?;
+            socket.bind(addr)
                 .map_err(|e| format!("Failed to bind proxy port: {}", e))?;
+            let listener = socket.listen(1024)
+                .map_err(|e| format!("Failed to listen on proxy port: {}", e))?;
             let port = listener
                 .local_addr()
                 .map_err(|e| format!("Failed to get port: {}", e))?
