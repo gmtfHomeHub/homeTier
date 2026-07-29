@@ -12,6 +12,28 @@ pub fn cleanup_all(_app_data_dir: &Path, easytier_config_dir: &Path) {
     cleanup_orphan_easytier();
 }
 
+/// 应用退出时的最终清理（不检查端口、不需要重启 daemon）
+pub fn shutdown_exit_cleanup() {
+    crate::log_info!("[退出] 开始清理...");
+
+    #[cfg(target_os = "macos")]
+    {
+        crate::log_info!("[退出] 关闭 macos easytier-core...");
+        let addr = format!("127.0.0.1:{}", crate::daemon::ipc::EASYTIER_DAEMON_RPC_PORT);
+        if let Ok(mut stream) = std::net::TcpStream::connect_timeout(
+            &addr.parse().unwrap(),
+            std::time::Duration::from_secs(3),
+        ) {
+            use std::io::Write;
+            let _ = stream.write_all(b"__RPC_SHUTDOWN__\n");
+            crate::log_info!("[退出] 已发送 shutdown 到 root easytier-core");
+        }
+    }
+
+    cleanup_temp_files();
+    crate::log_info!("[退出] 清理完成");
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn cleanup_stale_daemon() {
     use crate::daemon;

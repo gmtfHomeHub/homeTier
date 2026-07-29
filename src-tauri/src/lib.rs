@@ -76,14 +76,18 @@ pub fn run() -> std::process::ExitCode {
                 .app_data_dir()
                 .unwrap_or_else(|_| std::path::PathBuf::from("."));
             let easytier_config_dir = app_data.join("easytier");
+            crate::log_info!("[GUI] 应用启动，开始清理遗留进程...");
             crate::cleanup::cleanup_all(&app_data, &easytier_config_dir);
+            crate::log_info!("[GUI] 清理完成");
             let _ = std::fs::create_dir_all(&easytier_config_dir);
             let instance_manager = Arc::new(easytier::EasyTierManager::new(easytier_config_dir, app_data));
             app.manage(instance_manager.clone());
+            crate::log_info!("[GUI] EasyTier 管理器已初始化");
 
             // Desktop: 启动 daemon 子进程并创建 IPC 客户端
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
+                crate::log_info!("[GUI] 启动 daemon 子进程...");
                 match spawn_daemon() {
                     Ok(child) => {
                         crate::log_info!("[GUI] daemon 子进程已启动");
@@ -114,6 +118,7 @@ pub fn run() -> std::process::ExitCode {
                 // 创建 IPC 客户端供 Tauri 命令使用
                 let ipc_client = Arc::new(daemon::client::IpcClient::default_port());
                 app.manage(ipc_client);
+                crate::log_info!("[GUI] IPC 客户端已创建");
             }
 
             // 初始化空间管理器
@@ -129,6 +134,7 @@ pub fn run() -> std::process::ExitCode {
             let space_manager = Arc::new(space::manager::SpaceManager::new(db, instance_manager));
             let space_manager_clone = space_manager.clone();
             app.manage(space_manager);
+            crate::log_info!("[GUI] 空间管理器已创建");
 
             // 初始化语音管理器
             let voice_manager = voice::engine::VoiceManager::new();
@@ -346,6 +352,39 @@ pub fn run() -> std::process::ExitCode {
         match event {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             tauri::RunEvent::Exit => {
+                crate::log_info!("[GUI] 应用退出，开始清理...");
+
+                // 1. 断开所有运行中的空间（停止服务、通知 daemon）
+                if let Some(space_mgr) = app_handle.try_state::<Arc<SpaceManager>>() {
+                    let space_mgr_clone = space_mgr.inner().clone();
+                    std::thread::spawn(move || {
+                        let rt = tokio::runtime::Builder::new_current_thread()
+                            .enable_time()
+                            .build()
+                            .unwrap();
+                        rt.block_on(async {
+                            space_mgr_clone.shutdown_all().await;
+                        });
+                    }).join().ok();
+                }
+
+                // 2. 优雅关闭 daemon
+                {
+                    let client = daemon::client::IpcClient::get_global();
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_time()
+                        .build();
+                    if let Ok(rt) = rt {
+                        rt.block_on(async {
+                            crate::log_info!("[退出] 发送 IPC Shutdown 到 daemon");
+                            let _ = client.shutdown().await;
+                            // 等待 daemon 完全关闭（它需要时间停止网络实例）
+                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        });
+                    }
+                }
+
+                // 3. 强制终止 daemon 子进程（备降兜底）
                 if let Some(guard) = app_handle.try_state::<DaemonGuard>() {
                     if let Ok(mut child_opt) = guard.0.lock() {
                         if let Some(mut child) = child_opt.take() {
@@ -355,6 +394,10 @@ pub fn run() -> std::process::ExitCode {
                         }
                     }
                 }
+
+                // 4. 最终清理（macOS root daemon + temp files）
+                cleanup::shutdown_exit_cleanup();
+                crate::log_info!("[GUI] 应用退出清理完成");
             }
             _ => {}
         }

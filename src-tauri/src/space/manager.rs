@@ -410,6 +410,17 @@ Self {
         }
     }
 
+    /// 退出应用前断开所有运行中的空间
+    pub async fn shutdown_all(&self) {
+        let spaces = self.spaces.read().await;
+        for space in spaces.iter() {
+            if space.status == SpaceStatus::Connected {
+                crate::log_info!(format!("[退出] 断开空间: {}", space.id));
+                let _ = self.disconnect(&space.id).await;
+            }
+        }
+    }
+
     /// 断开空间（取消背景任务、停止所有服务、通过 IPC 通知 daemon）
     pub async fn disconnect(&self, space_id: &Uuid) -> Result<(), String> {
         crate::log_info!(format!("断开空间: {}", space_id), &space_id.to_string());
