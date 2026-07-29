@@ -12,7 +12,7 @@ fn is_elevated() -> bool {
     }
 }
 
-fn elevate_self() -> ! {
+fn elevate_self() -> bool {
     let exe = std::env::current_exe().unwrap_or_default();
 
     #[cfg(target_os = "windows")]
@@ -33,32 +33,30 @@ fn elevate_self() -> ! {
                 SW_HIDE,
             );
         }
-        Ok(())
+        return true;
     }
     #[cfg(target_os = "macos")]
     {
-        std::process::Command::new("osascript")
+        return std::process::Command::new("osascript")
             .arg("-e")
             .arg(format!(
-                "do shell script \"\\\"{}\\\" --elevated\" with administrator privilages",
+                "do shell script \"\\\"{}\" --elevated\" with administrator privileges",
                 exe.display()
             ))
             .spawn()
-            .map(|_| ())
-            .map_err(|e| e.into())
+            .is_ok();
     }
     #[cfg(target_os = "linux")]
     {
-        std::process::Command::new("/usr/bin/pkexec")
+        return std::process::Command::new("/usr/bin/pkexec")
             .arg("--disable-internal-agent")
             .arg(exe.to_string_lossy())
             .arg("--elevated")
             .spawn()
-            .map(|_| ())
-            .map_err(|e| e.into())
+            .is_ok();
     }
     #[allow(unreachable_code)]
-    Ok(())
+    false
 }
 
 fn main() -> std::process::ExitCode {
@@ -81,10 +79,10 @@ fn main() -> std::process::ExitCode {
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
         home_tier_lib::run_daemon(config_dir, data_dir)
     } else if !elevated && !is_elevated() {
-        match elevate_self() {
-            Ok(()) => std::process::exit(0),
-            Err(_) => home_tier_lib::run_with_args(false),
+        if elevate_self() {
+            std::process::exit(0);
         }
+        home_tier_lib::run_with_args(false)
     } else {
         home_tier_lib::run_with_args(elevated)
     }
