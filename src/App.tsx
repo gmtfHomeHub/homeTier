@@ -14,7 +14,10 @@ import { useSpaceStore } from "./stores/spaceStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useEffect, useState } from "react";
 import { Theme } from "@radix-ui/themes";
-import { listen } from "@tauri-apps/api/event";
+import { isDaemonReady } from "./utils/api";
+
+const POLL_INTERVAL_MS = 1000;
+const POLL_MAX_ATTEMPTS = 30;
 
 export default function App() {
   const loadSpaces = useSpaceStore((s) => s.loadSpaces);
@@ -38,24 +41,47 @@ export default function App() {
     systemDark ? "dark" : "light";
 
   useEffect(() => {
+    let attempts = 0;
     let cancelled = false;
-    const setup = async () => {
-      const unlisten = await listen<{ ready: boolean; reason?: string }>("daemon-ready", (event) => {
-        if (cancelled) return;
-        if (event.payload.ready) {
-          loadSpaces().then(() => {
-            if (!cancelled) setAppReady(true);
-          });
-        } else {
-          setAppError(event.payload.reason ?? "daemon 未就绪");
+
+    const check = async () => {
+      try {
+        const ready = await isDaemonReady();
+        if (!cancelled && ready) {
+          await loadSpaces();
+          setAppReady(true);
+          return true;
         }
-      });
-      return unlisten;
+      } catch {
+        // invoke 可能失败（daemon 未就绪），继续轮询
+      }
+      return false;
     };
-    const promise = setup();
+
+    const poll = async () => {
+      const ok = await check();
+      if (ok) return;
+
+      const timerId = setInterval(async () => {
+        attempts++;
+        if (cancelled) {
+          clearInterval(timerId);
+          return;
+        }
+        if (attempts > POLL_MAX_ATTEMPTS) {
+          clearInterval(timerId);
+          setAppError("daemon 启动超时");
+          return;
+        }
+        const ok = await check();
+        if (ok) clearInterval(timerId);
+      }, POLL_INTERVAL_MS);
+    };
+
+    poll();
+
     return () => {
       cancelled = true;
-      promise.then((unlisten) => unlisten?.());
     };
   }, []);
 

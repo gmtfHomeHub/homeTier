@@ -392,6 +392,12 @@ export async function resizeAppView(x: number, y: number, w: number, h: number):
   return invoke("resize_app_view", { x, y, w, h });
 }
 
+// === Daemon Ready Status ===
+
+export async function isDaemonReady(): Promise<boolean> {
+  return invoke("is_daemon_ready");
+}
+
 // === Daemon Logs ===
 
 export async function getDaemonLogs(level?: string): Promise<LogEntry[]> {

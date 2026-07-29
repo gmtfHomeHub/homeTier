@@ -1,5 +1,13 @@
 use std::sync::Arc;
+use tauri::State;
 use crate::daemon::{client::IpcClient, service::get_service_manager, ipc::IpcResponse};
+use crate::DaemonReadyState;
+
+/// 查询 daemon 是否就绪（前端轮询用，不依赖事件系统）
+#[tauri::command]
+pub fn is_daemon_ready(ready_state: State<'_, DaemonReadyState>) -> bool {
+    ready_state.0.load(std::sync::atomic::Ordering::SeqCst)
+}
 
 /// 检查守护进程是否正在运行
 #[tauri::command]
