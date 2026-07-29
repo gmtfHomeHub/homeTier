@@ -496,11 +496,12 @@ impl EasyTierManager {
     }
 
     /// 通过 RPC 查询 peer 列表（含重试）
+    /// 使用 WebClientService::collect_network_info 获取合并的路由和连接信息
     async fn query_peer_list(&self, instance_id: &Uuid, rpc_port: u16) -> Option<Vec<crate::easytier::launcher::PeerInfo>> {
         use easytier::proto::rpc_impl::standalone::StandAloneClient;
         use easytier::proto::rpc_types::controller::BaseController;
-        use easytier::proto::api::instance::PeerManageRpcClientFactory;
         use easytier::tunnel::tcp::TcpTunnelConnector;
+        use easytier::proto::api::manage::WebClientServiceClientFactory;
 
         let addr = format!("tcp://127.0.0.1:{}", rpc_port);
         let url: url::Url = addr.parse().ok()?;
@@ -511,54 +512,61 @@ impl EasyTierManager {
             let mut client = StandAloneClient::new(connector);
 
             let ctrl = BaseController::default();
-            let peer_service = client.scoped_client::<PeerManageRpcClientFactory<BaseController>>("".to_string()).await;
+            let web_service = client
+                .scoped_client::<WebClientServiceClientFactory<BaseController>>("".to_string())
+                .await;
 
-            if let Ok(peer_service) = peer_service {
-                let list_req = easytier::proto::api::instance::ListRouteRequest {
-                    instance: Some(easytier::proto::api::instance::InstanceIdentifier {
-                        selector: Some(easytier::proto::api::instance::instance_identifier::Selector::Id(instance_id.to_string().into())),
-                    }),
-                    ..Default::default()
+            if let Ok(web_service) = web_service {
+                let proto_uuid: easytier::proto::common::Uuid = (*instance_id).into();
+                let inst_id_str = instance_id.to_string();
+
+                let req = easytier::proto::api::manage::CollectNetworkInfoRequest {
+                    inst_ids: vec![proto_uuid],
                 };
-                let result = peer_service.list_route(ctrl, list_req).await;
-                match result {
+
+                match web_service.collect_network_info(ctrl, req).await {
                     Ok(resp) => {
-                        crate::log_debug!(format!("query_peer_list response: route_count={}", resp.routes.len()));
+                        let running_info = match resp.info
+                            .as_ref()
+                            .and_then(|m| m.map.get(&inst_id_str))
+                        {
+                            Some(info) => info,
+                            None => {
+                                if attempt < max_retries {
+                                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                                    continue;
+                                }
+                                return Some(Vec::new());
+                            }
+                        };
+
+                        let local_peer_id = running_info.my_node_info
+                            .as_ref()
+                            .map(|n| n.peer_id);
+
                         let mut peer_infos = Vec::new();
 
-                        for route in resp.routes {
-                            let virtual_ip = if route.ipv4_addr.unwrap().address.unwrap().addr == 0 { None } else {
-                                let addr = route.ipv4_addr.unwrap().address.unwrap().addr;
-                                Some(format!("{}.{}.{}.{}",
-                                    (addr >> 24) & 0xFF,
-                                    (addr >> 16) & 0xFF,
-                                    (addr >> 8) & 0xFF,
-                                    addr & 0xFF
-                                ))
-                            };
-                            let hostname = if route.hostname.is_empty() { None } else { Some(route.hostname.clone()) };
-                            let version = if route.version.is_empty() { None } else { Some(route.version.clone()) };
-                            let tunnel_proto = None;
-
-                            peer_infos.push(crate::easytier::launcher::PeerInfo {
-                                peer_id: route.peer_id,
-                                virtual_ip,
-                                hostname,
-                                latency_ms: Some(route.path_latency as f64),
-                                loss_rate: None,
-                                rx_bytes: None,
-                                tx_bytes: None,
-                                connected: true,
-                                is_local: false,
-                                version,
-                                tunnel_proto,
-                                nat_type: None,
-                            });
+                        if !running_info.peer_route_pairs.is_empty() {
+                            for prp in &running_info.peer_route_pairs {
+                                let route = match &prp.route {
+                                    Some(r) => r,
+                                    None => continue,
+                                };
+                                if local_peer_id.map(|id| id == route.peer_id).unwrap_or(false) {
+                                    continue;
+                                }
+                                peer_infos.push(Self::peer_from_route_peer_pair(route, prp.peer.as_ref()));
+                            }
+                        } else {
+                            for route in &running_info.routes {
+                                if local_peer_id.map(|id| id == route.peer_id).unwrap_or(false) {
+                                    continue;
+                                }
+                                peer_infos.push(Self::peer_from_route(route));
+                            }
                         }
 
-                        if attempt > 1 {
-                            crate::log_info!(format!("EasyTierManager: RPC 查询成功 (第{}次重试), peer数量={}", attempt, peer_infos.len()));
-                        }
+                        crate::log_info!(format!("EasyTierManager: query_peer_list 成功, peers={}", peer_infos.len()));
                         return Some(peer_infos);
                     }
                     Err(e) => {
@@ -583,6 +591,66 @@ impl EasyTierManager {
         }
 
         None
+    }
+
+    /// 从 Route 构建 PeerInfo（无连接统计）
+    fn peer_from_route(route: &easytier::proto::api::instance::Route) -> crate::easytier::launcher::PeerInfo {
+        let virtual_ip = route.ipv4_addr.as_ref()
+            .and_then(|inet| inet.address.as_ref())
+            .map(|addr| format!("{}.{}.{}.{}",
+                (addr.addr >> 24) & 0xFF,
+                (addr.addr >> 16) & 0xFF,
+                (addr.addr >> 8) & 0xFF,
+                addr.addr & 0xFF
+            ))
+            .filter(|s| s != "0.0.0.0");
+
+        let hostname = if route.hostname.is_empty() { None } else { Some(route.hostname.clone()) };
+        let version = if route.version.is_empty() { None } else { Some(route.version.clone()) };
+
+        crate::easytier::launcher::PeerInfo {
+            peer_id: route.peer_id,
+            virtual_ip,
+            hostname,
+            latency_ms: Some(route.path_latency as f64),
+            loss_rate: None,
+            rx_bytes: None,
+            tx_bytes: None,
+            connected: true,
+            is_local: false,
+            version,
+            tunnel_proto: None,
+            nat_type: None,
+        }
+    }
+
+    /// 从 Route + PeerInfo 合并构建 PeerInfo（含连接统计）
+    fn peer_from_route_peer_pair(
+        route: &easytier::proto::api::instance::Route,
+        peer: Option<&easytier::proto::api::instance::PeerInfo>,
+    ) -> crate::easytier::launcher::PeerInfo {
+        let mut info = Self::peer_from_route(route);
+
+        if let Some(peer) = peer {
+            for conn in &peer.conns {
+                if let Some(stats) = &conn.stats {
+                    info.rx_bytes = Some(info.rx_bytes.unwrap_or(0) + stats.rx_bytes);
+                    info.tx_bytes = Some(info.tx_bytes.unwrap_or(0) + stats.tx_bytes);
+
+                    let conn_latency = stats.latency_us as f64 / 1000.0;
+                    info.latency_ms = Some(match info.latency_ms {
+                        Some(current) => current.min(conn_latency),
+                        None => conn_latency,
+                    });
+                    info.loss_rate = Some(stats.loss_rate as f64);
+                }
+                if conn.tunnel.is_some() {
+                    info.tunnel_proto = conn.tunnel.as_ref().map(|t| t.tunnel_type.clone());
+                }
+            }
+        }
+
+        info
     }
 
     /// 获取空间运行时状态（通过 RPC 查询）
