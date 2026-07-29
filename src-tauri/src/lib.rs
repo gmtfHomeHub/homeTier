@@ -479,6 +479,24 @@ pub fn run() -> std::process::ExitCode {
     std::process::ExitCode::SUCCESS
 }
 
+#[cfg(not(target_os = "android"))]
+fn toggle_window_visibility(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        if window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(true) {
+            let _ = window.hide();
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::ActivationPolicy;
+                let _ = app.set_activation_policy(ActivationPolicy::Accessory);
+            }
+        } else {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+    }
+}
+
 /// 带参数的入口点，用于 Windows UAC / macOS 提权场景
 pub fn run_with_args(elevated: bool) -> std::process::ExitCode {
     #[cfg(any(target_os = "windows", target_os = "macos"))]
