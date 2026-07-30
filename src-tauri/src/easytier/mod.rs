@@ -433,6 +433,11 @@ impl EasyTierManager {
                         }
                         connected_peers = running_info.peer_route_pairs.len() as u32;
 
+                        crate::log_info!(format!(
+                            "EasyTierManager: collect_network_info 成功, connected_peers={}, has_virtual_ip={}",
+                            connected_peers, virtual_ip.is_some()
+                        ));
+
                         let mut total_latency = 0.0f64;
                         let mut latency_count = 0u32;
                         let mut total_rx_bytes = 0u64;
@@ -588,6 +593,12 @@ impl EasyTierManager {
                             }
                         }
 
+                        crate::log_info!(format!(
+                            "EasyTierManager: query_peer_list 构建完成, peer_route_pairs={}, routes={}, result_peers={}",
+                            running_info.peer_route_pairs.len(),
+                            running_info.routes.len(),
+                            peer_infos.len()
+                        ));
                         crate::log_info!(format!("EasyTierManager: query_peer_list 成功, peers={}", peer_infos.len()));
                         return Some(peer_infos);
                     }
