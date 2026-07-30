@@ -32,7 +32,10 @@ export function LogViewer({ spaceId }: LogViewerProps) {
         if (data.length > 0) {
           const maxSeq = Math.max(...data.map((l) => l.seq));
           lastSeqRef.current = Math.max(lastSeqRef.current, maxSeq);
-          setLogs((prev) => [...data.reverse(), ...prev]);
+          setLogs((prev) => {
+            const sorted = [...data].reverse();
+            return [...sorted, ...prev];
+          });
         }
       }
     } catch (e) {
