@@ -571,6 +571,14 @@ impl EasyTierManager {
                             }
                         };
 
+                        crate::log_info!(format!(
+                            "[query_peer_list 诊断] peer_route_pairs={}, routes={}, peers_in_route={}, my_node_info={:?}",
+                            running_info.peer_route_pairs.len(),
+                            running_info.routes.len(),
+                            running_info.peers.len(),
+                            running_info.my_node_info.as_ref().map(|n| format!("peer_id={}, virtual_ipv4={:?}", n.peer_id, n.virtual_ipv4))
+                        ));
+
                         let local_peer_id = running_info.my_node_info
                             .as_ref()
                             .map(|n| n.peer_id);
@@ -584,26 +592,42 @@ impl EasyTierManager {
                                     None => continue,
                                 };
                                 if local_peer_id.map(|id| id == route.peer_id).unwrap_or(false) {
+                                    crate::log_info!(format!("[query_peer_list] 跳过本地 peer, id={}, ip={:?}", route.peer_id, route.ipv4_addr));
                                     continue;
                                 }
                                 peer_infos.push(Self::peer_from_route_peer_pair(route, prp.peer.as_ref()));
                             }
+                            crate::log_info!(format!(
+                                "[query_peer_list] 从 peer_route_pairs 提取: peer_route_pairs={}, filtered={}",
+                                running_info.peer_route_pairs.len(),
+                                peer_infos.len()
+                            ));
                         } else {
+                            crate::log_info!(format!(
+                                "[query_peer_list] peer_route_pairs 为空, 降级使用 routes: routes.len={}",
+                                running_info.routes.len()
+                            ));
                             for route in &running_info.routes {
                                 if local_peer_id.map(|id| id == route.peer_id).unwrap_or(false) {
+                                    crate::log_info!(format!("[query_peer_list] 跳过本地 route, id={}, ip={:?}", route.peer_id, route.ipv4_addr));
                                     continue;
                                 }
                                 peer_infos.push(Self::peer_from_route(route));
                             }
                         }
 
+                        for (i, peer) in peer_infos.iter().enumerate() {
+                            crate::log_info!(format!(
+                                "[query_peer_list peer {}] id={}, ip={:?}, hostname={:?}, latency={:?}, tunnel={:?}",
+                                i, peer.peer_id, peer.virtual_ip, peer.hostname, peer.latency_ms, peer.tunnel_proto
+                            ));
+                        }
+
                         crate::log_info!(format!(
-                            "EasyTierManager: query_peer_list 构建完成, peer_route_pairs={}, routes={}, result_peers={}",
-                            running_info.peer_route_pairs.len(),
-                            running_info.routes.len(),
-                            peer_infos.len()
+                            "EasyTierManager: query_peer_list 成功, result_peers={}, routes={}",
+                            peer_infos.len(),
+                            running_info.routes.len()
                         ));
-                        crate::log_info!(format!("EasyTierManager: query_peer_list 成功, peers={}", peer_infos.len()));
                         return Some(peer_infos);
                     }
                     Err(e) => {

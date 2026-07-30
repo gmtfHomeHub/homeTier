@@ -5,5 +5,5 @@
 .DS_Store
 *.log
 .opencode
-
+.libs
 .vscode
