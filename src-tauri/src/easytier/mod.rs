@@ -54,40 +54,27 @@ impl EasyTierManager {
     ) -> Result<Uuid, String> {
         crate::log_info!(format!("EasyTierManager.start_network: 开始, network_name={}, id={}", cfg.network_name, instance_id));
 
-        // 清除所有已有实例，防止 TOML 文件恢复导致的 instance_id 冲突
-        crate::log_debug!("EasyTierManager.start_network: 清除已有实例");
         self.clear_all_instances().await?;
 
-        // 删除旧的 TOML 配置文件，防止守护进程下次重启时自动恢复
         let old_config_path = self.config_dir.join(format!("{}.toml", instance_id));
         if old_config_path.exists() {
             std::fs::remove_file(&old_config_path).map_err(|e| format!("删除旧 TOML 配置文件失败: {}", e))?;
-            crate::log_debug!("EasyTierManager.start_network: 已删除旧 TOML 配置文件");
         }
 
-        // 确保二进制存在（用于验证，实际启动由 daemon 完成）
-        crate::log_debug!("EasyTierManager.start_network: 确保二进制存在");
         let _ = self.downloader.ensure_binary().await.map_err(|e| {
             crate::log_error!(format!("EasyTierManager.start_network: 确保二进制失败: {}", e));
             e
         })?;
 
-        // 生成 TOML 配置文件（写入 daemon 共享的 config_dir，供 Reload 使用）
-        crate::log_debug!("EasyTierManager.start_network: 生成配置文件");
         let _ = self.generate_config(cfg, &instance_id, initial_config.as_deref())?;
 
-        // 构建 protobuf 配置
         let proto_cfg = self.build_proto_config(cfg, &instance_id);
 
-        // 通过 RPC 调用 easytier-core-daemon 启动网络实例
-        crate::log_info!("EasyTierManager.start_network: 调用 RPC run_network_instance");
         self.rpc_run_network_instance(&instance_id, &proto_cfg).await?;
 
-        // RPC handler 内部会写入 TOML 到 config_dir，删除它以阻止下次守护进程重启时自动恢复
         let config_path = self.config_dir.join(format!("{}.toml", instance_id));
         if config_path.exists() {
             std::fs::remove_file(&config_path).map_err(|e| format!("删除 RPC 写入的 TOML 文件失败: {}", e))?;
-            crate::log_debug!("EasyTierManager.start_network: 已删除 RPC 写入的 TOML 文件");
         }
 
         crate::log_info!(format!("EasyTierManager.start_network: 完成, id={}", instance_id));
@@ -294,12 +281,10 @@ impl EasyTierManager {
                 RetainNetworkInstanceRequest { inst_ids: vec![] },
             ).await {
                 Ok(_) => {
-                    crate::log_debug!(format!("EasyTierManager.clear_all_instances: 所有实例已清除(第{}次)", attempt));
                     return Ok(());
                 }
                 Err(e) => {
                     if attempt < 3 {
-                        crate::log_warn!(format!("EasyTierManager.clear_all_instances: RPC 未就绪(第{}次), 1s 后重试: {}", attempt, e));
                         tokio::time::sleep(Duration::from_secs(1)).await;
                     } else {
                         crate::log_warn!(format!("EasyTierManager.clear_all_instances: RPC 始终未就绪: {}", e));
@@ -648,14 +633,6 @@ impl EasyTierManager {
                             }
                         };
 
-                        crate::log_info!(format!(
-                            "[query_peer_list 诊断] peer_route_pairs={}, routes={}, peers_in_route={}, my_node_info={:?}",
-                            running_info.peer_route_pairs.len(),
-                            running_info.routes.len(),
-                            running_info.peers.len(),
-                            running_info.my_node_info.as_ref().map(|n| format!("peer_id={}, virtual_ipv4={:?}", n.peer_id, n.virtual_ipv4))
-                        ));
-
                         let local_peer_id = running_info.my_node_info
                             .as_ref()
                             .map(|n| n.peer_id);
@@ -669,35 +646,17 @@ impl EasyTierManager {
                                     None => continue,
                                 };
                                 if local_peer_id.map(|id| id == route.peer_id).unwrap_or(false) {
-                                    crate::log_info!(format!("[query_peer_list] 跳过本地 peer, id={}, ip={:?}", route.peer_id, route.ipv4_addr));
                                     continue;
                                 }
                                 peer_infos.push(Self::peer_from_route_peer_pair(route, prp.peer.as_ref()));
                             }
-                            crate::log_info!(format!(
-                                "[query_peer_list] 从 peer_route_pairs 提取: peer_route_pairs={}, filtered={}",
-                                running_info.peer_route_pairs.len(),
-                                peer_infos.len()
-                            ));
                         } else {
-                            crate::log_info!(format!(
-                                "[query_peer_list] peer_route_pairs 为空, 降级使用 routes: routes.len={}",
-                                running_info.routes.len()
-                            ));
                             for route in &running_info.routes {
                                 if local_peer_id.map(|id| id == route.peer_id).unwrap_or(false) {
-                                    crate::log_info!(format!("[query_peer_list] 跳过本地 route, id={}, ip={:?}", route.peer_id, route.ipv4_addr));
                                     continue;
                                 }
                                 peer_infos.push(Self::peer_from_route(route));
                             }
-                        }
-
-                        for (i, peer) in peer_infos.iter().enumerate() {
-                            crate::log_info!(format!(
-                                "[query_peer_list peer {}] id={}, ip={:?}, hostname={:?}, latency={:?}, tunnel={:?}",
-                                i, peer.peer_id, peer.virtual_ip, peer.hostname, peer.latency_ms, peer.tunnel_proto
-                            ));
                         }
 
                         crate::log_info!(format!(
