@@ -20,6 +20,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
   const lastSeqRef = useRef(0);
   const fetchingRef = useRef(false);
   const [levelFilter, setLevelFilter] = useState<string>("all");
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   const fetchLogs = useCallback(async () => {
@@ -63,9 +64,17 @@ export function LogViewer({ spaceId }: LogViewerProps) {
     lastSeqRef.current = 0;
   };
 
-  const filtered = levelFilter === "all"
-    ? logs
-    : logs.filter((l) => l.level === levelFilter);
+  const isEasytier = (module: string) => module.startsWith("home_tier_lib::easytier");
+
+  let filtered = logs;
+  if (levelFilter !== "all") {
+    filtered = filtered.filter((l) => l.level === levelFilter);
+  }
+  if (sourceFilter === "easytier") {
+    filtered = filtered.filter((l) => isEasytier(l.module));
+  } else if (sourceFilter === "system") {
+    filtered = filtered.filter((l) => !isEasytier(l.module));
+  }
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -78,11 +87,24 @@ export function LogViewer({ spaceId }: LogViewerProps) {
         <Select.Root value={levelFilter} onValueChange={(v) => setLevelFilter(v)}>
           <Select.Trigger className="text-xs" />
           <Select.Content>
-            <Select.Item value="all">全部</Select.Item>
+            <Select.Item value="all">全部级别</Select.Item>
             <Select.Item value="error">Error</Select.Item>
             <Select.Item value="warning">Warning</Select.Item>
             <Select.Item value="info">Info</Select.Item>
             <Select.Item value="debug">Debug</Select.Item>
+          </Select.Content>
+        </Select.Root>
+
+        <div className="flex items-center gap-1 text-xs text-[var(--color-text-secondary)]">
+          <Filter size={14} />
+          <span>来源：</span>
+        </div>
+        <Select.Root value={sourceFilter} onValueChange={(v) => setSourceFilter(v)}>
+          <Select.Trigger className="text-xs" />
+          <Select.Content>
+            <Select.Item value="all">全部</Select.Item>
+            <Select.Item value="system">系统</Select.Item>
+            <Select.Item value="easytier">EasyTier</Select.Item>
           </Select.Content>
         </Select.Root>
 
@@ -156,7 +178,8 @@ export function LogViewer({ spaceId }: LogViewerProps) {
       {/* 底部统计 */}
       <div className="px-4 py-1.5 border-t border-[var(--color-border)] bg-[var(--color-surface)] text-xs text-[var(--color-text-secondary)]">
         共 {filtered.length} 条日志
-        {levelFilter !== "all" && ` (筛选: ${levelFilter})`}
+        {sourceFilter !== "all" && ` (来源: ${sourceFilter === "easytier" ? "EasyTier" : "系统"})`}
+        {levelFilter !== "all" && ` (级别: ${levelFilter})`}
       </div>
     </div>
   );
