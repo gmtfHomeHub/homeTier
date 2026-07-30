@@ -56,10 +56,6 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
   }, [spaceId]);
 
   useEffect(() => {
-    if (stats.connected_peers === 0) {
-      setPeersList([]);
-      return;
-    }
     let cancelled = false;
     const poll = async () => {
       try {
@@ -142,7 +138,7 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
 
           <div
             className="space-y-1 cursor-pointer hover:bg-[var(--color-surface-hover)] rounded p-1 -m-1 transition-colors"
-            onClick={() => stats.connected_peers > 0 && setShowPeersDialog(true)}
+            onClick={() => setShowPeersDialog(true)}
             role="button"
             tabIndex={0}
           >
