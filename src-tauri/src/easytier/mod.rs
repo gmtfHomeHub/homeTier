@@ -431,15 +431,15 @@ impl EasyTierManager {
                                 }
                             }
                         }
-                        connected_peers = running_info.peers.len() as u32;
+                        connected_peers = running_info.peer_route_pairs.len() as u32;
 
                         let mut total_latency = 0.0f64;
                         let mut latency_count = 0u32;
                         let mut total_rx_bytes = 0u64;
                         let mut total_tx_bytes = 0u64;
 
-                        for peer in &running_info.peers {
-                            for conn in &peer.conns {
+                        for pair in &running_info.peer_route_pairs {
+                            for conn in &pair.peer.conns {
                                 if let Some(stats) = &conn.stats {
                                     total_latency += stats.latency_us as f64;
                                     total_rx_bytes += stats.rx_bytes;
