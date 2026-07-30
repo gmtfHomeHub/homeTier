@@ -110,7 +110,7 @@ impl EasyTierManager {
             dhcp: Some(if effective_ipv4.is_some() { false } else { cfg.dhcp }),
             virtual_ipv4: effective_ipv4,
             hostname: cfg.hostname.clone(),
-            listener_urls: cfg.listeners.clone(),
+            listener_urls: cfg.listener_urls.clone(),
             peer_urls: if !cfg.peer_urls.is_empty() {
                 cfg.peer_urls.clone()
             } else {

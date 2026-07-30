@@ -794,6 +794,11 @@ Self {
                 config.listeners = local_config.listeners.clone();
             }
 
+            // 监听地址 (新字段)
+            if !local_config.listener_urls.is_empty() {
+                config.listener_urls = local_config.listener_urls.clone();
+            }
+
             // 子网代理
             if !local_config.proxy_networks.is_empty() {
                 config.proxy_networks = local_config.proxy_networks.clone();
