@@ -18,15 +18,19 @@ pub async fn get_logs(level: Option<String>, since_seq: Option<u64>) -> Vec<log:
         }
     }
 
-    // 回落：daemon IPC 不可达时返回 GUI 本地缓存日志
-    let level_filter = level.as_deref().and_then(|l| match l.to_lowercase().as_str() {
-        "debug" => Some(LogLevel::Debug),
-        "info" => Some(LogLevel::Info),
-        "warning" => Some(LogLevel::Warning),
-        "error" => Some(LogLevel::Error),
-        _ => None,
-    });
-    log::get_all(level_filter)
+    // 回落：daemon IPC 不可达时，仅初始获取返回 GUI 本地日志
+    if since_seq.is_none() {
+        let level_filter = level.as_deref().and_then(|l| match l.to_lowercase().as_str() {
+            "debug" => Some(LogLevel::Debug),
+            "info" => Some(LogLevel::Info),
+            "warning" => Some(LogLevel::Warning),
+            "error" => Some(LogLevel::Error),
+            _ => None,
+        });
+        return log::get_all(level_filter);
+    }
+
+    vec![]
 }
 
 #[tauri::command]

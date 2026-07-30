@@ -18,10 +18,13 @@ const LEVEL_COLORS: Record<string, ButtonProps['color']> = {
 export function LogViewer({ spaceId }: LogViewerProps) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const lastSeqRef = useRef(0);
+  const fetchingRef = useRef(false);
   const [levelFilter, setLevelFilter] = useState<string>("all");
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   const fetchLogs = useCallback(async () => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
     try {
       const level = levelFilter === "all" ? undefined : levelFilter;
       if (spaceId) {
@@ -40,6 +43,8 @@ export function LogViewer({ spaceId }: LogViewerProps) {
       }
     } catch (e) {
       console.error("Failed to fetch logs:", e);
+    } finally {
+      fetchingRef.current = false;
     }
   }, [spaceId, levelFilter]);
 
