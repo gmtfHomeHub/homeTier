@@ -7,6 +7,7 @@ import type {
   FileInfo,
   TransferProgress,
   NetworkStatus,
+  NetworkStats,
   ShareInfo,
   LogEntry,
   SpaceApp,
@@ -77,6 +78,10 @@ export async function listMembers(spaceId: string): Promise<Member[]> {
 
 export async function getNetworkStatus(spaceId: string): Promise<NetworkStatus> {
   return invoke("get_network_status", { spaceId });
+}
+
+export async function getNetworkStats(spaceId: string): Promise<NetworkStats> {
+  return invoke<NetworkStats>("get_network_stats", { spaceId });
 }
 
 export async function updateGroupConfig(spaceId: string, config: NetworkConfig): Promise<void> {

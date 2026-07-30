@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { Card, Text, Dialog, ScrollArea, Badge, Button } from "@radix-ui/themes";
 import { useTranslation } from "react-i18next";
 import { Signal, Wifi, Activity, Users, X } from "lucide-react";
-import { getSpacePeers } from "../../utils/api";
+import { getSpacePeers, getNetworkStatus, getNetworkStats } from "../../utils/api";
 import { formatBytes } from "../../utils/format";
 import type { PeerInfo } from "../../types";
 
-interface NetworkStats {
+interface StatsData {
   rx_bytes: number;
   tx_bytes: number;
   avg_latency_ms: number;
@@ -19,7 +19,7 @@ interface NetworkStatsPanelProps {
 
 export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
   const { t } = useTranslation();
-  const [stats, setStats] = useState<NetworkStats>({
+  const [stats, setStats] = useState<StatsData>({
     rx_bytes: 0,
     tx_bytes: 0,
     avg_latency_ms: 0,
@@ -32,16 +32,16 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
   useEffect(() => {
     const loadStats = async () => {
       try {
-        const response = await fetch(`/api/space/${spaceId}/status`);
-        const data = await response.json();
-        if (data) {
-          setStats({
-            rx_bytes: data.rx_bytes || 0,
-            tx_bytes: data.tx_bytes || 0,
-            avg_latency_ms: data.avg_latency_ms || 0,
-            connected_peers: data.connected_peers || 0,
-          });
-        }
+        const [status, networkStats] = await Promise.all([
+          getNetworkStatus(spaceId),
+          getNetworkStats(spaceId),
+        ]);
+        setStats({
+          rx_bytes: networkStats.rx_bytes,
+          tx_bytes: networkStats.tx_bytes,
+          avg_latency_ms: networkStats.avg_latency_ms,
+          connected_peers: status.connected_peers,
+        });
       } catch (error) {
         console.error("Failed to load network stats:", error);
       } finally {

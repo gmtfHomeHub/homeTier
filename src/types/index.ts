@@ -70,6 +70,15 @@ export interface NetworkStatus {
   connected_peers: number;
 }
 
+export interface NetworkStats {
+  rx_bytes: number;
+  tx_bytes: number;
+  rx_packets: number;
+  tx_packets: number;
+  loss_rate: number;
+  avg_latency_ms: number;
+}
+
 export interface ShareInfo {
   network_name: string;
   network_secret: string;
