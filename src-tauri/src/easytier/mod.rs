@@ -54,6 +54,17 @@ impl EasyTierManager {
     ) -> Result<Uuid, String> {
         crate::log_info!(format!("EasyTierManager.start_network: 开始, network_name={}, id={}", cfg.network_name, instance_id));
 
+        // 清除所有已有实例，防止 TOML 文件恢复导致的 instance_id 冲突
+        crate::log_debug!("EasyTierManager.start_network: 清除已有实例");
+        self.clear_all_instances().await?;
+
+        // 删除旧的 TOML 配置文件，防止守护进程下次重启时自动恢复
+        let old_config_path = self.config_dir.join(format!("{}.toml", instance_id));
+        if old_config_path.exists() {
+            std::fs::remove_file(&old_config_path).map_err(|e| format!("删除旧 TOML 配置文件失败: {}", e))?;
+            crate::log_debug!("EasyTierManager.start_network: 已删除旧 TOML 配置文件");
+        }
+
         // 确保二进制存在（用于验证，实际启动由 daemon 完成）
         crate::log_debug!("EasyTierManager.start_network: 确保二进制存在");
         let _ = self.downloader.ensure_binary().await.map_err(|e| {
@@ -236,6 +247,58 @@ impl EasyTierManager {
         }
 
         Ok(config)
+    }
+
+    /// 清除所有运行中的网络实例（通过 RPC），防止 TOML 文件恢复导致的 instance_id 冲突
+    async fn clear_all_instances(&self) -> Result<(), String> {
+        use easytier::proto::rpc_impl::standalone::StandAloneClient;
+        use easytier::proto::rpc_types::controller::BaseController;
+        use easytier::tunnel::tcp::TcpTunnelConnector;
+        use easytier::proto::api::manage::{
+            WebClientServiceClientFactory, ListNetworkInstanceRequest, DeleteNetworkInstanceRequest,
+        };
+
+        let rpc_port = crate::daemon::ipc::EASYTIER_DAEMON_RPC_PORT;
+        let addr = format!("tcp://127.0.0.1:{}", rpc_port);
+        let url: url::Url = addr.parse().map_err(|e| format!("解析 RPC 地址失败: {}", e))?;
+
+        let connector = TcpTunnelConnector::new(url);
+        let mut client = StandAloneClient::new(connector);
+
+        let ctrl = BaseController::default();
+        let manage_service = client
+            .scoped_client::<WebClientServiceClientFactory<BaseController>>("".to_string())
+            .await
+            .map_err(|e| format!("连接 easytier-core RPC 失败: {}", e))?;
+
+        let list_req = ListNetworkInstanceRequest {};
+        let list_resp = match manage_service.list_network_instance(ctrl.clone(), list_req).await {
+            Ok(resp) => resp,
+            Err(e) => {
+                crate::log_warn!(format!("EasyTierManager.clear_all_instances: list_network_instance failed: {}, 假定无实例", e));
+                return Ok(());
+            }
+        };
+
+        let inst_ids = list_resp.inst_ids;
+        if inst_ids.is_empty() {
+            crate::log_debug!("EasyTierManager.clear_all_instances: 无已有实例，无需清除");
+            return Ok(());
+        }
+
+        crate::log_info!(format!("EasyTierManager.clear_all_instances: 发现 {} 个已有实例，即将清除", inst_ids.len()));
+
+        let delete_req = DeleteNetworkInstanceRequest { inst_ids };
+        match manage_service.delete_network_instance(ctrl, delete_req).await {
+            Ok(_) => {
+                crate::log_info!("EasyTierManager.clear_all_instances: 所有实例已清除");
+            }
+            Err(e) => {
+                crate::log_warn!(format!("EasyTierManager.clear_all_instances: delete_network_instance 失败: {}", e));
+            }
+        }
+
+        Ok(())
     }
 
     /// 获取网络状态
