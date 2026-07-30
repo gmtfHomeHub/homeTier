@@ -7,7 +7,7 @@ interface LayoutStore {
 }
 
 export const useLayoutStore = create<LayoutStore>((set) => ({
-  sidebarOpen: true,
+  sidebarOpen: false,
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
 }));
