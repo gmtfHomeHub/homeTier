@@ -111,7 +111,11 @@ impl EasyTierManager {
             virtual_ipv4: effective_ipv4,
             hostname: cfg.hostname.clone(),
             listener_urls: cfg.listeners.clone(),
-            peer_urls: cfg.peers.iter().map(|p| p.uri.clone()).collect(),
+            peer_urls: if !cfg.peer_urls.is_empty() {
+                cfg.peer_urls.clone()
+            } else {
+                cfg.peers.iter().map(|p| p.uri.clone()).collect()
+            },
             proxy_cidrs: cfg.proxy_networks.iter().map(|p| p.cidr.clone()).collect(),
             routes: cfg.routes.clone(),
             exit_nodes: cfg.exit_nodes.clone(),

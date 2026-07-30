@@ -170,7 +170,7 @@ export function DEFAULT_NETWORK_CONFIG(): NetworkConfig {
     network_secret: '',
     credential_file: '',
 
-    networking_method: NetworkingMethod.Manual,
+    networking_method: NetworkingMethod.PublicServer,
     public_server_url: '',
     peer_urls: [],
 
@@ -263,8 +263,6 @@ export function normalizeNetworkConfig(config: NetworkConfig): NetworkConfig {
       break
   }
 
-  normalized.networking_method = NetworkingMethod.Manual
-  normalized.public_server_url = ''
   return normalized
 }
 

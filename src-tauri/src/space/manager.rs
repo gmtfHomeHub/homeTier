@@ -814,6 +814,17 @@ Self {
                 config.flags = local_config.flags.clone();
             }
 
+            // 联网方式
+            if local_config.networking_method != config.networking_method {
+                config.networking_method = local_config.networking_method;
+            }
+            if !local_config.public_server_url.is_empty() {
+                config.public_server_url = local_config.public_server_url.clone();
+            }
+            if !local_config.peer_urls.is_empty() {
+                config.peer_urls = local_config.peer_urls.clone();
+            }
+
             // 日志配置
             if let Some(ref logger) = local_config.file_logger {
                 config.file_logger = Some(logger.clone());

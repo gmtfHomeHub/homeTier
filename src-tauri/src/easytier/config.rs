@@ -158,7 +158,7 @@ impl Default for NetworkConfig {
             network_name: "easytier".to_string(),
             network_secret: String::new(),
             credential_file: None,
-            networking_method: 1,
+            networking_method: 0,
             public_server_url: String::new(),
             peer_urls: Vec::new(),
             proxy_cidrs: Vec::new(),
