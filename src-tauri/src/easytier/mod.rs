@@ -439,7 +439,7 @@ impl EasyTierManager {
                         let mut total_tx_bytes = 0u64;
 
                         for pair in &running_info.peer_route_pairs {
-                            for conn in &pair.peer.conns {
+                            for conn in &pair.peer.clone().unwrap().conns {
                                 if let Some(stats) = &conn.stats {
                                     total_latency += stats.latency_us as f64;
                                     total_rx_bytes += stats.rx_bytes;
