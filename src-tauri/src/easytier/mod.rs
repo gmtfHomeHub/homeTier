@@ -83,6 +83,13 @@ impl EasyTierManager {
         crate::log_info!("EasyTierManager.start_network: 调用 RPC run_network_instance");
         self.rpc_run_network_instance(&instance_id, &proto_cfg).await?;
 
+        // RPC handler 内部会写入 TOML 到 config_dir，删除它以阻止下次守护进程重启时自动恢复
+        let config_path = self.config_dir.join(format!("{}.toml", instance_id));
+        if config_path.exists() {
+            std::fs::remove_file(&config_path).map_err(|e| format!("删除 RPC 写入的 TOML 文件失败: {}", e))?;
+            crate::log_debug!("EasyTierManager.start_network: 已删除 RPC 写入的 TOML 文件");
+        }
+
         crate::log_info!(format!("EasyTierManager.start_network: 完成, id={}", instance_id));
         Ok(instance_id)
     }
@@ -244,6 +251,13 @@ impl EasyTierManager {
             Err(e) => {
                 crate::log_warn!(format!("EasyTierManager: delete_network_instance failed: {}, may already be stopped", e));
             }
+        }
+
+        // 删除对应的 TOML 配置文件，防止下次守护进程重启时自动恢复
+        let config_path = self.config_dir.join(format!("{}.toml", instance_id));
+        if config_path.exists() {
+            std::fs::remove_file(&config_path).ok();
+            crate::log_debug!("EasyTierManager: 已删除 TOML 文件 (stop), id={}", instance_id);
         }
 
         Ok(config)
