@@ -170,7 +170,7 @@ export function DEFAULT_NETWORK_CONFIG(): NetworkConfig {
     network_secret: '',
     credential_file: '',
 
-    networking_method: NetworkingMethod.PublicServer,
+    networking_method: NetworkingMethod.Manual,
     public_server_url: '',
     peer_urls: [],
 
