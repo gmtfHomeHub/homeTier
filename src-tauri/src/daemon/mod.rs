@@ -87,38 +87,49 @@ impl Daemon {
             crate::log_info!(format!("[Daemon] daemon_state.json 写入失败（非致命）: {}", e));
         }
 
-        // macOS: daemon IPC 就绪后，启动 easytier-core 守护进程（一次性 osascript 授权）
-        #[cfg(target_os = "macos")]
-        {
-            let easytier = self.easytier.clone();
-            tokio::spawn(async move {
-                crate::log_info!("[Daemon] 正在启动 easytier-core 守护进程...");
-                let binary = match easytier.downloader.ensure_binary().await {
-                    Ok(b) => b,
-                    Err(e) => {
-                        crate::log_error!(format!("[Daemon] 获取 easytier 二进制失败: {}", e));
-                        return;
-                    }
-                };
-                crate::log_info!(format!("[Daemon] easytier-core 守护进程 binary={}", binary.display()));
-                let config_dir = easytier.get_config_dir();
-                match crate::easytier::EasyTierProcess::start_daemon(
-                    &binary, &config_dir, ipc::EASYTIER_DAEMON_RPC_PORT,
-                ).await {
-                    Ok(_) => {
-                        crate::log_info!("[Daemon] easytier-core 守护进程就绪");
-                    }
-                    Err(e) => {
-                        crate::log_error!(format!("[Daemon] easytier-core 守护进程启动失败: {}", e));
-                        let log_path = config_dir.join("easytier-daemon.log");
-                        if let Ok(content) = std::fs::read_to_string(&log_path) {
-                            crate::log_error!(format!("[Daemon] easytier-daemon.log 末尾:\n{}",
-                                if content.len() > 2000 { &content[content.len()-2000..] } else { &content }));
-                        }
+        // 启动 easytier-core 守护进程（daemon IPC 就绪后，等待 RPC 端口就绪，再接受 IPC 请求）
+        let easytier = self.easytier.clone();
+        tokio::spawn(async move {
+            crate::log_info!("[Daemon] 正在启动 easytier-core 守护进程...");
+            let binary = match easytier.downloader.ensure_binary().await {
+                Ok(b) => b,
+                Err(e) => {
+                    crate::log_error!(format!("[Daemon] 获取 easytier 二进制失败: {}", e));
+                    return;
+                }
+            };
+            crate::log_info!(format!("[Daemon] easytier-core 守护进程 binary={}", binary.display()));
+            let config_dir = easytier.get_config_dir();
+
+            #[cfg(target_os = "macos")]
+            match crate::easytier::EasyTierProcess::start_daemon(
+                &binary, &config_dir, ipc::EASYTIER_DAEMON_RPC_PORT,
+            ).await {
+                Ok(_) => {
+                    crate::log_info!("[Daemon] easytier-core 守护进程就绪");
+                }
+                Err(e) => {
+                    crate::log_error!(format!("[Daemon] easytier-core 守护进程启动失败: {}", e));
+                    let log_path = config_dir.join("easytier-daemon.log");
+                    if let Ok(content) = std::fs::read_to_string(&log_path) {
+                        crate::log_error!(format!("[Daemon] easytier-daemon.log 末尾:\n{}",
+                            if content.len() > 2000 { &content[content.len()-2000..] } else { &content }));
                     }
                 }
-            });
-        }
+            }
+
+            #[cfg(not(target_os = "macos"))]
+            match crate::easytier::EasyTierProcess::start_daemon(
+                &binary, &config_dir, ipc::EASYTIER_DAEMON_RPC_PORT,
+            ).await {
+                Ok(_) => {
+                    crate::log_info!("[Daemon] easytier-core 守护进程就绪");
+                }
+                Err(e) => {
+                    crate::log_error!(format!("[Daemon] easytier-core 守护进程启动失败: {}", e));
+                }
+            }
+        });
 
         // 监听 ctrl_c 信号（参考 EasyTier stop_check_notifier）
         let mut shutdown_rx = self.shutdown_tx.subscribe();
@@ -380,7 +391,7 @@ impl Daemon {
                 easytier.restart_all_instances().await;
                 ipc::IpcResponse::Ok { data: None }
             }
-            ipc::IpcRequest::GetLogs { level, since_seq } => {
+            ipc::IpcRequest::GetLogs { level, since_seq, space_id } => {
                 let level_filter = level.and_then(|l| match l.to_lowercase().as_str() {
                     "debug" => Some(crate::log::LogLevel::Debug),
                     "info" => Some(crate::log::LogLevel::Info),
@@ -388,7 +399,10 @@ impl Daemon {
                     "error" => Some(crate::log::LogLevel::Error),
                     _ => None,
                 });
-                let logs = crate::log::get_all(level_filter);
+                let logs = match &space_id {
+                    Some(sid) => crate::log::get_by_space(sid, level_filter),
+                    None => crate::log::get_all(level_filter),
+                };
                 let filtered: Vec<crate::log::LogEntry> = match since_seq {
                     Some(s) => logs.into_iter().filter(|e| e.seq > s).collect(),
                     None => logs,

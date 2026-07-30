@@ -39,6 +39,7 @@ pub enum IpcRequest {
     GetLogs {
         level: Option<String>,
         since_seq: Option<u64>,
+        space_id: Option<String>,
     },
     WriteLog {
         entries: Vec<crate::log::LogEntry>,

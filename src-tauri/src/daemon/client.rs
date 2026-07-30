@@ -242,11 +242,12 @@ impl IpcClient {
             .map_err(|e| format!("反序列化响应失败: {}", e))
     }
 
-    /// 获取 daemon 日志（增量）
-    pub async fn get_logs(&self, level: Option<&str>, since_seq: Option<u64>) -> Result<IpcResponse, String> {
+    /// 获取 daemon 日志（增量，可选按 space_id 过滤）
+    pub async fn get_logs(&self, level: Option<&str>, since_seq: Option<u64>, space_id: Option<&str>) -> Result<IpcResponse, String> {
         self.send(&IpcRequest::GetLogs {
             level: level.map(|s| s.to_string()),
             since_seq,
+            space_id: space_id.map(|s| s.to_string()),
         }).await
     }
 

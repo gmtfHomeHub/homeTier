@@ -131,7 +131,7 @@ Self {
         self.db.add_member(&space_id.to_string(), &owner_uuid.to_string(), &space.name, true)?;
         self.spaces.write().await.push(space.clone());
 
-        crate::log_info!(format!("创建空间: {} (id={}, owner={})", space.name, space.id, owner_uuid));
+        crate::log_info!(format!("创建空间: {} (id={}, owner={})", space.name, space.id, owner_uuid), &space.id.to_string());
         Ok(space)
     }
 
@@ -168,7 +168,7 @@ Self {
         };
         self.db.insert_space(&row)?;
         self.spaces.write().await.push(space.clone());
-        crate::log_info!(format!("加入空间: {}", space.name));
+        crate::log_info!(format!("加入空间: {}", space.name), &space.id.to_string());
         Ok(space)
     }
 
@@ -357,22 +357,22 @@ Self {
         match self.ipc_client.connect_space(&space_id.to_string(), config_value).await {
             Ok(crate::daemon::ipc::IpcResponse::Ok { .. }) => {
                 crate::log_info!(format!("连接空间 IPC 成功: {}", space.name), &space_id.to_string());
-                crate::log_debug!("connect: 清理旧聊天服务器");
+                crate::log_debug!("connect: 清理旧聊天服务器", &space_id.to_string());
                 if let Some(old) = self.chat_servers.write().await.remove(space_id) {
                     old.stop().await;
                     crate::log_info!(format!("connect: 旧聊天服务器已停止"), &space_id.to_string());
                 }
-                crate::log_debug!("connect: 清理旧文件服务器");
+                crate::log_debug!("connect: 清理旧文件服务器", &space_id.to_string());
                 if let Some(old) = self.file_servers.write().await.remove(space_id) {
                     old.stop().await;
                     crate::log_info!(format!("connect: 旧文件服务器已停止"), &space_id.to_string());
                 }
-                crate::log_debug!("connect: 清理旧语音服务器");
+                crate::log_debug!("connect: 清理旧语音服务器", &space_id.to_string());
                 if let Some(mut old) = self.voice_servers.write().await.remove(space_id) {
                     old.shutdown();
                     crate::log_info!(format!("connect: 旧语音服务器已停止"), &space_id.to_string());
                 }
-                crate::log_debug!("connect: 清理旧屏幕共享服务器");
+                crate::log_debug!("connect: 清理旧屏幕共享服务器", &space_id.to_string());
                 if let Some(mut old) = self.screen_servers.write().await.remove(space_id) {
                     old.shutdown();
                     crate::log_info!(format!("connect: 旧屏幕共享服务器已停止"), &space_id.to_string());
@@ -393,7 +393,7 @@ Self {
                 let manager = self.clone();
                 let handle = tokio::spawn(async move {
                     if let Err(e) = manager.discover_and_connect_peers(&space_id_child, cancel_token).await {
-                        crate::log_error!(format!("discover_and_connect_peers 失败: {}", e));
+                        crate::log_error!(format!("discover_and_connect_peers 失败: {}", e), &space_id_child.to_string());
                     }
                 });
                 self.connect_handles.write().await.insert(*space_id, handle);
@@ -415,7 +415,7 @@ Self {
         let spaces = self.spaces.read().await;
         for space in spaces.iter() {
             if space.status == SpaceStatus::Connected {
-                crate::log_info!(format!("[退出] 断开空间: {}", space.id));
+                crate::log_info!(format!("[退出] 断开空间: {}", space.id), &space.id.to_string());
                 let _ = self.disconnect(&space.id).await;
             }
         }
@@ -508,7 +508,7 @@ Self {
         server.start(chat_port).await.map_err(|e| format!("启动聊天服务器失败: {}", e))?;
 
         self.chat_servers.write().await.insert(space_id, server);
-        crate::log_info!(format!("聊天服务器已启动: space_id={}, port={}", space_id, chat_port));
+        crate::log_info!(format!("聊天服务器已启动: space_id={}, port={}", space_id, chat_port), &space_id.to_string());
         Ok(())
     }
 
@@ -520,7 +520,7 @@ Self {
         server.start().await.map_err(|e| format!("启动语音服务器失败: {}", e))?;
 
         self.voice_servers.write().await.insert(space_id, server);
-        crate::log_info!(format!("语音服务器已启动: space_id={}, port={}", space_id, voice_port));
+        crate::log_info!(format!("语音服务器已启动: space_id={}, port={}", space_id, voice_port), &space_id.to_string());
         Ok(())
     }
 
@@ -532,7 +532,7 @@ Self {
         server.start().await.map_err(|e| format!("启动屏幕共享服务器失败: {}", e))?;
 
         self.screen_servers.write().await.insert(space_id, server);
-        crate::log_info!(format!("屏幕共享服务器已启动: space_id={}, port={}", space_id, screen_port));
+        crate::log_info!(format!("屏幕共享服务器已启动: space_id={}, port={}", space_id, screen_port), &space_id.to_string());
         Ok(())
     }
 
@@ -545,7 +545,7 @@ Self {
         server.start(file_port).await.map_err(|e| format!("启动文件服务器失败: {}", e))?;
 
         self.file_servers.write().await.insert(space_id, server);
-        crate::log_info!(format!("文件服务器已启动: space_id={}, port={}", space_id, file_port));
+        crate::log_info!(format!("文件服务器已启动: space_id={}, port={}", space_id, file_port), &space_id.to_string());
         Ok(())
     }
 
@@ -569,14 +569,14 @@ Self {
                             crate::log_error!(format!(
                                 "discover_and_connect_peers: get_space_status retry exhausted after {} attempts, last error: {}",
                                 max_retries, e
-                            ));
+                            ), &space_id.to_string());
                             return Err(format!("查询空间状态失败(已重试{}次): {}", max_retries, e));
                         }
                         let delay = RETRY_DELAYS[retries - 1];
                         crate::log_warn!(format!(
                             "discover_and_connect_peers: get_space_status 失败(第{}次), 等待 {}s 重试: {}",
                             retries, delay, e
-                        ));
+                        ), &space_id.to_string());
                         tokio::select! {
                             _ = cancel_token.cancelled() => return Err("连接已取消".to_string()),
                             _ = tokio::time::sleep(std::time::Duration::from_secs(delay)) => {}
@@ -599,7 +599,7 @@ Self {
                 crate::log_info!(format!(
                     "discover_and_connect_peers: 虚拟 IP 尚未就绪 (第{}次), 等待 {}s 重试",
                     retries, delay
-                ));
+                ), &space_id.to_string());
                 tokio::select! {
                     _ = cancel_token.cancelled() => return Err("连接已取消".to_string()),
                     _ = tokio::time::sleep(std::time::Duration::from_secs(delay)) => {}
@@ -627,7 +627,7 @@ Self {
         let peer_count = peers_map.len();
         client.update_peers(peers_map);
 
-        crate::log_info!(format!("已连接到 {} 个 peers", peer_count));
+        crate::log_info!(format!("已连接到 {} 个 peers", peer_count), &space_id.to_string());
         Ok(())
     }
 
@@ -933,7 +933,7 @@ impl SpaceManager {
         self.db.insert_space(&row)?;
         self.db.add_member(&space_id.to_string(), &owner_uuid.to_string(), &space.name, true)?;
         self.spaces.write().await.push(space.clone());
-        crate::log_info!(format!("创建空间: {} (id={}, owner={})", space.name, space.id, owner_uuid));
+        crate::log_info!(format!("创建空间: {} (id={}, owner={})", space.name, space.id, owner_uuid), &space.id.to_string());
         Ok(space)
     }
 
@@ -970,7 +970,7 @@ impl SpaceManager {
         };
         self.db.insert_space(&row)?;
         self.spaces.write().await.push(space.clone());
-        crate::log_info!(format!("加入空间: {}", space.name));
+        crate::log_info!(format!("加入空间: {}", space.name), &space.id.to_string());
         Ok(space)
     }
 

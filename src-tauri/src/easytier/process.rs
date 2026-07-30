@@ -183,6 +183,85 @@ exit 1
     }
 
     /// 获取进程 ID
+    /// 非 macOS: 直接启动 easytier-core 守护进程（idle 模式），捕获 stdout/stderr 到 LOG_STORE
+    #[cfg(not(target_os = "macos"))]
+    pub async fn start_daemon(binary: &PathBuf, config_dir: &PathBuf, rpc_port: u16) -> Result<Self, String> {
+        let _ = std::fs::create_dir_all(config_dir);
+        crate::log_info!(format!("[EasyTierProcess] 启动守护进程: {} --daemon --config-dir {} --rpc-portal {}", binary.display(), config_dir.display(), rpc_port));
+
+        let mut cmd = Command::new(binary);
+        cmd.arg("--daemon")
+            .arg("--config-dir")
+            .arg(config_dir)
+            .arg("--rpc-portal")
+            .arg(rpc_port.to_string());
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        let mut child = cmd.spawn().map_err(|e| {
+            let msg = format!("启动 easytier-core 守护进程失败: {}", e);
+            crate::log_error!(&msg);
+            msg
+        })?;
+
+        // 捕获 stdout 到 LOG_STORE
+        if let Some(stdout) = child.stdout.take() {
+            tokio::spawn(async move {
+                use tokio::io::AsyncBufReadExt;
+                let reader = tokio::io::BufReader::new(stdout);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    crate::log_info!(format!("[easytier stdout] {}", line));
+                }
+            });
+        }
+        // 捕获 stderr 到 LOG_STORE
+        if let Some(stderr) = child.stderr.take() {
+            tokio::spawn(async move {
+                use tokio::io::AsyncBufReadExt;
+                let reader = tokio::io::BufReader::new(stderr);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    crate::log_info!(format!("[easytier stderr] {}", line));
+                }
+            });
+        }
+
+        let pid = child.id();
+        crate::log_info!(format!("[EasyTierProcess] 守护进程已启动, pid={:?}, rpc_port={}", pid, rpc_port));
+
+        // 等待 RPC 端口就绪（最多 20s）
+        for i in 0..40 {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            match tokio::net::TcpStream::connect(format!("127.0.0.1:{}", rpc_port)).await {
+                Ok(_) => {
+                    crate::log_info!(format!("[EasyTierProcess] 守护进程 RPC 端口就绪 (尝试次数: {})", i + 1));
+                    return Ok(Self {
+                        child: Mutex::new(Some(child)),
+                        binary_path: binary.clone(),
+                        config_dir: config_dir.clone(),
+                        rpc_port: Some(rpc_port),
+                    });
+                }
+                Err(_) => {
+                    if i % 10 == 9 {
+                        crate::log_info!(format!("[EasyTierProcess] 等待 RPC 端口就绪 ({}/40)...", i + 1));
+                    }
+                }
+            }
+        }
+
+        crate::log_error!(format!("[EasyTierProcess] 守护进程 RPC 端口未能在 20s 内就绪"));
+        let _ = child.kill();
+        Err("easytier-core 守护进程启动超时".to_string())
+    }
+
     #[cfg(not(target_os = "macos"))]
     pub fn pid(&self) -> Option<u32> {
         self.child.lock().ok().and_then(|guard| guard.as_ref().and_then(|c| c.id()))
