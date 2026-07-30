@@ -251,6 +251,7 @@ impl EasyTierManager {
 
     /// 清除所有运行中的网络实例（通过 RPC），防止 TOML 文件恢复导致的 instance_id 冲突
     async fn clear_all_instances(&self) -> Result<(), String> {
+        use std::time::Duration;
         use easytier::proto::rpc_impl::standalone::StandAloneClient;
         use easytier::proto::rpc_types::controller::BaseController;
         use easytier::tunnel::tcp::TcpTunnelConnector;
@@ -271,11 +272,31 @@ impl EasyTierManager {
             .await
             .map_err(|e| format!("连接 easytier-core RPC 失败: {}", e))?;
 
-        let list_req = ListNetworkInstanceRequest {};
-        let list_resp = match manage_service.list_network_instance(ctrl.clone(), list_req).await {
-            Ok(resp) => resp,
-            Err(e) => {
-                crate::log_warn!(format!("EasyTierManager.clear_all_instances: list_network_instance failed: {}, 假定无实例", e));
+        // 带重试的列表查询（easytier-core RPC 可能尚未就绪）
+        let mut last_error = None;
+        let mut list_resp = None;
+
+        for attempt in 1..=3 {
+            match manage_service.list_network_instance(ctrl.clone(), ListNetworkInstanceRequest {}).await {
+                Ok(resp) => {
+                    list_resp = Some(resp);
+                    crate::log_debug!(format!("EasyTierManager.clear_all_instances: list_network_instance 成功(第{}次)", attempt));
+                    break;
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    if attempt < 3 {
+                        crate::log_warn!(format!("EasyTierManager.clear_all_instances: RPC 未就绪(第{}次), 1s 后重试", attempt));
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
+                }
+            }
+        }
+
+        let list_resp = match list_resp {
+            Some(resp) => resp,
+            None => {
+                crate::log_warn!(format!("EasyTierManager.clear_all_instances: RPC 始终未就绪: {:?}, 假定无实例", last_error));
                 return Ok(());
             }
         };

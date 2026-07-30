@@ -91,6 +91,24 @@ impl Daemon {
         let easytier = self.easytier.clone();
         tokio::spawn(async move {
             crate::log_info!("[Daemon] 正在启动 easytier-core 守护进程...");
+
+            // 清除之前 session 残留的 TOML 配置文件，防止 easytier-core 恢复旧实例
+            let config_dir = easytier.get_config_dir();
+            crate::log_debug!("[Daemon] 清除 config_dir 中的旧 TOML 文件");
+            if let Ok(entries) = std::fs::read_dir(&config_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().map_or(false, |ext| ext == "toml") {
+                        if let Err(e) = std::fs::remove_file(&path) {
+                            crate::log_warn!(format!("[Daemon] 删除旧 TOML 文件失败 {}: {}", path.display(), e));
+                        } else {
+                            crate::log_debug!(format!("[Daemon] 已删除旧 TOML 文件: {}", path.display()));
+                        }
+                    }
+                }
+            }
+            crate::log_debug!("[Daemon] config_dir 清理完成");
+
             let binary = match easytier.downloader.ensure_binary().await {
                 Ok(b) => b,
                 Err(e) => {
