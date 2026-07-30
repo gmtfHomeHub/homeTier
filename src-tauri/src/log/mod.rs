@@ -155,23 +155,23 @@ pub fn get_by_space(space_id: &str, level_filter: Option<LogLevel>) -> Vec<LogEn
 #[macro_export]
 macro_rules! log_info {
     ($msg:expr) => { $crate::log::log($crate::log::LogLevel::Info, module_path!(), $msg.into(), None) };
-    ($msg:expr, $space:expr) => { $crate::log::log($crate::log::LogLevel::Info, module_path!(), $msg.into(), Some($space.into())) };
+    ($msg:expr, $space:expr) => { $crate::log::log($crate::log::LogLevel::Info, module_path!(), $msg.into(), Some(format!("{}", $space))) };
 }
 
 #[macro_export]
 macro_rules! log_error {
     ($msg:expr) => { $crate::log::log($crate::log::LogLevel::Error, module_path!(), $msg.into(), None) };
-    ($msg:expr, $space:expr) => { $crate::log::log($crate::log::LogLevel::Error, module_path!(), $msg.into(), Some($space.into())) };
+    ($msg:expr, $space:expr) => { $crate::log::log($crate::log::LogLevel::Error, module_path!(), $msg.into(), Some(format!("{}", $space))) };
 }
 
 #[macro_export]
 macro_rules! log_warn {
     ($msg:expr) => { $crate::log::log($crate::log::LogLevel::Warning, module_path!(), $msg.into(), None) };
-    ($msg:expr, $space:expr) => { $crate::log::log($crate::log::LogLevel::Warning, module_path!(), $msg.into(), Some($space.into())) };
+    ($msg:expr, $space:expr) => { $crate::log::log($crate::log::LogLevel::Warning, module_path!(), $msg.into(), Some(format!("{}", $space))) };
 }
 
 #[macro_export]
 macro_rules! log_debug {
     ($msg:expr) => { $crate::log::log($crate::log::LogLevel::Debug, module_path!(), $msg.into(), None) };
-    ($msg:expr, $space:expr) => { $crate::log::log($crate::log::LogLevel::Debug, module_path!(), $msg.into(), Some($space.into())) };
+    ($msg:expr, $space:expr) => { $crate::log::log($crate::log::LogLevel::Debug, module_path!(), $msg.into(), Some(format!("{}", $space))) };
 }
