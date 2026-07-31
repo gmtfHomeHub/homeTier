@@ -873,7 +873,6 @@ impl EasyTierManager {
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 impl EasyTierManager {
-    use crate::types::NetworkStatus;
 
     pub fn new(config_dir: PathBuf, app_data_dir: PathBuf) -> Self {
         let downloader = EasyTierDownloader::new(&app_data_dir);

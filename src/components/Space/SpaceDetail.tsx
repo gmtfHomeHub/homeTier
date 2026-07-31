@@ -11,6 +11,7 @@ import { ConfirmDialog } from "../Common/ConfirmDialog";
 import { ScreenShareView } from "../ScreenShare/ScreenShareView";
 import { AppNavPage } from "../AppNav/AppNavPage";
 import { NetworkStatsPanel } from "../Common/NetworkStatsPanel";
+import { SpaceStatus } from "../../enum";
 
 export function SpaceDetail() {
   const { t } = useTranslation();
@@ -25,6 +26,7 @@ export function SpaceDetail() {
   const space = spaces.find((s) => s.id === id);
   const isOwner = !!space?.owner_id;
   const callerId = space?.owner_id || "";
+  const isRunning = space?.status === SpaceStatus.CED;
 
   const handleDelete = async () => {
     if (!id || !space) return;
@@ -62,7 +64,7 @@ export function SpaceDetail() {
         <div className="flex items-center gap-2">
           <div
             className={`w-2.5 h-2.5 rounded-full ${
-              space.status === "connected"
+              isRunning
                 ? "bg-[var(--color-success)]"
                 : space.status === "connecting"
                 ? "bg-yellow-400 animate-pulse"
@@ -70,7 +72,7 @@ export function SpaceDetail() {
             }`}
           />
           <span className="font-semibold">{space.name}</span>
-          {space.status !== "connected" ? (
+          {!isRunning ? (
             <Button
               onClick={() => connect(space.id)}
               variant="soft"
@@ -94,7 +96,7 @@ export function SpaceDetail() {
               {space.virtual_ip}
             </span>
           )}
-          {space.status === "connected" && (
+          {isRunning && (
             <MemberCount spaceId={id} connected={true} />
           )}
         </div>
@@ -139,7 +141,7 @@ export function SpaceDetail() {
          <NetworkStatsPanel spaceId={id} />
        </div>
 
-       {space.status === "connected" && (
+       {isRunning && (
          <div className="px-4 py-2">
            <ScreenShareView />
          </div>

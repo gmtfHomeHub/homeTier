@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 import * as api from "../../utils/api";
 import { useAppTabsStore } from "../../stores/appTabsStore";
 import type { SpaceApp, Space } from "../../types";
+import { SpaceStatus } from '../../enum';
 import { AppFormDialog } from "./AppFormDialog";
 
 interface AppNavPageProps {
@@ -23,6 +24,8 @@ export function AppNavPage({ space, isOwner, callerId }: AppNavPageProps) {
   const [editing, setEditing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editApp, setEditApp] = useState<SpaceApp | null>(null);
+
+  const isRunning = space?.status === SpaceStatus.CED;
 
   const loadApps = async () => {
     setLoading(true);
@@ -72,7 +75,7 @@ export function AppNavPage({ space, isOwner, callerId }: AppNavPageProps) {
   };
 
   const openApp = (app: SpaceApp) => () => {
-    if (!editing) {
+    if (!editing && isRunning) {
       useAppTabsStore.getState().openApp(space, app);
       navigate(`/space/${space.id}/app/${app.id}`);
       return;
@@ -119,8 +122,12 @@ export function AppNavPage({ space, isOwner, callerId }: AppNavPageProps) {
 
       {apps.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-[var(--color-text-secondary)]">
-          <div className="mb-2 text-4xl">📋</div>
-          <Text size="2" mb="2">暂无应用</Text>
+          {!editing && (
+            <>
+              <div className="mb-2 text-4xl">📋</div>
+              <Text size="2" mb="2">暂无应用</Text>
+            </>
+          )}
           {isOwner && editing && (
             <Button onClick={handleAdd()} variant="soft" size="1">
               <Plus size={14} /> 添加应用
@@ -140,7 +147,7 @@ export function AppNavPage({ space, isOwner, callerId }: AppNavPageProps) {
               <div className="grid w-full grid-cols-4 gap-3 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))' }}>
                 {grouped[cat].map((app: SpaceApp, i) => (
                   <Fragment key={app.id}>
-                    <Box className="relative cursor-pointer group" onClick={openApp(app)}>
+                    <Box className={`relative group ${isRunning ? 'cursor-pointer' : 'gray disabled'}`} onClick={openApp(app)}>
                       <Card>
                         <Flex gap="3" align="center">
                           {app.icon ? (

@@ -1,3 +1,4 @@
+import { SpaceStatus } from '../enum';
 export interface Space {
   id: string;
   name: string;
@@ -8,7 +9,7 @@ export interface Space {
   created_at: string;
   last_connected_at?: string;
   is_auto_connect: boolean;
-  status: "disconnected" | "connecting" | "connected";
+  status: SpaceStatus;
   virtual_ip?: string;
   member_count: number;
   config_json?: string;
