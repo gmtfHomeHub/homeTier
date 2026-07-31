@@ -40,8 +40,42 @@ static PROXY_SERVER: OnceLock<Arc<proxy::ProxyServer>> = OnceLock::new();
 static ELEVATED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 // 全局 daemon 子进程引用（供 Exit 事件兜底 kill 使用，try_state 在 Exit 时可能失效）
+// macOS debug（GUI 非 root）：daemon 经 osascript 提权启动，无 Child 句柄，用 Pid 跟踪；
+// 其余场景 daemon 是 GUI 直接子进程，用 Child 跟踪。
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-static DAEMON_CHILD: OnceLock<Arc<std::sync::Mutex<Option<std::process::Child>>>> = OnceLock::new();
+enum DaemonHandle {
+    Child(std::process::Child),
+    #[cfg(target_os = "macos")]
+    Pid(u32),
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl DaemonHandle {
+    fn is_alive(&mut self) -> bool {
+        match self {
+            DaemonHandle::Child(child) => child.try_wait().map(|s| s.is_none()).unwrap_or(false),
+            #[cfg(target_os = "macos")]
+            DaemonHandle::Pid(pid) => unsafe {
+                let ret = libc::kill(*pid as i32, 0);
+                if ret == 0 {
+                    return true;
+                }
+                std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+            },
+        }
+    }
+
+    fn pid(&self) -> Option<u32> {
+        match self {
+            DaemonHandle::Child(child) => Some(child.id()),
+            #[cfg(target_os = "macos")]
+            DaemonHandle::Pid(pid) => Some(*pid),
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+static DAEMON_CHILD: OnceLock<Arc<std::sync::Mutex<Option<DaemonHandle>>>> = OnceLock::new();
 
 /// 检查当前进程是否以提权模式运行（Windows UAC / macOS）
 #[cfg(any(target_os = "windows", target_os = "macos"))]
@@ -110,16 +144,16 @@ pub fn run() -> std::process::ExitCode {
             {
                 crate::log_info!("[GUI] 启动 daemon 子进程...");
                 match spawn_daemon(&app_data) {
-                    Ok(mut child) => {
-                        crate::log_info!("[GUI] daemon 子进程已启动");
-                        let child_arc = Arc::new(std::sync::Mutex::new(Some(child)));
+                    Ok(mut daemon_handle) => {
+                        crate::log_info!(format!("[GUI] daemon 已启动, pid={:?}", daemon_handle.pid()));
+                        let handle_arc = Arc::new(std::sync::Mutex::new(Some(daemon_handle)));
                         // 存到全局 OnceLock（Exit 事件兜底 kill 用）
-                        let _ = DAEMON_CHILD.set(child_arc.clone());
-                        app.manage(child_arc.clone());
-                        // 后台轮询 daemon 就绪（signal 文件 + 子进程存活检测）
+                        let _ = DAEMON_CHILD.set(handle_arc.clone());
+                        app.manage(handle_arc.clone());
+                        // 后台轮询 daemon 就绪（signal 文件 + 进程存活检测）
                         let app_handle = app.handle().clone();
                         let daemon_ready_flag = daemon_ready.clone();
-                        let child_arc_thread = child_arc.clone();
+                        let handle_arc_thread = handle_arc.clone();
                         let signal_path = app_data.join("daemon_ready.signal");
                         std::thread::spawn(move || {
                             let daemon_ready_bool = daemon_ready_flag.0;
@@ -132,21 +166,15 @@ pub fn run() -> std::process::ExitCode {
                                     crate::log_info!("[GUI] daemon 已就绪（signal 文件检测到）");
                                     return;
                                 }
-                                // 方式二：检查子进程是否已退出
-                                if let Ok(ref mut child_opt) = child_arc_thread.lock() {
-                                    if let Some(ref mut child) = child_opt.as_mut() {
-                                        match child.try_wait() {
-                                            Ok(Some(status)) => {
-                                                let reason_str = format!("daemon 进程退出: {}", status);
-                                                crate::log_error!(format!("[GUI] daemon 子进程意外退出: {:?}", status));
-                                                *daemon_ready_reason.lock().unwrap() = Some(reason_str.clone());
-                                                let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": false, "reason": reason_str }));
-                                                return;
-                                            }
-                                            Ok(None) => {}
-                                            Err(e) => {
-                                                crate::log_error!(format!("[GUI] try_wait 失败: {}", e));
-                                            }
+                                // 方式二：检查 daemon 进程是否已退出
+                                if let Ok(ref mut handle_opt) = handle_arc_thread.lock() {
+                                    if let Some(ref mut handle) = handle_opt.as_mut() {
+                                        if !handle.is_alive() {
+                                            let reason_str = format!("daemon 进程已退出");
+                                            crate::log_error!("[GUI] daemon 进程意外退出");
+                                            *daemon_ready_reason.lock().unwrap() = Some(reason_str.clone());
+                                            let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": false, "reason": reason_str }));
+                                            return;
                                         }
                                     }
                                 }
@@ -484,9 +512,9 @@ pub fn run() -> std::process::ExitCode {
                             let exited = guard
                                 .lock()
                                 .ok()
-                                .and_then(|mut g| g.as_mut().and_then(|c| c.try_wait().ok()))
-                                .flatten()
-                                .is_some();
+                                .and_then(|mut g| g.as_mut())
+                                .map(|h| !h.is_alive())
+                                .unwrap_or(true);
                             if exited {
                                 crate::log_info!("[GUI] daemon 已正常退出");
                                 break;
@@ -496,19 +524,29 @@ pub fn run() -> std::process::ExitCode {
                     }
                 }
 
-                // 3. 强制终止 daemon 子进程（兜底，若仍未退出）
+                // 3. 强制终止 daemon 进程（兜底，若仍未退出）
                 if let Some(guard) = DAEMON_CHILD.get() {
-                    if let Ok(mut child_opt) = guard.lock() {
-                        if let Some(mut child) = child_opt.take() {
-                            let still_running = match child.try_wait() {
-                                Ok(Some(_)) => false,
-                                Ok(None) => true,
-                                Err(_) => false,
-                            };
-                            if still_running {
-                                let _ = child.kill();
-                                let _ = child.wait();
-                                crate::log_info!("[GUI] daemon 子进程已强制终止");
+                    if let Ok(mut handle_opt) = guard.lock() {
+                        if let Some(mut handle) = handle_opt.take() {
+                            if handle.is_alive() {
+                                match handle {
+                                    DaemonHandle::Child(mut child) => {
+                                        let _ = child.kill();
+                                        let _ = child.wait();
+                                        crate::log_info!("[GUI] daemon 子进程已强制终止");
+                                    }
+                                    #[cfg(target_os = "macos")]
+                                    DaemonHandle::Pid(pid) => {
+                                        // GUI 非 root 无法直接 kill root daemon，经 osascript 提权兜底
+                                        crate::log_warn!(format!("[GUI] daemon 未在超时内退出, 尝试 osascript 提权终止 pid={}", pid));
+                                        let _ = std::process::Command::new("osascript")
+                                            .arg("-e")
+                                            .arg(format!(r#"do shell script "kill -9 {}" with administrator privileges"#, pid))
+                                            .stdout(std::process::Stdio::null())
+                                            .stderr(std::process::Stdio::null())
+                                            .spawn();
+                                    }
+                                }
                             }
                         }
                     }
@@ -595,14 +633,104 @@ pub fn run_daemon(config_dir: std::path::PathBuf, data_dir: std::path::PathBuf) 
 }
 
 /// Desktop: 启动 daemon 子进程
+/// macOS 且当前进程非 root（debug/dev 模式）：经 osascript 以管理员权限启动 daemon，
+/// 使 daemon 获得 root 权限，从而可以终止同样以 root 运行的 easytier-core；
+/// 其余场景：直接作为子进程启动。
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn spawn_daemon(data_dir: &std::path::Path) -> Result<std::process::Child, String> {
+fn spawn_daemon(data_dir: &std::path::Path) -> Result<DaemonHandle, String> {
     use std::io::BufRead;
     use std::process::{Command, Stdio};
 
     let current_exe = std::env::current_exe().map_err(|e| format!("获取当前可执行文件路径失败: {}", e))?;
 
     crate::log_info!("[GUI] 启动 daemon 子进程");
+
+    #[cfg(target_os = "macos")]
+    {
+        let is_root = unsafe { libc::geteuid() == 0 };
+        if !is_root {
+            // debug/dev 模式：GUI 未提权，经 osascript 以 root 启动 daemon
+            crate::log_info!("[GUI] macOS 非 root 环境，经 osascript 提权启动 daemon");
+            let log_file = data_dir.join("daemon.log");
+            let script_path = std::path::PathBuf::from("/tmp/homeTier-daemon-launch.sh");
+            let script_content = format!(
+                r#"#!/bin/sh
+"{}" --daemon --daemon-config "{}" --daemon-data "{}" < /dev/null > "{}" 2>&1 &
+DAEMON_PID=$!
+echo "homeTier daemon pid=$DAEMON_PID"
+echo "$DAEMON_PID" > "{}/daemon.pid"
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
+    [ -f "{}" ] && exit 0
+    kill -0 $DAEMON_PID > /dev/null 2>&1 || exit 1
+    sleep 1
+done
+echo "ERROR: homeTier daemon not ready after 30s" >&2
+echo "=== daemon.log dump ===" >&2
+cat "{}" >&2
+exit 1
+"#,
+                current_exe.display(),
+                data_dir.display(),
+                data_dir.display(),
+                log_file.display(),
+                data_dir.display(),
+                data_dir.join("daemon_ready.signal").display(),
+                log_file.display()
+            );
+
+            std::fs::write(&script_path, &script_content)
+                .map_err(|e| format!("写入 daemon 启动脚本失败: {}", e))?;
+
+            let escaped_script = script_path.as_path().to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
+            let osascript_program = format!(
+                "do shell script \"/bin/sh {}\" with administrator privileges",
+                escaped_script
+            );
+
+            crate::log_info!("[GUI] 正在弹出授权对话框以启动 daemon...");
+
+            let output = Command::new("osascript")
+                .arg("-e")
+                .arg(&osascript_program)
+                .output()
+                .map_err(|e| {
+                    let msg = format!("macOS 提权启动 daemon 失败: {}", e);
+                    crate::log_error!(&msg);
+                    msg
+                })?;
+
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr_str = String::from_utf8_lossy(&output.stderr);
+            crate::log_info!(format!("[GUI] osascript stdout: {}", stdout.trim()));
+            if !stderr_str.is_empty() {
+                if stderr_str.contains("User canceled") || stderr_str.contains("canceled") {
+                    return Err("用户取消了授权".to_string());
+                }
+                crate::log_error!(format!("[GUI] osascript stderr: {}", stderr_str));
+                crate::log_error!(format!("[GUI] daemon.log 内容: {}",
+                    std::fs::read_to_string(&log_file).unwrap_or_else(|_| "(无法读取)".into())
+                ));
+                return Err(format!("daemon 启动脚本失败: {}", stderr_str));
+            }
+
+            if !output.status.success() {
+                let log_content = std::fs::read_to_string(&log_file).unwrap_or_else(|_| "(无法读取)".into());
+                crate::log_error!(format!("[GUI] daemon.log: {}", log_content));
+                return Err(format!("daemon 启动脚本退出码: {}", output.status));
+            }
+
+            let daemon_pid = stdout
+                .lines()
+                .find_map(|l| l.trim().strip_prefix("homeTier daemon pid="))
+                .and_then(|s| s.trim().parse::<u32>().ok());
+            let pid = daemon_pid.ok_or_else(|| {
+                crate::log_error!("[GUI] 未能从 osascript 输出解析 daemon PID");
+                "解析 daemon PID 失败".to_string()
+            })?;
+            crate::log_info!(format!("[GUI] daemon 提权启动成功, pid={}", pid));
+            return Ok(DaemonHandle::Pid(pid));
+        }
+    }
 
     let mut cmd = Command::new(&current_exe);
     cmd.arg("--daemon")
@@ -638,5 +766,5 @@ fn spawn_daemon(data_dir: &std::path::Path) -> Result<std::process::Child, Strin
         });
     }
 
-    Ok(child)
+    Ok(DaemonHandle::Child(child))
 }

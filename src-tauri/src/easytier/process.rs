@@ -5,15 +5,11 @@ use tokio::process::{Child, Command};
 
 /// EasyTier core 进程包装
 ///
-/// macOS: 应用启动时通过 osascript 提权启动守护进程（idle, 无网络配置），
-///        后续通过 RPC run_network_instance / delete_network_instance 热切换网络，
-///        无需再次弹窗授权。
-/// 其他平台：直接作为子进程管理。
+/// daemon 以 root 运行（macOS 经 osascript 提权启动 daemon），
+/// easytier-core 作为 daemon 的直接子进程启动，继承 root 权限，
+/// 因此 daemon 可通过 child.kill() 直接终止它（root→root，无 EPERM）。
 pub struct EasyTierProcess {
-    #[cfg(not(target_os = "macos"))]
     child: Mutex<Option<Child>>,
-    #[cfg(target_os = "macos")]
-    child: Mutex<Option<u32>>,
     binary_path: PathBuf,
     config_dir: PathBuf,
     /// RPC 端口
@@ -21,7 +17,6 @@ pub struct EasyTierProcess {
 }
 
 impl EasyTierProcess {
-    #[cfg(not(target_os = "macos"))]
     pub async fn start(binary: &PathBuf, config: &PathBuf, rpc_port: Option<u16>) -> Result<Self, String> {
         let rpc_arg = rpc_port.unwrap_or(15888);
         crate::log_info!(format!("[EasyTierProcess] 启动: {} --config-file {} --rpc-portal {}", binary.display(), config.display(), rpc_arg));
@@ -71,134 +66,7 @@ impl EasyTierProcess {
         Ok(Self { child: Mutex::new(Some(child)), binary_path: binary.clone(), config_dir, rpc_port: Some(rpc_arg) })
     }
 
-    /// macOS: 通过 osascript 以 root 权限启动 easytier-core 守护进程（idle 模式）
-    /// 先写入临时脚本到 /tmp/easytier-daemon.sh，再通过 osascript 执行该脚本。
-    /// 这样做的好处：避免 osascript 的复杂引号转义；可以用 nohup 保持进程；
-    /// easytier-core 的输出记录到日志文件，方便调试。
-    #[cfg(target_os = "macos")]
-    pub async fn start_daemon(binary: &PathBuf, config_dir: &PathBuf, rpc_port: u16) -> Result<Self, String> {
-        let _ = std::fs::create_dir_all(config_dir);
-        crate::log_info!(format!("[EasyTierProcess] macOS 守护进程启动, config_dir={}", config_dir.display()));
-        crate::log_info!(format!("[EasyTierProcess] 二进制: {}, RPC端口: {}", binary.display(), rpc_port));
-
-        let log_file = config_dir.join("easytier-daemon.log");
-        let script_path = std::path::PathBuf::from("/tmp/easytier-daemon-launch.sh");
-        let script_content = format!(
-            r#"#!/bin/sh
-"{}" --rpc-portal {} --daemon --config-dir "{}" < /dev/null > "{}" 2>&1 &
-EASETIERD_PID=$!
-echo "easytier-core pid=$EASETIERD_PID"
-for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-    nc -z 127.0.0.1 {} > /dev/null 2>&1 && exit 0
-    sleep 1
-done
-echo "ERROR: easytier-core RPC port not ready after 20s" >&2
-echo "=== easytier-core stdout/stderr dump ===" >&2
-cat "{}" >&2
-exit 1
-"#,
-            binary.display(),
-            rpc_port,
-            config_dir.display(),
-            log_file.display(),
-            rpc_port,
-            log_file.display()
-        );
-
-        std::fs::write(&script_path, &script_content)
-            .map_err(|e| format!("写入启动脚本失败: {}", e))?;
-
-        crate::log_info!(format!("[EasyTierProcess] 启动脚本已写入: {}", script_path.display()));
-
-        let escaped_script = script_path.as_path().to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
-        let osascript_program = format!(
-            "do shell script \"/bin/sh {}\" with administrator privileges",
-            escaped_script
-        );
-
-        crate::log_info!(format!("[EasyTierProcess] 正在弹出授权对话框..."));
-
-        let output = std::process::Command::new("osascript")
-            .arg("-e")
-            .arg(&osascript_program)
-            .output()
-            .map_err(|e| {
-                let msg = format!("macOS 提权启动守护进程失败: {}", e);
-                crate::log_error!(&msg);
-                msg
-            })?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr_str = String::from_utf8_lossy(&output.stderr);
-        crate::log_info!(format!("[EasyTierProcess] osascript stdout: {}", stdout.trim()));
-        if !stderr_str.is_empty() {
-            if stderr_str.contains("User canceled") || stderr_str.contains("canceled") {
-                return Err("用户取消了授权".to_string());
-            }
-            crate::log_error!(format!("[EasyTierProcess] osascript stderr: {}", stderr_str));
-            crate::log_error!(format!("[EasyTierProcess] easytier-daemon.log 内容: {}",
-                std::fs::read_to_string(&log_file).unwrap_or_else(|_| "(无法读取)".into())
-            ));
-            return Err(format!("守护进程启动脚本失败: {}", stderr_str));
-        }
-
-        if !output.status.success() {
-            let log_content = std::fs::read_to_string(&log_file).unwrap_or_else(|_| "(无法读取)".into());
-            crate::log_error!(format!("[EasyTierProcess] launchd 日志: {}", log_content));
-            return Err(format!("启动脚本退出码: {}", output.status));
-        }
-
-        // 从 osascript stdout 解析 easytier-core 真实 PID（脚本输出 "easytier-core pid=NNN"）
-        let real_pid = stdout
-            .lines()
-            .find_map(|l| l.trim().strip_prefix("easytier-core pid="))
-            .and_then(|s| s.trim().parse::<u32>().ok());
-        crate::log_info!(format!("[EasyTierProcess] 解析到 easytier-core 真实 PID: {:?}", real_pid));
-
-        // 将 PID 写入 config_dir，供退出清理兜底使用
-        if let Some(pid) = real_pid {
-            let pid_file = config_dir.join("easytier-core.pid");
-            let _ = std::fs::write(&pid_file, pid.to_string());
-            crate::log_info!(format!("[EasyTierProcess] PID 已写入: {}", pid_file.display()));
-        }
-
-        crate::log_info!(format!("[EasyTierProcess] macOS osascript 授权成功, easytier-core 应在端口 {} 监听", rpc_port));
-        Ok(Self { child: Mutex::new(real_pid), binary_path: binary.clone(), config_dir: config_dir.clone(), rpc_port: Some(rpc_port) })
-    }
-
-    /// macOS: 通过 osascript 以 root 权限启动 easytier-core（带配置文件的单网络模式，保留兼容）
-    #[cfg(target_os = "macos")]
-    pub async fn start(binary: &PathBuf, config: &PathBuf, rpc_port: Option<u16>) -> Result<Self, String> {
-        let rpc_arg = rpc_port.unwrap_or(15888);
-        crate::log_info!(format!("[EasyTierProcess] macOS 提权启动: {} --config-file {} --rpc-portal {}", binary.display(), config.display(), rpc_arg));
-
-        let escaped_binary = binary.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
-        let escaped_config = config.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
-        let script = format!(
-            "do shell script \"{} --config-file '{}' --rpc-portal {} --no-log-file > /dev/null 2>&1 &\" with administrator privileges",
-            escaped_binary, escaped_config, rpc_arg
-        );
-
-        std::process::Command::new("osascript")
-            .arg("-e")
-            .arg(&script)
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                let msg = format!("macOS 提权启动 easytier-core 失败: {}", e);
-                crate::log_error!(&msg);
-                msg
-            })?;
-
-        let config_dir = config.parent().map(|p| p.to_path_buf()).unwrap_or_default();
-        crate::log_info!(format!("[EasyTierProcess] macOS osascript 已触发, rpc_port={}", rpc_arg));
-        Ok(Self { child: Mutex::new(Some(0)), binary_path: binary.clone(), config_dir, rpc_port: Some(rpc_arg) })
-    }
-
     /// 获取进程 ID
-    /// 非 macOS: 直接启动 easytier-core 守护进程（idle 模式），捕获 stdout/stderr 到 LOG_STORE
-    #[cfg(not(target_os = "macos"))]
     pub async fn start_daemon(binary: &PathBuf, config_dir: &PathBuf, rpc_port: u16) -> Result<Self, String> {
         let _ = std::fs::create_dir_all(config_dir);
         crate::log_info!(format!("[EasyTierProcess] 启动守护进程: {} --daemon --config-dir {} --rpc-portal {}", binary.display(), config_dir.display(), rpc_port));
@@ -282,14 +150,8 @@ exit 1
         Err("easytier-core 守护进程启动超时".to_string())
     }
 
-    #[cfg(not(target_os = "macos"))]
     pub fn pid(&self) -> Option<u32> {
         self.child.lock().ok().and_then(|guard| guard.as_ref().and_then(|c| c.id()))
-    }
-
-    #[cfg(target_os = "macos")]
-    pub fn pid(&self) -> Option<u32> {
-        self.child.lock().ok().and_then(|guard| *guard)
     }
 
     /// 获取 RPC 端口
@@ -317,8 +179,7 @@ exit 1
         }
     }
 
-    /// 停止进程（macOS 通过 RPC shutdown 端点；其他平台 kill 子进程）
-    #[cfg(not(target_os = "macos"))]
+    /// 停止进程（终止并等待子进程退出；退出后移除 PID 文件，避免 GUI 兜底清理误报）
     pub async fn stop(&self) -> Result<(), String> {
         let mut child_opt = self.child.lock().map_err(|e| format!("锁获取失败: {}", e))?.take();
         if let Some(ref mut child) = child_opt {
@@ -326,66 +187,11 @@ exit 1
             child.kill().await.map_err(|e| format!("终止进程失败: {}", e))?;
             child.wait().await.map_err(|e| format!("等待进程退出失败: {}", e))?;
             crate::log_info!("[EasyTierProcess] 进程已停止");
+            let pid_file = self.config_dir.join("easytier-core.pid");
+            let _ = std::fs::remove_file(&pid_file);
         }
         *self.child.lock().map_err(|e| format!("锁获取失败: {}", e))? = child_opt;
         Ok(())
-    }
-
-    /// macOS: 通过真实 PID 发送 SIGTERM/SIGKILL 停止 easytier-core 进程
-    #[cfg(target_os = "macos")]
-    pub async fn stop(&self) -> Result<(), String> {
-        let pid = self.child.lock().map_err(|e| format!("锁获取失败: {}", e))?.take();
-
-        if let Some(pid) = pid {
-            if pid == 0 {
-                // 没有真实 PID（旧版本启动），尝试通过 RPC 端口进程名匹配兜底
-                crate::log_warn!("[EasyTierProcess] 无真实 PID（旧版启动），尝试 pkill 兜底");
-                let _ = std::process::Command::new("pkill")
-                    .arg("-f")
-                    .arg("easytier-core --rpc-portal")
-                    .status();
-            } else {
-                crate::log_info!(format!("[EasyTierProcess] 停止 easytier-core, pid={}", pid));
-                // 先 SIGTERM 优雅退出
-                unsafe {
-                    libc::kill(pid as i32, libc::SIGTERM);
-                }
-                // 等待退出（最多 5s）
-                for _ in 0..50 {
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                    if !self.pid_alive(pid) {
-                        break;
-                    }
-                }
-                // 仍存活则 SIGKILL 强杀
-                if self.pid_alive(pid) {
-                    crate::log_warn!(format!("[EasyTierProcess] easytier-core 未在 5s 内退出，发送 SIGKILL, pid={}", pid));
-                    unsafe {
-                        libc::kill(pid as i32, libc::SIGKILL);
-                    }
-                }
-            }
-        } else {
-            crate::log_warn!("[EasyTierProcess] 无 PID 记录，跳过停止");
-        }
-
-        // 清理 PID 文件
-        let pid_file = self.config_dir.join("easytier-core.pid");
-        let _ = std::fs::remove_file(&pid_file);
-
-        *self.child.lock().map_err(|e| format!("锁获取失败: {}", e))? = None;
-        Ok(())
-    }
-
-    #[cfg(target_os = "macos")]
-    fn pid_alive(&self, pid: u32) -> bool {
-        unsafe {
-            let ret = libc::kill(pid as i32, 0);
-            if ret == 0 {
-                return true;
-            }
-            std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
-        }
     }
 
     /// 重启进程
@@ -393,40 +199,17 @@ exit 1
         self.stop().await?;
         let config = new_config.unwrap_or(&self.config_dir);
 
-        #[cfg(target_os = "macos")]
-        {
-            let rpc_port = self.rpc_port.unwrap_or(15888);
-            let escaped_binary = self.binary_path.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
-            let escaped_config = config.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
-            let script = format!(
-                "do shell script \"{} --config-file '{}' --rpc-portal {} --no-log-file > /dev/null 2>&1 &\" with administrator privileges",
-                escaped_binary, escaped_config, rpc_port
-            );
-            std::process::Command::new("osascript")
-                .arg("-e")
-                .arg(&script)
-                .stdout(Stdio::null())
-                .stderr(Stdio::piped())
-                .spawn()
-                .map_err(|e| format!("重启 easytier-core 失败: {}", e))?;
-            *self.child.lock().map_err(|e| format!("锁获取失败: {}", e))? = Some(0);
-            Ok(())
-        }
+        let new_child = Command::new(&self.binary_path)
+            .arg("--config-file")
+            .arg(config)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("重启 easytier-core 失败: {}", e))?;
 
-        #[cfg(not(target_os = "macos"))]
-        {
-            let new_child = Command::new(&self.binary_path)
-                .arg("--config-file")
-                .arg(config)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .map_err(|e| format!("重启 easytier-core 失败: {}", e))?;
-
-            crate::log_info!(format!("[EasyTierProcess] 进程已重启, pid={:?}", new_child.id()));
-            *self.child.lock().map_err(|e| format!("锁获取失败: {}", e))? = Some(new_child);
-            Ok(())
-        }
+        crate::log_info!(format!("[EasyTierProcess] 进程已重启, pid={:?}", new_child.id()));
+        *self.child.lock().map_err(|e| format!("锁获取失败: {}", e))? = Some(new_child);
+        Ok(())
     }
 
     pub async fn check_health(&self, rpc_port: u16) -> bool {
@@ -440,12 +223,9 @@ exit 1
 
 impl Drop for EasyTierProcess {
     fn drop(&mut self) {
-        #[cfg(not(target_os = "macos"))]
-        {
-            if let Ok(mut guard) = self.child.lock() {
-                if let Some(ref mut child) = *guard {
-                    let _ = child.kill();
-                }
+        if let Ok(mut guard) = self.child.lock() {
+            if let Some(ref mut child) = *guard {
+                let _ = child.kill();
             }
         }
     }

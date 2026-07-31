@@ -34,9 +34,18 @@ pub(crate) fn cleanup_easytier_daemon(config_dir: &std::path::Path) {
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
-        // 先 SIGTERM 优雅退出
+        // 先 SIGTERM 优雅退出（检查返回值；EPERM 表示当前用户无权终止 root 进程）
         unsafe {
-            libc::kill(pid as i32, libc::SIGTERM);
+            if libc::kill(pid as i32, libc::SIGTERM) != 0 {
+                let err = std::io::Error::last_os_error();
+                if err.raw_os_error() == Some(libc::EPERM) {
+                    crate::log_warn!(format!("[Cleanup] 发送 SIGTERM 无权限（EPERM），尝试提权终止, pid={}", pid));
+                    #[cfg(target_os = "macos")]
+                    escalate_kill(pid, libc::SIGTERM);
+                } else {
+                    crate::log_error!(format!("[Cleanup] 发送 SIGTERM 失败: {}", err));
+                }
+            }
         }
 
         // 等待退出（最多 5s）
@@ -51,12 +60,54 @@ pub(crate) fn cleanup_easytier_daemon(config_dir: &std::path::Path) {
         if is_process_alive(pid) {
             crate::log_warn!(format!("[Cleanup] easytier-core 未在 5s 内退出，发送 SIGKILL, pid={}", pid));
             unsafe {
-                libc::kill(pid as i32, libc::SIGKILL);
+                if libc::kill(pid as i32, libc::SIGKILL) != 0 {
+                    let err = std::io::Error::last_os_error();
+                    if err.raw_os_error() == Some(libc::EPERM) {
+                        crate::log_warn!(format!("[Cleanup] 发送 SIGKILL 无权限（EPERM），尝试提权强杀, pid={}", pid));
+                        #[cfg(target_os = "macos")]
+                        escalate_kill(pid, libc::SIGKILL);
+                    } else {
+                        crate::log_error!(format!("[Cleanup] 发送 SIGKILL 失败: {}", err));
+                    }
+                }
+            }
+            // 提权强杀后稍等，确认退出
+            for _ in 0..10 {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                if !is_process_alive(pid) {
+                    break;
+                }
             }
         }
     }
 
-    let _ = std::fs::remove_file(&pid_file);
+    // 仅当进程确认已死亡时才移除 PID 文件；否则保留以便下次启动继续兜底
+    if !is_process_alive(pid) {
+        let _ = std::fs::remove_file(&pid_file);
+    } else {
+        crate::log_warn!(format!("[Cleanup] 进程仍存活，保留 PID 文件以在下次启动时继续清理, pid={}", pid));
+    }
+}
+
+/// macOS 非 root 环境对 root 进程提权终止（osascript 管理员权限）。
+/// 仅在常规 kill 因 EPERM 失败时作为兜底使用（正常路径 daemon 已以 root 身份完成清理）。
+#[cfg(target_os = "macos")]
+fn escalate_kill(pid: u32, signal: libc::c_int) {
+    let sig = match signal {
+        libc::SIGTERM => "SIGTERM",
+        libc::SIGKILL => "SIGKILL",
+        _ => "SIGTERM",
+    };
+    let _ = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(format!(
+            r#"do shell script "kill -{} {}" with administrator privileges"#,
+            sig.trim_start_matches("SIG"),
+            pid
+        ))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
