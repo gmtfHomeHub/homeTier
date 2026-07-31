@@ -1,4 +1,5 @@
 import { useSpaceStore } from "../../stores/spaceStore";
+import { useSpaceConnect } from "../../hooks/useSpaceConnect";
 import { useNavigate } from "react-router-dom";
 import { Share2, Trash2, Settings, X, Users } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -13,15 +14,14 @@ import type { NetworkConfig } from "../../types/network";
 import { DEFAULT_NETWORK_CONFIG } from "../../types/network";
 
 export function SpaceList() {
-  const { spaces, connectSpace, disconnectSpace, deleteSpace, loadSpaces, loadSpacesOnce } = useSpaceStore();
+  const { spaces, deleteSpace, loadSpaces, loadSpacesOnce } = useSpaceStore();
+  const { connectingId, disconnectingId, connect, disconnect } = useSpaceConnect();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; ownerId?: string } | null>(null);
   const [configTarget, setConfigTarget] = useState<string | null>(null);
   const [spaceConfig, setSpaceConfig] = useState<Partial<NetworkConfig>>({});
   const [savingConfig, setSavingConfig] = useState(false);
-  const [connectingId, setConnectingId] = useState<string | null>(null);
-  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [shareTarget, setShareTarget] = useState<string | null>(null);
 
   const configSpace = spaces.find(s => s.id === configTarget);
@@ -87,28 +87,6 @@ export function SpaceList() {
     }
   };
 
-  const handleConnect = async (spaceId: string) => {
-    setConnectingId(spaceId);
-    try {
-      await connectSpace(spaceId);
-    } catch (e) {
-      alert(String(e));
-    } finally {
-      setConnectingId(null);
-    }
-  };
-
-  const handleDisconnect = async (spaceId: string) => {
-    setDisconnectingId(spaceId);
-    try {
-      await disconnectSpace(spaceId);
-    } catch (e) {
-      alert(String(e));
-    } finally {
-      setDisconnectingId(null);
-    }
-  };
-
   return (
     <div className="flex-1 p-6 overflow-y-auto">
       <h1 className="mb-6 text-2xl font-bold">{t('space.list')}</h1>
@@ -156,7 +134,7 @@ export function SpaceList() {
                     {t('space.open')}
                   </Button>
                   <Button
-                    onClick={() => handleDisconnect(space.id)}
+                    onClick={() => disconnect(space.id)}
                     disabled={disconnectingId === space.id}
                     loading={disconnectingId === space.id}
                     variant="outline"
@@ -167,7 +145,7 @@ export function SpaceList() {
                 </>
               ) : (
                 <Button
-                  onClick={() => handleConnect(space.id)}
+                  onClick={() => connect(space.id)}
                   disabled={space.status === "connecting" || connectingId === space.id}
                   variant="soft"
                   size="2"

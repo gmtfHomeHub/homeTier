@@ -27,6 +27,7 @@
     "openInBrowser": "在浏览器中打开",
     "webviewOpened": "应用已在独立 WebView 窗口中打开",
     "refreshWindow": "刷新窗口",
+    "close": "关闭",
     "invalidUrl": "应用 URL 无效",
     "proxyLoadError": "无法在内部加载",
     "proxyLoadErrorDescription": "该网站无法通过代理加载。请点击下方按钮在系统浏览器中打开。",

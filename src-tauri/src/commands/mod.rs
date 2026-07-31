@@ -11,6 +11,7 @@ pub mod network_port_forwards;
 pub mod proxy;
 pub mod screen;
 pub mod space;
+pub mod tray;
 pub mod tun;
 pub mod util;
 pub mod voice;

@@ -27,6 +27,7 @@
     "openInBrowser": "Open in Browser",
     "webviewOpened": "App is open in a standalone WebView window",
     "refreshWindow": "Refresh Window",
+    "close": "Close",
     "invalidUrl": "Invalid App URL",
     "proxyLoadError": "Cannot load internally",
     "proxyLoadErrorDescription": "This website cannot be loaded through the proxy. Please click the button below to open it in your system browser.",

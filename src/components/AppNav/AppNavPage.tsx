@@ -5,6 +5,7 @@ import { Button, Flex, Card, Text, Box } from "@radix-ui/themes";
 import { Icon } from "@iconify/react";
 import { useNavigate } from "react-router-dom";
 import * as api from "../../utils/api";
+import { useAppTabsStore } from "../../stores/appTabsStore";
 import type { SpaceApp, Space } from "../../types";
 import { AppFormDialog } from "./AppFormDialog";
 
@@ -72,6 +73,7 @@ export function AppNavPage({ space, isOwner, callerId }: AppNavPageProps) {
 
   const openApp = (app: SpaceApp) => () => {
     if (!editing) {
+      useAppTabsStore.getState().openApp(space, app);
       navigate(`/space/${space.id}/app/${app.id}`);
       return;
     }

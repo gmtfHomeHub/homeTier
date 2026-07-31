@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppLayout } from "./components/Layout/AppLayout";
+import { TrayBridge } from "./components/Layout/TrayBridge";
 import { SpaceList } from "./components/Space/SpaceList";
 import { SpaceDetail } from "./components/Space/SpaceDetail";
 import { AppBrowserView } from "./components/AppBrowser/AppBrowserView";
@@ -131,6 +132,7 @@ export default function App() {
     <Theme accentColor="blue" grayColor="slate" radius="medium" appearance={appearance} hasBackground>
       <BrowserRouter>
         <AppLayout>
+          <TrayBridge />
           <Routes>
             <Route path="/" element={<SpaceList />} />
             <Route path="/space/:id" element={<SpaceDetail />} />

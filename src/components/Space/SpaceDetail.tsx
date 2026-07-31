@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Users, ArrowLeft, MessageSquare, MoreHorizontal, Terminal, Trash2 } from "lucide-react";
 import { Button, Flex, DropdownMenu } from "@radix-ui/themes";
 import { useSpaceStore } from "../../stores/spaceStore";
+import { useSpaceConnect } from "../../hooks/useSpaceConnect";
 import { MemberCount } from "../Common/MemberCount";
 import { MemberManager } from "./MemberManager";
 import { ConfirmDialog } from "../Common/ConfirmDialog";
@@ -16,10 +17,10 @@ export function SpaceDetail() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { spaces, deleteSpace, loadSpaces, connectSpace, disconnectSpace } = useSpaceStore();
+  const { spaces, deleteSpace, loadSpaces } = useSpaceStore();
+  const { disconnectingId, connect, disconnect } = useSpaceConnect();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [showMemberManager, setShowMemberManager] = useState(false);
   const { setSidebarOpen } = useLayoutStore();
 
@@ -39,18 +40,6 @@ export function SpaceDetail() {
     } finally {
       setDeleting(false);
       setShowDeleteConfirm(false);
-    }
-  };
-
-  const handleDisconnect = async () => {
-    if (!id) return;
-    setDisconnectingId(id);
-    try {
-      await disconnectSpace(id);
-    } catch (e) {
-      alert(String(e));
-    } finally {
-      setDisconnectingId(null);
     }
   };
 
@@ -85,7 +74,7 @@ export function SpaceDetail() {
           <span className="font-semibold">{space.name}</span>
           {space.status === "disconnected" && (
             <Button
-              onClick={() => connectSpace(space.id)}
+              onClick={() => connect(space.id)}
               variant="soft"
               size="1"
             >
@@ -94,7 +83,7 @@ export function SpaceDetail() {
           )}
           {space.status === "connected" && (
             <Button
-              onClick={handleDisconnect}
+              onClick={() => disconnect(space.id)}
               disabled={disconnectingId === id}
               loading={disconnectingId === id}
               variant="outline"

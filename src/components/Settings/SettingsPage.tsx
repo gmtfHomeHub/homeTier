@@ -5,42 +5,39 @@ import { TunAuthPanel } from "./TunAuthPanel";
 import { EasyTierVersionManager } from "./EasyTierVersionManager";
 import { Terminal, Network, Palette, Languages, HelpCircle, Shield } from "lucide-react";
 import { getSystemConfig, setSystemConfig, getRelayPrefix, setRelayPrefix, getWebappMode, setWebappMode } from "../../utils/api";
-import { useSettingsStore } from "../../stores/settingsStore";
+import { useSettingsStore, type SettingsTab } from "../../stores/settingsStore";
 import type { NetworkConfig } from "../../types/network";
 import { useTranslation } from "react-i18next";
 import { Tabs, Tooltip, Button, TextField, Flex, Text } from "@radix-ui/themes";
 
-type Tab = "basic" | "logs" | "easytier";
-
 export function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<Tab>("basic");
+  const { theme, language, setTheme, setLanguage, relayPrefix: storePrefix, setRelayPrefix: setStorePrefix, settingsTab, setSettingsTab } = useSettingsStore();
   const [easytierConfig, setEasytierConfig] = useState<Partial<NetworkConfig>>({});
   const [configLoaded, setConfigLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [relayPrefix, setRelayPrefixState] = useState("");
   const [relayPrefixLoaded, setRelayPrefixLoaded] = useState(false);
   const [webappMode, setWebappModeState] = useState<string | null>(null);
-  const { theme, language, setTheme, setLanguage, relayPrefix: storePrefix, setRelayPrefix: setStorePrefix } = useSettingsStore();
   const { t, i18n } = useTranslation();
 
   useEffect(() => {
-    if (activeTab === "basic" && !relayPrefixLoaded) {
+    if (settingsTab === "basic" && !relayPrefixLoaded) {
       getRelayPrefix().then((val) => {
         setRelayPrefixState(val);
         setStorePrefix(val);
         setRelayPrefixLoaded(true);
       });
     }
-  }, [activeTab, relayPrefixLoaded]);
+  }, [settingsTab, relayPrefixLoaded]);
 
   useEffect(() => {
-    if (activeTab === "basic" && webappMode === null) {
+    if (settingsTab === "basic" && webappMode === null) {
       getWebappMode().then(setWebappModeState);
     }
-  }, [activeTab, webappMode]);
+  }, [settingsTab, webappMode]);
 
   useEffect(() => {
-    if (activeTab === "easytier" && !configLoaded) {
+    if (settingsTab === "easytier" && !configLoaded) {
       getSystemConfig().then((json) => {
         if (json) {
           try { setEasytierConfig(JSON.parse(json)); } catch (err) {
@@ -50,7 +47,7 @@ export function SettingsPage() {
         setConfigLoaded(true);
       });
     }
-  }, [activeTab, configLoaded]);
+  }, [settingsTab, configLoaded]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -69,7 +66,7 @@ export function SettingsPage() {
     i18n.changeLanguage(lang);
   };
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+  const tabs: { key: SettingsTab; label: string; icon: React.ReactNode }[] = [
     { key: "basic", label: t("settings.basic"), icon: <Palette size={16} /> },
     { key: "logs", label: t("settings.logs"), icon: <Terminal size={16} /> },
     { key: "easytier", label: t("settings.easytier"), icon: <Network size={16} /> },
@@ -89,7 +86,7 @@ export function SettingsPage() {
 
   return (
       <div className="flex flex-col flex-1 min-h-0">
-        <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as Tab)} className="flex flex-col flex-1 min-h-0">
+        <Tabs.Root value={settingsTab} onValueChange={(v) => setSettingsTab(v as SettingsTab)} className="flex flex-col flex-1 min-h-0">
           {/* 页签 */}
           <Tabs.List className="flex gap-1 px-4 py-1.5 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
             {tabs.map((tab) => (

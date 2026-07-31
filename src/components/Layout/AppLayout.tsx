@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
 import { TitleBar } from "./TitleBar";
+import { AppWorkspace } from "../AppBrowser/AppWorkspace";
 import { useLayoutStore } from "../../stores/layoutStore";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -42,8 +43,9 @@ export function AppLayout({ children }: AppLayoutProps) {
           )}
         </AnimatePresence>
 
-        <main className="flex flex-col flex-1 overflow-hidden">
+        <main className="flex flex-col flex-1 overflow-hidden relative">
           {children}
+          <AppWorkspace />
         </main>
       </div>
     </div>

@@ -27,6 +27,7 @@
     "openInBrowser": "在瀏覽器中開啟",
     "webviewOpened": "應用已在獨立 WebView 視窗中開啟",
     "refreshWindow": "重新整理視窗",
+    "close": "關閉",
     "invalidUrl": "應用 URL 無效",
     "proxyLoadError": "無法在內部載入",
     "proxyLoadErrorDescription": "該網站無法透過代理載入。請點擊下方按鈕在系統瀏覽器中開啟。",

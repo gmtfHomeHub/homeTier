@@ -267,12 +267,17 @@ pub fn run() -> std::process::ExitCode {
                 let app_handle = app.handle().clone();
                 let _tray = tauri::tray::TrayIconBuilder::with_id("main")
                     .menu(&tray_menu)
+                    .show_menu_on_left_click(false)
                     .on_menu_event(move |app, event| {
                         if event.id() == "quit" {
                             app.exit(0);
                         }
                         if event.id() == "show" {
                             toggle_window_visibility(&app_handle);
+                        }
+                        if event.id().as_ref().starts_with("space-") {
+                            let space_id = event.id().as_ref().trim_start_matches("space-").to_string();
+                            let _ = app.emit("tray-navigate", space_id);
                         }
                     })
                     .on_tray_icon_event(|tray, event| {
@@ -418,6 +423,7 @@ pub fn run() -> std::process::ExitCode {
             commands::util::get_tun_status,
             commands::util::refresh_tun_status,
             commands::util::authorize_tun,
+            commands::tray::update_tray_menu,
             commands::tun::create_tun,
             commands::tun::create_tun_from_fd,
             commands::tun::destroy_tun,

@@ -59,6 +59,15 @@ export async function listMembers(spaceId: string): Promise<Member[]> {
   return invoke("list_members", { spaceId });
 }
 
+export interface TraySpace {
+  id: string;
+  name: string;
+}
+
+export async function syncTrayMenu(spaces: TraySpace[]): Promise<void> {
+  return invoke("update_tray_menu", { spaces });
+}
+
 // === Network Commands ===
 
 export async function getNetworkStatus(spaceId: string): Promise<NetworkStatus> {
