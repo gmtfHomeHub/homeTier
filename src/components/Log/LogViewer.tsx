@@ -3,7 +3,7 @@ import { getLogs, getSpaceLogs, clearLogs } from "../../utils/api";
 import type { LogEntry } from "../../types";
 import { RefreshCw, Trash2, Filter } from "lucide-react";
 import { Button, Select, Checkbox, Text, Flex, Badge, ButtonProps } from "@radix-ui/themes";
-import { List, useDynamicRowHeight, type RowComponentProps, type DynamicRowHeight } from "react-window";
+import { List, useDynamicRowHeight, type RowComponentProps } from "react-window";
 
 interface LogViewerProps {
   spaceId?: string;
@@ -20,23 +20,15 @@ const DEFAULT_ROW_HEIGHT = 26;
 
 interface LogRowProps {
   logs: LogEntry[];
-  rowHeight: DynamicRowHeight;
 }
 
-const LogRow = ({ index, style, logs, rowHeight }: RowComponentProps<LogRowProps>) => {
-  const rowRef = useRef<HTMLDivElement>(null);
+const LogRow = ({ index, style, logs }: RowComponentProps<LogRowProps>) => {
   const entry = logs[index];
-
-  useLayoutEffect(() => {
-    if (rowRef.current) {
-      rowHeight.setRowHeight(index, rowRef.current.offsetHeight);
-    }
-  }, [index, rowHeight]);
 
   if (!entry) return null;
 
   return (
-    <div ref={rowRef} style={style} className="flex gap-2 px-2 py-0.5 items-start">
+    <div style={style} className="flex gap-2 px-2 py-0.5 items-start">
       <span className="text-[var(--color-text-secondary)] whitespace-nowrap leading-[26px]">
         {entry.timestamp}
       </span>
@@ -137,8 +129,8 @@ export function LogViewer({ spaceId }: LogViewerProps) {
   }, []);
 
   const rowProps: LogRowProps = useMemo(
-    () => ({ logs: filtered, rowHeight: dynamicRowHeight }),
-    [filtered, dynamicRowHeight]
+    () => ({ logs: filtered }),
+    [filtered]
   );
 
   return (
