@@ -373,7 +373,6 @@ pub fn run() -> std::process::ExitCode {
             commands::space::patch_space_config,
             commands::space::update_local_config,
             // 网络管理
-            commands::network::get_network_status,
             commands::network::get_network_stats,
             commands::network::update_group_config,
             commands::network::get_space_peers,

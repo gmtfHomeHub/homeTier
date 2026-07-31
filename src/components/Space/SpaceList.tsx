@@ -103,7 +103,16 @@ export function SpaceList() {
         {spaces.map((space) => (
           <div
             key={space.id}
-            className="bg-[var(--color-surface)] rounded-xl p-5 border border-[var(--color-border)] hover:shadow-md transition-shadow"
+            onClick={() => navigate(`/space/${space.id}`)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                navigate(`/space/${space.id}`);
+              }
+            }}
+            className="bg-[var(--color-surface)] rounded-xl p-5 border border-[var(--color-border)] hover:shadow-md transition-shadow cursor-pointer"
           >
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
@@ -118,70 +127,68 @@ export function SpaceList() {
                 />
                 <h3 className="font-semibold truncate">{space.name}</h3>
               </div>
-              <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+              <div
+                className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <MemberCount spaceId={space.id} connected={space.status === "connected"} />
               </div>
             </div>
-            <Flex gap="3" align="center">
-              {space.status === "connected" ? (
-                <>
-                  <Button
-                    onClick={() => navigate(`/space/${space.id}`)}
-                    variant="soft"
-                    size="2"
-                    className="flex-1"
-                  >
-                    {t('space.open')}
-                  </Button>
+            <Flex gap="2" align="center" onClick={(e) => e.stopPropagation()}>
+              <div className="flex-1 min-w-0">
+                {space.status === "connected" ? (
                   <Button
                     onClick={() => disconnect(space.id)}
                     disabled={disconnectingId === space.id}
                     loading={disconnectingId === space.id}
                     variant="outline"
                     size="2"
+                    className="w-full"
                   >
-                    {disconnectingId === space.id ? t('space.disconnecting') : t('space.leave')}
+                    {disconnectingId === space.id ? t('space.disconnecting') : t('space.disconnect')}
                   </Button>
-                </>
-              ) : (
+                ) : (
+                  <Button
+                    onClick={() => connect(space.id)}
+                    disabled={space.status === "connecting" || connectingId === space.id}
+                    variant="soft"
+                    size="2"
+                    className="w-full"
+                    loading={space.status === "connecting" || connectingId === space.id}
+                  >
+                    {space.status === "connecting" ? t('space.connecting') : t('space.connect')}
+                  </Button>
+                )}
+              </div>
+              <Flex align="center" gap="1">
                 <Button
-                  onClick={() => connect(space.id)}
-                  disabled={space.status === "connecting" || connectingId === space.id}
-                  variant="soft"
+                  onClick={() => setShareTarget(space.id)}
+                  variant="ghost"
                   size="2"
-                  className="flex-1"
-                   loading={space.status === "connecting" || connectingId === space.id}
-                 >
-                   {space.status === "connecting" ? t('space.connecting') : t('space.connect')}
+                  title={t("space.share")}
+                >
+                  <Share2 size={16} />
                 </Button>
-              )}
-              <Button
-                onClick={() => setShareTarget(space.id)}
-                variant="ghost"
-                size="2"
-                title={t("space.share")}
-              >
-                <Share2 size={16} />
-              </Button>
-              <Button
-                onClick={() => setConfigTarget(space.id)}
-                variant="ghost"
-                size="2"
-                title={t("space.spaceConfig")}
-              >
-                <Settings size={16} />
-              </Button>
-              {space.owner_id && (
-              <Button
-                onClick={() => setDeleteTarget({ id: space.id, name: space.name, ownerId: space.owner_id })}
-                variant="ghost"
-                color="red"
-                size="2"
-                title={t("space.deleteSpace")}
-              >
-                <Trash2 size={16} />
-              </Button>
-            )}
+                <Button
+                  onClick={() => setConfigTarget(space.id)}
+                  variant="ghost"
+                  size="2"
+                  title={t("space.spaceConfig")}
+                >
+                  <Settings size={16} />
+                </Button>
+                {space.owner_id && (
+                  <Button
+                    onClick={() => setDeleteTarget({ id: space.id, name: space.name, ownerId: space.owner_id })}
+                    variant="ghost"
+                    color="red"
+                    size="2"
+                    title={t("space.deleteSpace")}
+                  >
+                    <Trash2 size={16} />
+                  </Button>
+                )}
+              </Flex>
             </Flex>
           </div>
         ))}

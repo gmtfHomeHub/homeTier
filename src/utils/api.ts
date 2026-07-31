@@ -5,7 +5,6 @@ import type {
   Member,
   Message,
   FileInfo,
-  NetworkStatus,
   NetworkStats,
   LogEntry,
   SpaceApp,
@@ -69,10 +68,6 @@ export async function syncTrayMenu(spaces: TraySpace[]): Promise<void> {
 }
 
 // === Network Commands ===
-
-export async function getNetworkStatus(spaceId: string): Promise<NetworkStatus> {
-  return invoke("get_network_status", { spaceId });
-}
 
 export async function getNetworkStats(spaceId: string): Promise<NetworkStats> {
   return invoke<NetworkStats>("get_network_stats", { spaceId });

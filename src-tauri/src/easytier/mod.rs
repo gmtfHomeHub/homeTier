@@ -16,8 +16,6 @@ use std::path::PathBuf;
 pub use downloader::{EasyTierDownloader, BinarySource};
 pub use process::EasyTierProcess;
 
-use crate::types::NetworkStatus;
-
 /// EasyTier 管理器，管理多个网络实例（Desktop 使用子进程，Mobile 使用库）
 pub struct EasyTierManager {
     /// 运行中的进程: space_id → process (Desktop)
@@ -266,25 +264,6 @@ impl EasyTierManager {
         Ok(())
     }
 
-    /// 获取网络状态
-    pub async fn get_status(&self, instance_id: &Uuid) -> Result<NetworkStatus, String> {
-        let rpc_port = self.get_instance_rpc_port(instance_id);
-        let is_running = rpc_port.map(|_| self.is_running(instance_id)).unwrap_or(false);
-        let virtual_ip = if is_running {
-            self.query_virtual_ip(instance_id).await
-        } else {
-            None
-        };
-
-        Ok(NetworkStatus {
-            space_id: *instance_id,
-            status: if is_running { "connected".into() } else { "disconnected".into() },
-            virtual_ip,
-            latency_ms: None,
-            connected_peers: if is_running { self.query_peer_count(instance_id).await } else { 0 },
-        })
-    }
-
     /// 生成 TOML 配置文件
     fn generate_config(
         &self,
@@ -390,25 +369,6 @@ impl EasyTierManager {
     fn read_config(&self, instance_id: &Uuid) -> Option<String> {
         let path = self.config_dir.join(format!("{}.toml", instance_id));
         std::fs::read_to_string(path).ok()
-    }
-
-    /// 通过 RPC 查询虚拟 IP
-    async fn query_virtual_ip(&self, instance_id: &Uuid) -> Option<String> {
-        let rpc_port = self.get_instance_rpc_port(instance_id)?;
-        self.query_rpc_status(instance_id, rpc_port).await
-            .map(|s| s.virtual_ip)
-            .flatten()
-    }
-
-    /// 通过 RPC 查询 peer 数量
-    async fn query_peer_count(&self, instance_id: &Uuid) -> u32 {
-        let rpc_port = match self.get_instance_rpc_port(instance_id) {
-            Some(p) => p,
-            None => return 0,
-        };
-        self.query_rpc_status(instance_id, rpc_port).await
-            .map(|s| s.connected_peers)
-            .unwrap_or(0)
     }
 
     /// 通过 RPC 查询完整的运行时状态
@@ -609,6 +569,23 @@ impl EasyTierManager {
 
                         let mut peer_infos = Vec::new();
 
+                        if let Some(my_info) = running_info.my_node_info.as_ref() {
+                            peer_infos.push(crate::easytier::launcher::PeerInfo {
+                                peer_id: my_info.peer_id,
+                                virtual_ip: Self::format_ipv4_inet(my_info.virtual_ipv4.as_ref()),
+                                hostname: if my_info.hostname.is_empty() { None } else { Some(my_info.hostname.clone()) },
+                                latency_ms: Some(0.0),
+                                loss_rate: None,
+                                rx_bytes: None,
+                                tx_bytes: None,
+                                connected: true,
+                                is_local: true,
+                                version: if my_info.version.is_empty() { None } else { Some(my_info.version.clone()) },
+                                tunnel_proto: None,
+                                nat_type: None,
+                            });
+                        }
+
                         if !running_info.peer_route_pairs.is_empty() {
                             for prp in &running_info.peer_route_pairs {
                                 let route = match &prp.route {
@@ -662,15 +639,7 @@ impl EasyTierManager {
 
     /// 从 Route 构建 PeerInfo（无连接统计）
     fn peer_from_route(route: &easytier::proto::api::instance::Route) -> crate::easytier::launcher::PeerInfo {
-        let virtual_ip = route.ipv4_addr.as_ref()
-            .and_then(|inet| inet.address.as_ref())
-            .map(|addr| format!("{}.{}.{}.{}",
-                (addr.addr >> 24) & 0xFF,
-                (addr.addr >> 16) & 0xFF,
-                (addr.addr >> 8) & 0xFF,
-                addr.addr & 0xFF
-            ))
-            .filter(|s| s != "0.0.0.0");
+        let virtual_ip = Self::format_ipv4_inet(route.ipv4_addr.as_ref());
 
         let hostname = if route.hostname.is_empty() { None } else { Some(route.hostname.clone()) };
         let version = if route.version.is_empty() { None } else { Some(route.version.clone()) };
@@ -689,6 +658,19 @@ impl EasyTierManager {
             tunnel_proto: None,
             nat_type: None,
         }
+    }
+
+    /// 格式化 Ipv4Inet 的地址为 a.b.c.d 字符串，0.0.0.0 返回 None
+    fn format_ipv4_inet(inet: Option<&easytier::proto::common::Ipv4Inet>) -> Option<String> {
+        inet
+            .and_then(|i| i.address.as_ref())
+            .map(|addr| format!("{}.{}.{}.{}",
+                (addr.addr >> 24) & 0xFF,
+                (addr.addr >> 16) & 0xFF,
+                (addr.addr >> 8) & 0xFF,
+                addr.addr & 0xFF
+            ))
+            .filter(|s| s != "0.0.0.0")
     }
 
     /// 从 Route + PeerInfo 合并构建 PeerInfo（含连接统计）
@@ -891,6 +873,8 @@ impl EasyTierManager {
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 impl EasyTierManager {
+    use crate::types::NetworkStatus;
+
     pub fn new(config_dir: PathBuf, app_data_dir: PathBuf) -> Self {
         let downloader = EasyTierDownloader::new(&app_data_dir);
 

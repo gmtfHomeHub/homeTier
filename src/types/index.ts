@@ -50,14 +50,6 @@ export interface FileInfo {
   created_at: string;
 }
 
-export interface NetworkStatus {
-  space_id: string;
-  status: string;
-  virtual_ip?: string;
-  latency_ms?: number;
-  connected_peers: number;
-}
-
 export interface NetworkStats {
   rx_bytes: number;
   tx_bytes: number;

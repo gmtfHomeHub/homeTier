@@ -1,19 +1,9 @@
 use tauri::State;
-use crate::types::{NetworkStatus, NetworkStats};
+use crate::types::NetworkStats;
 use crate::easytier::config::NetworkConfig;
 use crate::easytier::{EasyTierManager, launcher::PeerInfo};
 use crate::space::manager::SpaceManager;
 use std::sync::Arc;
-
-#[tauri::command]
-pub async fn get_network_status(
-    space_id: String,
-    easytier: State<'_, Arc<EasyTierManager>>,
-) -> Result<NetworkStatus, String> {
-    let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
-    crate::log_debug!(format!("获取网络状态: space_id={}", space_id));
-    easytier.get_status(&id).await
-}
 
 #[tauri::command]
 pub async fn get_network_stats(
