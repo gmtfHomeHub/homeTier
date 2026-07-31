@@ -27,6 +27,7 @@ async fn wait_rpc_ready(rpc_port: u16, timeout: std::time::Duration) -> bool {
 pub struct Daemon {
     status: Arc<RwLock<ipc::DaemonStatus>>,
     easytier: Arc<EasyTierManager>,
+    easytier_process: Arc<tokio::sync::Mutex<Option<crate::easytier::EasyTierProcess>>>,
     rpc_port: u16,
     shutdown_tx: broadcast::Sender<()>,
     data_dir: PathBuf,
@@ -41,6 +42,7 @@ impl Daemon {
             .map_err(|e| format!("创建 EasyTier 配置目录失败: {}", e))?;
 
         let easytier = Arc::new(EasyTierManager::new(easytier_dir, data_dir.clone()));
+        let easytier_process = Arc::new(tokio::sync::Mutex::new(None));
         let (shutdown_tx, _) = broadcast::channel(1);
 
         let status = ipc::DaemonStatus {
@@ -54,6 +56,7 @@ impl Daemon {
         Ok(Self {
             status: Arc::new(RwLock::new(status)),
             easytier,
+            easytier_process,
             rpc_port: ipc::DEFAULT_RPC_PORT,
             shutdown_tx,
             data_dir,
@@ -89,6 +92,7 @@ impl Daemon {
 
         // 启动 easytier-core 守护进程（daemon IPC 就绪后，等待 RPC 端口就绪，再接受 IPC 请求）
         let easytier = self.easytier.clone();
+        let easytier_process = self.easytier_process.clone();
         tokio::spawn(async move {
             crate::log_info!("[Daemon] 正在启动 easytier-core 守护进程...");
 
@@ -119,32 +123,25 @@ impl Daemon {
             crate::log_info!(format!("[Daemon] easytier-core 守护进程 binary={}", binary.display()));
             let config_dir = easytier.get_config_dir();
 
-            #[cfg(target_os = "macos")]
-            match crate::easytier::EasyTierProcess::start_daemon(
+            let process = crate::easytier::EasyTierProcess::start_daemon(
                 &binary, &config_dir, ipc::EASYTIER_DAEMON_RPC_PORT,
-            ).await {
-                Ok(_) => {
-                    crate::log_info!("[Daemon] easytier-core 守护进程就绪");
-                }
-                Err(e) => {
-                    crate::log_error!(format!("[Daemon] easytier-core 守护进程启动失败: {}", e));
-                    let log_path = config_dir.join("easytier-daemon.log");
-                    if let Ok(content) = std::fs::read_to_string(&log_path) {
-                        crate::log_error!(format!("[Daemon] easytier-daemon.log 末尾:\n{}",
-                            if content.len() > 2000 { &content[content.len()-2000..] } else { &content }));
-                    }
-                }
-            }
+            ).await;
 
-            #[cfg(not(target_os = "macos"))]
-            match crate::easytier::EasyTierProcess::start_daemon(
-                &binary, &config_dir, ipc::EASYTIER_DAEMON_RPC_PORT,
-            ).await {
-                Ok(_) => {
+            match process {
+                Ok(p) => {
                     crate::log_info!("[Daemon] easytier-core 守护进程就绪");
+                    *easytier_process.lock().await = Some(p);
                 }
                 Err(e) => {
                     crate::log_error!(format!("[Daemon] easytier-core 守护进程启动失败: {}", e));
+                    #[cfg(target_os = "macos")]
+                    {
+                        let log_path = config_dir.join("easytier-daemon.log");
+                        if let Ok(content) = std::fs::read_to_string(&log_path) {
+                            crate::log_error!(format!("[Daemon] easytier-daemon.log 末尾:\n{}",
+                                if content.len() > 2000 { &content[content.len()-2000..] } else { &content }));
+                        }
+                    }
                 }
             }
         });
@@ -173,6 +170,7 @@ impl Daemon {
                 _ = shutdown_rx.recv() => {
                     crate::log_info!("[Daemon] 收到关闭信号，停止所有实例");
                     self.stop_all().await;
+                    self.stop_easytier().await;
                     let _ = std::fs::remove_file(self.data_dir.join("daemon_state.json"));
                     let _ = std::fs::remove_file(self.data_dir.join("daemon_ready.signal"));
                     break;
@@ -497,6 +495,27 @@ impl Daemon {
         let mut s = self.status.write().await;
         s.connected_spaces.clear();
         s.running = false;
+    }
+
+    /// 停止 easytier-core 守护进程
+    async fn stop_easytier(&self) {
+        let mut guard = self.easytier_process.lock().await;
+        if let Some(process) = guard.take() {
+            crate::log_info!("[Daemon] 正在停止 easytier-core 守护进程...");
+            match process.stop().await {
+                Ok(()) => crate::log_info!("[Daemon] easytier-core 守护进程已停止"),
+                Err(e) => crate::log_warn!(format!("[Daemon] 停止 easytier-core 失败: {}", e)),
+            }
+        } else {
+            // 句柄为空（如 daemon 启动瞬间即收到 shutdown），回退到 PID 文件清理
+            crate::log_warn!("[Daemon] easytier-core 守护进程句柄为空，回退到 PID 文件清理");
+            let config_dir = self.easytier.get_config_dir();
+            tokio::task::spawn_blocking(move || {
+                crate::cleanup::cleanup_easytier_daemon(&config_dir);
+            })
+            .await
+            .ok();
+        }
     }
 }
 

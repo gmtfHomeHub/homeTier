@@ -148,8 +148,22 @@ exit 1
             return Err(format!("启动脚本退出码: {}", output.status));
         }
 
+        // 从 osascript stdout 解析 easytier-core 真实 PID（脚本输出 "easytier-core pid=NNN"）
+        let real_pid = stdout
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("easytier-core pid="))
+            .and_then(|s| s.trim().parse::<u32>().ok());
+        crate::log_info!(format!("[EasyTierProcess] 解析到 easytier-core 真实 PID: {:?}", real_pid));
+
+        // 将 PID 写入 config_dir，供退出清理兜底使用
+        if let Some(pid) = real_pid {
+            let pid_file = config_dir.join("easytier-core.pid");
+            let _ = std::fs::write(&pid_file, pid.to_string());
+            crate::log_info!(format!("[EasyTierProcess] PID 已写入: {}", pid_file.display()));
+        }
+
         crate::log_info!(format!("[EasyTierProcess] macOS osascript 授权成功, easytier-core 应在端口 {} 监听", rpc_port));
-        Ok(Self { child: Mutex::new(Some(0)), binary_path: binary.clone(), config_dir: config_dir.clone(), rpc_port: Some(rpc_port) })
+        Ok(Self { child: Mutex::new(real_pid), binary_path: binary.clone(), config_dir: config_dir.clone(), rpc_port: Some(rpc_port) })
     }
 
     /// macOS: 通过 osascript 以 root 权限启动 easytier-core（带配置文件的单网络模式，保留兼容）
@@ -236,6 +250,12 @@ exit 1
         let pid = child.id();
         crate::log_info!(format!("[EasyTierProcess] 守护进程已启动, pid={:?}, rpc_port={}", pid, rpc_port));
 
+        // 将 PID 写入 config_dir，供退出清理兜底使用
+        if let Some(pid) = pid {
+            let pid_file = config_dir.join("easytier-core.pid");
+            let _ = std::fs::write(&pid_file, pid.to_string());
+        }
+
         // 等待 RPC 端口就绪（最多 20s）
         for i in 0..40 {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -311,24 +331,61 @@ exit 1
         Ok(())
     }
 
-    /// macOS: 通过 RPC 发送 shutdown 请求停止 easytier-core 进程
+    /// macOS: 通过真实 PID 发送 SIGTERM/SIGKILL 停止 easytier-core 进程
     #[cfg(target_os = "macos")]
     pub async fn stop(&self) -> Result<(), String> {
-        let port = self.rpc_port.ok_or("RPC 端口未知".to_string())?;
-        let addr = format!("127.0.0.1:{}", port);
-        crate::log_info!(format!("[EasyTierProcess] 通过 RPC shutdown 停止进程, port={}", port));
-        match tokio::net::TcpStream::connect(&addr).await {
-            Ok(stream) => {
-                use tokio::io::AsyncWriteExt;
-                let _ = stream.writable().await;
-                let _ = stream.try_write(b"__RPC_SHUTDOWN__\n");
+        let pid = self.child.lock().map_err(|e| format!("锁获取失败: {}", e))?.take();
+
+        if let Some(pid) = pid {
+            if pid == 0 {
+                // 没有真实 PID（旧版本启动），尝试通过 RPC 端口进程名匹配兜底
+                crate::log_warn!("[EasyTierProcess] 无真实 PID（旧版启动），尝试 pkill 兜底");
+                let _ = std::process::Command::new("pkill")
+                    .arg("-f")
+                    .arg("easytier-core --rpc-portal")
+                    .status();
+            } else {
+                crate::log_info!(format!("[EasyTierProcess] 停止 easytier-core, pid={}", pid));
+                // 先 SIGTERM 优雅退出
+                unsafe {
+                    libc::kill(pid as i32, libc::SIGTERM);
+                }
+                // 等待退出（最多 5s）
+                for _ in 0..50 {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    if !self.pid_alive(pid) {
+                        break;
+                    }
+                }
+                // 仍存活则 SIGKILL 强杀
+                if self.pid_alive(pid) {
+                    crate::log_warn!(format!("[EasyTierProcess] easytier-core 未在 5s 内退出，发送 SIGKILL, pid={}", pid));
+                    unsafe {
+                        libc::kill(pid as i32, libc::SIGKILL);
+                    }
+                }
             }
-            Err(e) => {
-                crate::log_warn!(format!("[EasyTierProcess] RPC 端口不可达, 无法发送 shutdown: {}", e));
-            }
+        } else {
+            crate::log_warn!("[EasyTierProcess] 无 PID 记录，跳过停止");
         }
+
+        // 清理 PID 文件
+        let pid_file = self.config_dir.join("easytier-core.pid");
+        let _ = std::fs::remove_file(&pid_file);
+
         *self.child.lock().map_err(|e| format!("锁获取失败: {}", e))? = None;
         Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn pid_alive(&self, pid: u32) -> bool {
+        unsafe {
+            let ret = libc::kill(pid as i32, 0);
+            if ret == 0 {
+                return true;
+            }
+            std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+        }
     }
 
     /// 重启进程

@@ -90,7 +90,7 @@ pub fn run() -> std::process::ExitCode {
                 .unwrap_or_else(|_| std::path::PathBuf::from("."));
             let easytier_config_dir = app_data.join("easytier");
             crate::log_info!("[GUI] 应用启动，清理临时文件...");
-            crate::cleanup::cleanup_all();
+            crate::cleanup::cleanup_all(&easytier_config_dir);
             crate::log_info!("[GUI] 清理完成");
             let _ = std::fs::create_dir_all(&easytier_config_dir);
             let instance_manager = Arc::new(easytier::EasyTierManager::new(easytier_config_dir, app_data.clone()));
@@ -239,9 +239,9 @@ pub fn run() -> std::process::ExitCode {
                 let app_handle = app.handle().clone();
                 let _tray = tauri::tray::TrayIconBuilder::with_id("main")
                     .menu(&tray_menu)
-                    .on_menu_event(move |_app, event| {
+                    .on_menu_event(move |app, event| {
                         if event.id() == "quit" {
-                            std::process::exit(0);
+                            app.exit(0);
                         }
                         if event.id() == "show" {
                             toggle_window_visibility(&app_handle);
@@ -476,19 +476,51 @@ pub fn run() -> std::process::ExitCode {
                     }
                 }
 
-                // 3. 强制终止 daemon 子进程（兜底）
-                if let Some(guard) = DAEMON_CHILD.get() {
-                    if let Ok(mut child_opt) = guard.lock() {
-                        if let Some(mut child) = child_opt.take() {
-                            let _ = child.kill();
-                            let _ = child.wait();
-                            crate::log_info!("[GUI] daemon 子进程已终止");
+                // 2.5 等待 daemon 退出（最多 8s），给 daemon 留出停止 easytier-core 的时间
+                {
+                    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+                    if let Some(guard) = DAEMON_CHILD.get() {
+                        while std::time::Instant::now() < deadline {
+                            let exited = guard
+                                .lock()
+                                .ok()
+                                .and_then(|mut g| g.as_mut().and_then(|c| c.try_wait().ok()))
+                                .flatten()
+                                .is_some();
+                            if exited {
+                                crate::log_info!("[GUI] daemon 已正常退出");
+                                break;
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(200));
                         }
                     }
                 }
 
-                // 4. 最终清理
-                cleanup::cleanup_all();
+                // 3. 强制终止 daemon 子进程（兜底，若仍未退出）
+                if let Some(guard) = DAEMON_CHILD.get() {
+                    if let Ok(mut child_opt) = guard.lock() {
+                        if let Some(mut child) = child_opt.take() {
+                            let still_running = match child.try_wait() {
+                                Ok(Some(_)) => false,
+                                Ok(None) => true,
+                                Err(_) => false,
+                            };
+                            if still_running {
+                                let _ = child.kill();
+                                let _ = child.wait();
+                                crate::log_info!("[GUI] daemon 子进程已强制终止");
+                            }
+                        }
+                    }
+                }
+
+                // 4. 最终清理（基于 PID 文件关闭残留 easytier-core）
+                let easytier_config_dir = app_handle
+                    .path()
+                    .app_data_dir()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                    .join("easytier");
+                cleanup::cleanup_all(&easytier_config_dir);
                 crate::log_info!("[GUI] 应用退出清理完成");
             }
             _ => {}
