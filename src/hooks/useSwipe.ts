@@ -8,8 +8,6 @@ interface SwipeHandlers {
 interface SwipeBind {
   onTouchStart: (e: React.TouchEvent) => void;
   onTouchEnd: (e: React.TouchEvent) => void;
-  onPointerDown?: (e: React.PointerEvent) => void;
-  onPointerUp?: (e: React.PointerEvent) => void;
 }
 
 const SWIPE_THRESHOLD = 80;
@@ -44,33 +42,4 @@ export function useSwipe(handlers: SwipeHandlers): SwipeBind {
   );
 
   return { onTouchStart, onTouchEnd };
-}
-
-export function usePointerSwipe(handlers: SwipeHandlers): SwipeBind {
-  const startX = useRef(0);
-  const startY = useRef(0);
-
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
-    startX.current = e.clientX;
-    startY.current = e.clientY;
-  }, []);
-
-  const onPointerUp = useCallback(
-    (e: React.PointerEvent) => {
-      const dx = e.clientX - startX.current;
-      const dy = e.clientY - startY.current;
-
-      if (Math.abs(dx) < Math.abs(dy)) return;
-      if (Math.abs(dx) < SWIPE_THRESHOLD) return;
-
-      if (dx > 0 && handlers.onSwipeRight) {
-        handlers.onSwipeRight();
-      } else if (dx < 0 && handlers.onSwipeLeft) {
-        handlers.onSwipeLeft();
-      }
-    },
-    [handlers]
-  );
-
-  return { onTouchStart: () => {}, onTouchEnd: () => {}, onPointerDown, onPointerUp };
 }

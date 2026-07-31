@@ -5,15 +5,12 @@ import type {
   Member,
   Message,
   FileInfo,
-  TransferProgress,
   NetworkStatus,
   NetworkStats,
-  ShareInfo,
   LogEntry,
   SpaceApp,
   AuthResult,
   TunStatus,
-  TunDeviceInfo,
   PeerInfo,
   AclRule,
   PortForwardRule,
@@ -46,24 +43,12 @@ export async function generateShareLink(spaceId: string): Promise<string> {
   return invoke("generate_share_link", { spaceId });
 }
 
-export async function parseShareLink(link: string): Promise<ShareInfo> {
-  return invoke("parse_share_link", { link });
-}
-
 export async function connectSpace(spaceId: string): Promise<void> {
   return invoke("connect_space", { spaceId });
 }
 
 export async function disconnectSpace(spaceId: string): Promise<void> {
   return invoke("disconnect_space", { spaceId });
-}
-
-export async function getSpaceStatus(spaceId: string): Promise<Record<string, unknown> | null> {
-  return invoke("get_space_status", { spaceId });
-}
-
-export async function patchSpaceConfig(spaceId: string, patch: Record<string, never>): Promise<void> {
-  return invoke("patch_space_config", { spaceId, patch });
 }
 
 export async function removeMember(spaceId: string, targetMemberId: string, callerId: string): Promise<void> {
@@ -82,10 +67,6 @@ export async function getNetworkStatus(spaceId: string): Promise<NetworkStatus> 
 
 export async function getNetworkStats(spaceId: string): Promise<NetworkStats> {
   return invoke<NetworkStats>("get_network_stats", { spaceId });
-}
-
-export async function updateGroupConfig(spaceId: string, config: NetworkConfig): Promise<void> {
-  return invoke("update_group_config", { spaceId, config: JSON.stringify(config) });
 }
 
 export async function updateLocalConfig(spaceId: string, config: NetworkConfig): Promise<void> {
@@ -154,12 +135,6 @@ export async function listFiles(
   return invoke("list_files", { spaceId, limit });
 }
 
-export async function getTransferProgress(
-  transferId: string
-): Promise<TransferProgress | null> {
-  return invoke("get_transfer_progress", { transferId });
-}
-
 // === Screen Share Commands ===
 
 export async function startScreenShare(): Promise<void> {
@@ -178,31 +153,7 @@ export async function getScreenShareViewers(): Promise<string[]> {
   return invoke("get_screen_share_viewers");
 }
 
-// === Hotkey Commands ===
-
-export async function registerHotkey(key: string, action: string): Promise<void> {
-  return invoke("register_hotkey", { key, action });
-}
-
-export async function unregisterHotkey(key: string): Promise<void> {
-  return invoke("unregister_hotkey", { key });
-}
-
 // === Events ===
-
-export function onNetworkStatus(callback: (event: NetworkStatus) => void) {
-  return listen<NetworkStatus>("network_status", (e) => callback(e.payload));
-}
-
-export function onNewMessage(callback: (message: Message) => void) {
-  return listen<Message>("new_message", (e) => callback(e.payload));
-}
-
-export function onTransferProgress(callback: (progress: TransferProgress) => void) {
-  return listen<TransferProgress>("transfer_progress", (e) => callback(e.payload));
-}
-
-// === Log Commands ===
 
 export async function getLogs(level?: string, sinceSeq?: number): Promise<LogEntry[]> {
   return invoke("get_logs", { level: level ?? null, sinceSeq: sinceSeq ?? null });
@@ -236,10 +187,6 @@ export async function setRelayPrefix(prefix: string): Promise<void> {
 
 // === Space Config ===
 
-export async function getSpaceConfig(spaceId: string): Promise<string | null> {
-  return invoke("get_space_config", { spaceId });
-}
-
 export async function updateSpaceConfig(spaceId: string, configJson: string): Promise<void> {
   return invoke("update_space_config", { spaceId, configJson });
 }
@@ -267,33 +214,6 @@ export async function authorizeTun(): Promise<AuthResult> {
 }
 
 // === TUN 设备管理 ===
-
-export async function createTun(opts: {
-  devName?: string;
-  ip?: string;
-  cidrPrefix?: number;
-  mtu?: number;
-  routes?: string[];
-}): Promise<TunDeviceInfo> {
-  return invoke("create_tun", opts);
-}
-
-export async function createTunFromFd(opts: {
-  fd: number;
-  ip?: string;
-  cidrPrefix?: number;
-  mtu?: number;
-}): Promise<TunDeviceInfo> {
-  return invoke("create_tun_from_fd", opts);
-}
-
-export async function destroyTun(name: string): Promise<void> {
-  return invoke("destroy_tun", { name });
-}
-
-export async function setTunLinkStatus(name: string, up: boolean): Promise<void> {
-  return invoke("set_tun_link_status", { name, up });
-}
 
 // === Space Apps ===
 
@@ -357,26 +277,6 @@ export async function listApps(spaceId: string): Promise<SpaceApp[]> {
   return invoke("list_apps", { spaceId });
 }
 
-export async function getProxyUrl(): Promise<string> {
-  return invoke("get_proxy_url");
-}
-
-export async function getProxyStatus(): Promise<{
-  running: boolean;
-  port: number;
-  proxy_url: string;
-}> {
-  return invoke("get_proxy_status");
-}
-
-export async function registerProxyKey(url: string): Promise<string> {
-  return invoke("register_proxy_key", { url });
-}
-
-export async function setProxySource(url: string): Promise<void> {
-  return invoke("set_proxy_source", { url });
-}
-
 export async function getWebappMode(): Promise<string> {
   return invoke("get_webapp_mode");
 }
@@ -407,16 +307,6 @@ export async function getDaemonErrorReason(): Promise<string | null> {
   return invoke("get_daemon_error_reason");
 }
 
-// === Daemon Logs ===
-
-export async function getDaemonLogs(level?: string): Promise<LogEntry[]> {
-  return invoke("get_daemon_logs", { level: level ?? null });
-}
-
-export async function checkEasytierBinary(): Promise<Record<string, unknown>> {
-  return invoke("check_easytier_binary");
-}
-
 // === EasyTier Version Management ===
 
 export async function getEasyTierVersion(): Promise<string> {
@@ -425,10 +315,6 @@ export async function getEasyTierVersion(): Promise<string> {
 
 export async function checkEasyTierUpdate(): Promise<string[]> {
   return invoke("check_easytier_update");
-}
-
-export async function upgradeEasyTier(version: string, sourcePath?: string): Promise<void> {
-  return invoke("upgrade_easytier", { version, sourcePath: sourcePath ?? null });
 }
 
 export async function upgradeEasyTierWithProgress(

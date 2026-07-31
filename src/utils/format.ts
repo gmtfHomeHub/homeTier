@@ -6,11 +6,6 @@ export function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + units[i];
 }
 
-export function formatSpeed(bytesPerSec: number): string {
-  if (bytesPerSec === 0) return "0 B/s";
-  return formatFileSize(bytesPerSec) + "/s";
-}
-
 export function formatTimestamp(iso: string): string {
   const date = new Date(iso);
   const now = new Date();

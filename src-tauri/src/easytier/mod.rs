@@ -174,36 +174,6 @@ impl EasyTierManager {
         Ok(())
     }
 
-    /// Phase 1-1: 等待进程 RPC 端口就绪
-    async fn wait_for_rpc_ready(&self, _instance_id: &Uuid, rpc_port: u16, timeout: std::time::Duration) -> Result<(), String> {
-        let start = std::time::Instant::now();
-        let mut last_err = String::new();
-        while start.elapsed() < timeout {
-            match tokio::net::TcpStream::connect(format!("127.0.0.1:{}", rpc_port)).await {
-                Ok(_) => {
-                    crate::log_info!(format!("EasyTierManager.wait_for_rpc_ready: RPC 端口就绪, port={}, elapsed={:?}", rpc_port, start.elapsed()));
-                    return Ok(());
-                }
-                Err(e) => {
-                    last_err = e.to_string();
-                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-                }
-            }
-        }
-        let msg = format!("RPC 端口超时未就绪, port={}, timeout={:?}, 最后错误: {}", rpc_port, timeout, last_err);
-        crate::log_warn!(format!("EasyTierManager.wait_for_rpc_ready: {}", msg));
-        Err(msg)
-    }
-
-    /// 为实例分配唯一的 RPC 端口
-    fn allocate_rpc_port(&self, instance_id: &Uuid) -> u16 {
-        // 基于 instance_id 哈希生成端口号（范围 15900-15999）
-        let hash = instance_id.as_fields().0 as u16;
-        let base = 15900u16;
-        let offset = hash % 100;
-        base + offset
-    }
-
     /// 停止网络实例（Desktop: 通过 RPC 调用）
     pub async fn stop_network(&self, instance_id: &Uuid) -> Result<Option<String>, String> {
         crate::log_info!(format!("EasyTierManager: 停止网络实例, id={}", instance_id));
@@ -1008,14 +978,6 @@ impl EasyTierManager {
     pub async fn upgrade(&self, _version: &str, _source: BinarySource) -> Result<(), String> {
         Err("Mobile 不支持版本升级".into())
     }
-}
-
-/// 运行中的实例信息（用于前端查询）
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct RunningInstanceInfo {
-    pub space_id: String,
-    pub is_running: bool,
-    pub pid: Option<u32>,
 }
 
 mod launcher_internal {

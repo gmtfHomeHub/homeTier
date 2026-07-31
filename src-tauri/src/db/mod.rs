@@ -45,15 +45,6 @@ impl Database {
         Ok(())
     }
 
-    pub fn update_space(&self, space: &models::SpaceRow) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        conn.execute(
-            "UPDATE spaces SET name=?1, description=?2, is_auto_connect=?3, config_json=?4, local_config_json=?5, last_connected_at=?6 WHERE id=?7",
-            params![space.name, space.description, space.is_auto_connect, space.config_json, space.local_config_json, space.last_connected_at, space.id],
-        ).map_err(|e| format!("Update space error: {}", e))?;
-        Ok(())
-    }
-
     pub fn delete_space(&self, id: &str) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.execute("DELETE FROM spaces WHERE id=?1", params![id])
@@ -363,35 +354,6 @@ impl Database {
         Ok(())
     }
 
-    pub fn get_file(&self, file_id: &str) -> Result<Option<models::FileRow>, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let mut stmt = conn.prepare(
-            "SELECT id, space_id, sender_id, file_name, file_size, file_hash, mime_type, is_compressed, is_password_protected, storage_path, created_at FROM files WHERE id=?1"
-        ).map_err(|e| format!("Query error: {}", e))?;
-
-        let result = stmt.query_row(params![file_id], |row| {
-            Ok(models::FileRow {
-                id: row.get(0)?,
-                space_id: row.get(1)?,
-                sender_id: row.get(2)?,
-                file_name: row.get(3)?,
-                file_size: row.get(4)?,
-                file_hash: row.get(5)?,
-                mime_type: row.get(6)?,
-                is_compressed: row.get(7)?,
-                is_password_protected: row.get(8)?,
-                storage_path: row.get(9)?,
-                created_at: row.get(10)?,
-            })
-        });
-
-        match result {
-            Ok(file) => Ok(Some(file)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(format!("Query error: {}", e)),
-        }
-    }
-
     pub fn list_files(&self, space_id: &str, limit: Option<u32>) -> Result<Vec<models::FileRow>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let limit_sql = limit.map(|l| format!(" LIMIT {}", l)).unwrap_or_default();
@@ -423,13 +385,6 @@ impl Database {
             files.push(row.map_err(|e| format!("Row error: {}", e))?);
         }
         Ok(files)
-    }
-
-    pub fn delete_file(&self, file_id: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM files WHERE id=?1", params![file_id])
-            .map_err(|e| format!("Delete file error: {}", e))?;
-        Ok(())
     }
 
     // --- ACL Rules ---

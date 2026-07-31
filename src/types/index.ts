@@ -1,6 +1,3 @@
-import { EasyTierConfig } from './config';
-import { DEFAULT_NETWORK_CONFIG as networkDefault } from './network';
-
 export interface Space {
   id: string;
   name: string;
@@ -53,15 +50,6 @@ export interface FileInfo {
   created_at: string;
 }
 
-export interface TransferProgress {
-  transfer_id: string;
-  file_name: string;
-  bytes_transferred: number;
-  total_bytes: number;
-  speed_bytes_per_sec: number;
-  status: "transferring" | "paused" | "completed" | "failed";
-}
-
 export interface NetworkStatus {
   space_id: string;
   status: string;
@@ -77,92 +65,6 @@ export interface NetworkStats {
   tx_packets: number;
   loss_rate: number;
   avg_latency_ms: number;
-}
-
-export interface ShareInfo {
-  network_name: string;
-  network_secret: string;
-  host_hint?: string;
-}
-
-export interface EasyTierNetworkConfig extends EasyTierConfig {
-  instance_id?: string;
-  instance_name?: string;
-}
-
-/** @deprecated Use NetworkConfig from "./network" instead */
-export type NetworkConfigDetails = import("./network").NetworkConfig;
-
-export interface PeerConfig {
-  uri: string;
-  peer_public_key?: string;
-}
-
-export interface ProxyNetworkConfig {
-  cidr: string;
-  mapped_cidr?: string;
-  allow?: string[];
-}
-
-export interface PortForwardConfig {
-  bind_addr: string;
-  dst_addr: string;
-  proto: string;
-}
-
-export interface NetworkPortForwardConfig {
-  proto: string;
-  bind_ip: string;
-  bind_port: number;
-  dst_ip: string;
-  dst_port: number;
-}
-
-export interface AclConfig {
-  acl_v1?: {
-    chains?: AclChain[];
-    group?: { declares?: { group_name: string; group_secret: string }[]; members?: string[] };
-  };
-}
-
-export interface AclChain {
-  name: string;
-  chain_type: number;
-  description: string;
-  enabled: boolean;
-  rules: AclRuleItem[];
-  default_action: number;
-}
-
-export interface AclRuleItem {
-  name: string;
-  description: string;
-  priority: number;
-  enabled: boolean;
-  protocol: number;
-  ports: string[];
-  source_ips: string[];
-  destination_ips: string[];
-  source_ports: string[];
-  action: number;
-  rate_limit: number;
-  burst_limit: number;
-  stateful: boolean;
-  source_groups: string[];
-  destination_groups: string[];
-}
-
-export interface VpnPortalConfig {
-  client_cidr: string;
-  wireguard_listen: string;
-}
-
-export interface LogConfig {
-  level?: string;
-  file?: string;
-  dir?: string;
-  size_mb?: number;
-  count?: number;
 }
 
 export interface LogEntry {
@@ -201,14 +103,6 @@ export interface TunStatus {
   elevated: boolean;
 }
 
-export interface TunDeviceInfo {
-  name: string;
-  ip: string | null;
-  mtu: number;
-  platform: string;
-  fd: number | null;
-}
-
 export interface SpaceApp {
   id: string;
   space_id: string;
@@ -230,22 +124,6 @@ export function buildAppUrl(app: SpaceApp): string {
   const port = app.port ? `:${app.port}` : '';
   const path = app.pathname ? `/${app.pathname.replace(/^\//, '')}` : '';
   return `${base}${port}${path}`;
-}
-
-export function buildAppUrlDisplay(app: SpaceApp): string {
-  const parts: string[] = [];
-  if (app.hostname) parts.push(app.hostname);
-  if (app.port) parts.push(`:${app.port}`);
-  const pathname = app.pathname ? `/${app.pathname.replace(/^\//, '')}` : '';
-  return parts.length > 0 ? `${parts.join('')}${pathname}` : pathname;
-}
-
-// AclItem interfaces (duplicated — keep the existing AclRule for db compat)
-// ... existing AclRule, AclChain, AclRuleItem above
-
-// === Default NetworkConfig factory — delegates to network.ts ===
-export function DEFAULT_NETWORK_CONFIG(): NetworkConfigDetails {
-  return networkDefault();
 }
 
 // ACL 规则类型

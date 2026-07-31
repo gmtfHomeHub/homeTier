@@ -378,7 +378,7 @@ pub fn run() -> std::process::ExitCode {
             commands::app::delete_app,
             commands::app::list_apps,
             // 配置管理
-            commands::config::get_effective_config,
+            
             // 代理服务
             commands::proxy::get_proxy_url,
             commands::proxy::get_proxy_status,
@@ -398,22 +398,10 @@ pub fn run() -> std::process::ExitCode {
             commands::app_view::close_app_view,
             commands::app_view::resize_app_view,
             // 守护进程管理
-            commands::daemon::check_daemon_running,
-            commands::daemon::get_daemon_status,
             commands::daemon::is_daemon_ready,
             commands::daemon::get_daemon_error_reason,
-            commands::daemon::daemon_connect_space,
-            commands::daemon::daemon_disconnect_space,
-            commands::daemon::daemon_list_spaces,
-            commands::daemon::install_daemon_service,
-            commands::daemon::uninstall_daemon_service,
-            commands::daemon::start_daemon_service,
-            commands::daemon::stop_daemon_service,
-            commands::daemon::is_daemon_service_installed,
-            commands::daemon::is_daemon_service_running,
             commands::daemon::get_daemon_logs,
             commands::daemon::check_easytier_binary,
-            commands::daemon::shutdown_daemon,
             // EasyTier 版本管理
             commands::easytier::get_easytier_version,
             commands::easytier::check_easytier_update,

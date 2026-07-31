@@ -8,7 +8,7 @@ import { Button } from "@radix-ui/themes";
 export function VoicePanel() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { micMuted, speakerMuted, joinedChannels, setJoined, toggleMic, toggleSpeaker, setSpeaking } =
+  const { micMuted, speakerMuted, joinedChannels, setJoined, toggleMic, toggleSpeaker } =
     useVoiceStore();
 
   const isJoined = id ? joinedChannels[id] : false;

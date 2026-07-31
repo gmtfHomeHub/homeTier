@@ -22,11 +22,6 @@ impl IpcClient {
         Self::new(DEFAULT_RPC_PORT)
     }
 
-    /// 关闭长连接
-    pub async fn close(&self) {
-        *self.stream.lock().await = None;
-    }
-
     /// 发送请求到 daemon（复用长连接，断线自动重连）
     pub async fn send(&self, request: &IpcRequest) -> Result<IpcResponse, String> {
         let addr = format!("127.0.0.1:{}", self.port);
@@ -196,11 +191,6 @@ impl IpcClient {
     /// 切换二进制（升级后通知 daemon 重启运行中的实例）
     pub async fn switch_binary(&self) -> Result<IpcResponse, String> {
         self.send(&IpcRequest::SwitchBinary).await
-    }
-
-    /// 同步关闭 daemon（用于 setup 等非 async 上下文）
-    pub fn shutdown_sync(&self) -> bool {
-        self.send_sync(&IpcRequest::Shutdown).is_ok()
     }
 
     /// 同步发送 IPC 请求（通用，用于非 async 上下文）

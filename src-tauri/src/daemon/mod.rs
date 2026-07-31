@@ -1,6 +1,6 @@
 pub mod client;
 pub mod ipc;
-pub mod service;
+
 
 use std::path::PathBuf;
 use std::sync::Arc;

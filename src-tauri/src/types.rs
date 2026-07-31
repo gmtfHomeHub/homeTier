@@ -135,14 +135,6 @@ pub struct ShareInfo {
     pub host_hint: Option<String>,
 }
 
-/// 快捷键信息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HotkeyInfo {
-    pub key: String,
-    pub action: String,
-    pub enabled: bool,
-}
-
 /// ACL 规则（与 db/models.rs AclRuleRow 对齐）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AclRule {
