@@ -164,19 +164,3 @@ pub struct PortForwardRule {
     pub created_at: String,
     pub updated_at: String,
 }
-
-/// TUN 授权结果
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuthResult {
-    pub success: bool,
-    pub message: String,
-    pub needs_restart: bool,
-}
-
-/// TUN 能力状态查询结果
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TunStatus {
-    pub tun_available: bool,
-    pub platform: &'static str,
-    pub elevated: bool,
-}

@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
 import { LogViewer } from "../Log/LogViewer";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
-import { TunAuthPanel } from "./TunAuthPanel";
 import { EasyTierVersionManager } from "./EasyTierVersionManager";
-import { Terminal, Network, Palette, Languages, HelpCircle, Shield } from "lucide-react";
-import { getSystemConfig, setSystemConfig, getRelayPrefix, setRelayPrefix, getWebappMode, setWebappMode } from "../../utils/api";
+import { Terminal, Network, Palette, Languages, HelpCircle } from "lucide-react";
+import { getSystemConfig, setSystemConfig, getRelayPrefix, setRelayPrefix } from "../../utils/api";
 import { useSettingsStore, type SettingsTab } from "../../stores/settingsStore";
 import type { NetworkConfig } from "../../types/network";
 import { useTranslation } from "react-i18next";
@@ -17,7 +16,6 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [relayPrefix, setRelayPrefixState] = useState("");
   const [relayPrefixLoaded, setRelayPrefixLoaded] = useState(false);
-  const [webappMode, setWebappModeState] = useState<string | null>(null);
   const { t, i18n } = useTranslation();
 
   useEffect(() => {
@@ -29,12 +27,6 @@ export function SettingsPage() {
       });
     }
   }, [settingsTab, relayPrefixLoaded]);
-
-  useEffect(() => {
-    if (settingsTab === "basic" && webappMode === null) {
-      getWebappMode().then(setWebappModeState);
-    }
-  }, [settingsTab, webappMode]);
 
   useEffect(() => {
     if (settingsTab === "easytier" && !configLoaded) {
@@ -177,15 +169,6 @@ export function SettingsPage() {
                 />
               </section>
 
-              {/* TUN 授权 */}
-              <section>
-                <Flex align="center" gap="2" mb="3">
-                  <Shield size={16} />
-                  <Text size="2" weight="bold">{t("settings.tunAuth")}</Text>
-                </Flex>
-                <TunAuthPanel />
-              </section>
-
               {/* EasyTier 引擎版本 */}
               <section>
                 <Flex align="center" gap="2" mb="3">
@@ -194,35 +177,6 @@ export function SettingsPage() {
                 </Flex>
                 <EasyTierVersionManager />
               </section>
-
-              {/* WebView 模式 */}
-              {webappMode !== null && (
-                <section>
-                  <Flex align="center" gap="2" mb="3">
-                    <Text size="2" weight="bold">{t("settings.webappMode")}</Text>
-                  </Flex>
-                  <Flex gap="2">
-                    {([
-                      { value: "iframe", label: t("settings.webappModeIframe") },
-                      { value: "webview", label: t("settings.webappModeWebview") },
-                    ] as const).map((opt) => (
-                      <Button
-                        key={opt.value}
-                        onClick={() => {
-                          setWebappModeState(opt.value);
-                          setWebappMode(opt.value).catch((e) => alert(String(e)));
-                        }}
-                        variant={webappMode === opt.value ? "solid" : "outline"}
-                        color={webappMode === opt.value ? "blue" : "gray"}
-                        size="2"
-                        className="flex-1"
-                      >
-                        {opt.label}
-                      </Button>
-                    ))}
-                  </Flex>
-                </section>
-              )}
             </div>
           </Tabs.Content>
 

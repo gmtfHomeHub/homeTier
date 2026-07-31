@@ -1,5 +1,4 @@
 pub mod app;
-pub mod app_view;
 pub mod chat;
 pub mod daemon;
 pub mod easytier;
@@ -12,6 +11,5 @@ pub mod proxy;
 pub mod screen;
 pub mod space;
 pub mod tray;
-pub mod tun;
 pub mod util;
 pub mod voice;

@@ -11,7 +11,6 @@ pub mod proxy;
 pub mod screen;
 pub mod space;
 pub mod types;
-pub mod tun;
 pub mod voice;
 
 use std::collections::HashMap;
@@ -20,8 +19,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use tokio::sync::RwLock;
 use tauri::{Emitter, Manager};
-
-use commands::app_view::AppWebview;
 use proxy::plugins::*;
 use proxy::{ActiveOrigin, ProxyHandler, ProxyKeyMap};
 use crate::space::manager::SpaceManager;
@@ -252,9 +249,6 @@ pub fn run() -> std::process::ExitCode {
             let screen_share = Arc::new(screen::share::ScreenShareEngine::new());
             app.manage(screen_share);
 
-            // 初始化 TUN 能力检查
-            platform::init_tun_cap_check();
-
             // 托盘图标与菜单
             #[cfg(not(target_os = "android"))]
             {
@@ -322,7 +316,6 @@ pub fn run() -> std::process::ExitCode {
             app.manage(proxy_server);
             app.manage(key_map);
             app.manage(active_origin);
-            app.manage(AppWebview(std::sync::Mutex::new(None)));
 
             // 启动聊天消息监听任务（Desktop）
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -416,20 +409,8 @@ pub fn run() -> std::process::ExitCode {
             commands::proxy::get_proxy_status,
             commands::proxy::register_proxy_key,
             commands::proxy::set_proxy_source,
-            // WebView 模式
-            commands::util::get_webapp_mode,
-            commands::util::set_webapp_mode,
-            commands::util::get_tun_status,
-            commands::util::refresh_tun_status,
-            commands::util::authorize_tun,
+            // 托盘
             commands::tray::update_tray_menu,
-            commands::tun::create_tun,
-            commands::tun::create_tun_from_fd,
-            commands::tun::destroy_tun,
-            commands::tun::set_tun_link_status,
-            commands::app_view::open_app_view,
-            commands::app_view::close_app_view,
-            commands::app_view::resize_app_view,
             // 守护进程管理
             commands::daemon::is_daemon_ready,
             commands::daemon::get_daemon_error_reason,

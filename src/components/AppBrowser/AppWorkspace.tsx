@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, RefreshCw, ExternalLink, Loader2, Monitor, X } from "lucide-react";
-import { Button, Flex, Text } from "@radix-ui/themes";
+import { ArrowLeft, RefreshCw, ExternalLink, X } from "lucide-react";
+import { Button } from "@radix-ui/themes";
 import { useAppTabsStore } from "../../stores/appTabsStore";
 import { open } from "@tauri-apps/plugin-shell";
 import * as api from "../../utils/api";
@@ -19,43 +19,10 @@ export function AppWorkspace() {
   const closeTab = useAppTabsStore((s) => s.closeTab);
   const hide = useAppTabsStore((s) => s.hide);
   const [refreshNonce, setRefreshNonce] = useState<Record<string, number>>({});
-  const [webviewReady, setWebviewReady] = useState(false);
-  const [webappMode, setWebappMode] = useState<string>("iframe");
 
   const activeTab = openApps.find((tab) => tab.key === activeKey) ?? null;
   const spaceId = activeTab?.spaceId ?? openApps[0]?.spaceId ?? null;
   const spaceTabs = spaceId ? openApps.filter((tab) => tab.spaceId === spaceId) : [];
-
-  useEffect(() => {
-    api.getWebappMode().then(setWebappMode);
-  }, []);
-
-  // webview 模式：仅活跃标签打开原生窗口；切标签时关闭旧窗口
-  useEffect(() => {
-    if (webappMode !== "webview" || !activeTab || !visible) return;
-    api.openAppView(activeTab.proxyUrl, 0, 56, window.innerWidth, window.innerHeight - 56)
-      .then(() => setWebviewReady(true))
-      .catch(console.error);
-    return () => {
-      api.closeAppView().catch(console.error);
-      setWebviewReady(false);
-    };
-  }, [webappMode, activeTab?.key, activeTab?.proxyUrl, visible]);
-
-  useEffect(() => {
-    if (webappMode !== "webview") return;
-    const handler = () => {
-      api.resizeAppView(0, 56, window.innerWidth, window.innerHeight - 56).catch(console.error);
-    };
-    window.addEventListener("resize", handler);
-    return () => window.removeEventListener("resize", handler);
-  }, [webappMode]);
-
-  useEffect(() => {
-    return () => {
-      api.closeAppView().catch(console.error);
-    };
-  }, []);
 
   const handleBack = useCallback(() => {
     hide();
@@ -65,18 +32,8 @@ export function AppWorkspace() {
   const handleRefresh = useCallback(() => {
     if (!activeTab) return;
     setLoadError(activeTab.key, false);
-    if (webappMode === "webview") {
-      api.closeAppView()
-        .then(() => {
-          setWebviewReady(false);
-          return api.openAppView(activeTab.proxyUrl, 0, 56, window.innerWidth, window.innerHeight - 56);
-        })
-        .then(() => setWebviewReady(true))
-        .catch(console.error);
-    } else {
-      setRefreshNonce((m) => ({ ...m, [activeTab.key]: (m[activeTab.key] ?? 0) + 1 }));
-    }
-  }, [activeTab, webappMode, setLoadError]);
+    setRefreshNonce((m) => ({ ...m, [activeTab.key]: (m[activeTab.key] ?? 0) + 1 }));
+  }, [activeTab, setLoadError]);
 
   const handleOpenInBrowser = useCallback(async () => {
     if (!activeTab) return;
@@ -160,55 +117,35 @@ export function AppWorkspace() {
 
       {/* 内容区：全部 iframe 保持挂载，仅活跃可见 */}
       <div className="flex-1 relative bg-white">
-        {webappMode === "webview" ? (
-          webviewReady ? (
-            <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg)]">
-              <Flex direction="column" align="center" gap="3">
-                <Monitor size={48} className="text-[var(--color-primary)]" />
-                <Text size="2" className="text-[var(--color-text-secondary)]">
-                  {t("common.webviewOpened")}
-                </Text>
-                <Button onClick={handleRefresh} variant="outline" size="2">
-                  {t("common.refreshWindow")}
-                </Button>
-              </Flex>
+        {spaceTabs.map((tab) => {
+          const isActive = tab.key === activeKey;
+          const refreshKey = refreshNonce[tab.key] ?? 0;
+          const showFrame = tab.proxyUrl && !tab.loadError;
+          return (
+            <div
+              key={tab.key}
+              className="absolute inset-0"
+              style={{ display: isActive ? "block" : "none" }}
+            >
+              {showFrame ? (
+                <ProxyFrame
+                  key={refreshKey}
+                  proxyUrl={tab.proxyUrl}
+                  name={tab.app.name}
+                  onOpenBrowser={handleOpenInBrowser}
+                  onBack={handleBack}
+                  onError={() => setLoadError(tab.key, true)}
+                />
+              ) : tab.loadError ? (
+                <ProxyErrorFallback onOpenBrowser={handleOpenInBrowser} onBack={handleBack} />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center text-[var(--color-text-secondary)]">
+                  {t("common.invalidUrl")}
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg)]">
-              <Loader2 size={32} className="animate-spin text-[var(--color-primary)]" />
-            </div>
-          )
-        ) : (
-          spaceTabs.map((tab) => {
-            const isActive = tab.key === activeKey;
-            const refreshKey = refreshNonce[tab.key] ?? 0;
-            const showFrame = tab.proxyUrl && !tab.loadError;
-            return (
-              <div
-                key={tab.key}
-                className="absolute inset-0"
-                style={{ display: isActive ? "block" : "none" }}
-              >
-                {showFrame ? (
-                  <ProxyFrame
-                    key={refreshKey}
-                    proxyUrl={tab.proxyUrl}
-                    name={tab.app.name}
-                    onOpenBrowser={handleOpenInBrowser}
-                    onBack={handleBack}
-                    onError={() => setLoadError(tab.key, true)}
-                  />
-                ) : tab.loadError ? (
-                  <ProxyErrorFallback onOpenBrowser={handleOpenInBrowser} onBack={handleBack} />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-[var(--color-text-secondary)]">
-                    {t("common.invalidUrl")}
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
+          );
+        })}
       </div>
     </div>
   );

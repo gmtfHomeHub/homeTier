@@ -8,8 +8,6 @@ import type {
   NetworkStats,
   LogEntry,
   SpaceApp,
-  AuthResult,
-  TunStatus,
   PeerInfo,
   AclRule,
   PortForwardRule,
@@ -201,24 +199,6 @@ export async function getSpacePeers(spaceId: string): Promise<PeerInfo[]> {
   return invoke<PeerInfo[]>("get_space_peers", { spaceId });
 }
 
-// 这些类型从types导入
-
-// === TUN 授权 ===
-
-export async function getTunStatus(): Promise<TunStatus> {
-  return invoke("get_tun_status");
-}
-
-export async function refreshTunStatus(): Promise<TunStatus> {
-  return invoke("refresh_tun_status");
-}
-
-export async function authorizeTun(): Promise<AuthResult> {
-  return invoke("authorize_tun");
-}
-
-// === TUN 设备管理 ===
-
 // === Space Apps ===
 
 export async function addApp(
@@ -279,26 +259,6 @@ export async function deleteApp(appId: string, callerId: string): Promise<void> 
 
 export async function listApps(spaceId: string): Promise<SpaceApp[]> {
   return invoke("list_apps", { spaceId });
-}
-
-export async function getWebappMode(): Promise<string> {
-  return invoke("get_webapp_mode");
-}
-
-export async function setWebappMode(mode: string): Promise<void> {
-  return invoke("set_webapp_mode", { mode });
-}
-
-export async function openAppView(url: string, x: number, y: number, w: number, h: number): Promise<void> {
-  return invoke("open_app_view", { url, x, y, w, h });
-}
-
-export async function closeAppView(): Promise<void> {
-  return invoke("close_app_view");
-}
-
-export async function resizeAppView(x: number, y: number, w: number, h: number): Promise<void> {
-  return invoke("resize_app_view", { x, y, w, h });
 }
 
 // === Daemon Ready Status ===
