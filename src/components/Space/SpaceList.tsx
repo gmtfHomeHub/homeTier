@@ -8,7 +8,7 @@ import { ShareSpaceDialog } from "../Common/ShareSpaceDialog";
 import { ConfirmDialog } from "../Common/ConfirmDialog";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { MemberCount } from "../Common/MemberCount";
-import { Button, Flex } from "@radix-ui/themes";
+import { Button, Flex, Grid } from "@radix-ui/themes";
 import { getSystemConfig, updateSpaceConfig, getRelayPrefix } from "../../utils/api";
 import type { NetworkConfig } from "../../types/network";
 import { DEFAULT_NETWORK_CONFIG } from "../../types/network";
@@ -134,8 +134,8 @@ export function SpaceList() {
                 <MemberCount spaceId={space.id} connected={space.status === "connected"} />
               </div>
             </div>
-            <Flex gap="2" align="center" onClick={(e) => e.stopPropagation()}>
-              <div className="flex-1 min-w-0">
+            <Grid columns="2" gap="3" onClick={(e) => e.stopPropagation()}>
+              <Flex>
                 {space.status === "connected" ? (
                   <Button
                     onClick={() => disconnect(space.id)}
@@ -143,7 +143,6 @@ export function SpaceList() {
                     loading={disconnectingId === space.id}
                     variant="outline"
                     size="2"
-                    className="w-full"
                   >
                     {disconnectingId === space.id ? t('space.disconnecting') : t('space.disconnect')}
                   </Button>
@@ -153,14 +152,13 @@ export function SpaceList() {
                     disabled={space.status === "connecting" || connectingId === space.id}
                     variant="soft"
                     size="2"
-                    className="w-full"
                     loading={space.status === "connecting" || connectingId === space.id}
                   >
                     {space.status === "connecting" ? t('space.connecting') : t('space.connect')}
                   </Button>
                 )}
-              </div>
-              <Flex align="center" gap="1">
+              </Flex>
+              <Flex align="center" justify="end" gap="4">
                 <Button
                   onClick={() => setShareTarget(space.id)}
                   variant="ghost"
@@ -189,7 +187,7 @@ export function SpaceList() {
                   </Button>
                 )}
               </Flex>
-            </Flex>
+            </Grid>
           </div>
         ))}
       </div>

@@ -34,14 +34,9 @@ export function Sidebar() {
   return (
     <>
       <aside
-        className="flex flex-col h-full relative"
+        className="relative flex flex-col h-full"
         {...swipeBind}
       >
-        <div
-          className="absolute top-0 bottom-0 right-0 z-20 hidden w-4 cursor-w-resize md:block"
-          onClick={() => setSidebarOpen(false)}
-        />
-
         <div className="flex-1 p-3 overflow-x-hidden overflow-y-auto">
           {spaces.length === 0 && (
             <div className="text-center py-8 text-[var(--color-text-secondary)] text-sm">

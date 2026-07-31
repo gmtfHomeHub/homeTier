@@ -18,6 +18,8 @@ const LEVEL_COLORS: Record<string, ButtonProps['color']> = {
 
 const DEFAULT_ROW_HEIGHT = 26;
 
+const PKG_NAME = "home_tier_lib::";
+
 interface LogRowProps {
   logs: LogEntry[];
 }
@@ -27,18 +29,19 @@ const LogRow = ({ index, style, logs }: RowComponentProps<LogRowProps>) => {
 
   if (!entry) return null;
 
+  const cls = `leading-[${DEFAULT_ROW_HEIGHT}px]`;
   return (
     <div style={style} className="flex gap-2 px-2 py-0.5 items-start">
-      <span className="text-[var(--color-text-secondary)] whitespace-nowrap leading-[26px]">
+      <span className={`text-[var(--color-text-secondary)] whitespace-nowrap ${cls}`}>
         {entry.timestamp}
       </span>
-      <Badge className="px-1 rounded font-bold mt-0.5" color={LEVEL_COLORS[entry.level]}>
-        <span className="uppercase">{entry.level}</span>
+      <Badge className="px-0.5 rounded mt-0.5 w-16" color={LEVEL_COLORS[entry.level]}>
+        <span className="w-full text-center uppercase">{entry.level}</span>
       </Badge>
-      <span className="text-[var(--color-text-secondary)] whitespace-nowrap leading-[26px]">
-        [{entry.module}]
+      <span className={`text-[var(--color-text-secondary)] whitespace-nowrap ${cls}`}>
+        [{(entry.module || '').replace(PKG_NAME, '')}]
       </span>
-      <span className="text-[var(--color-text)] break-all leading-[26px]">
+      <span className={`text-[var(--color-text)] break-all ${cls}`}>
         {entry.message}
       </span>
     </div>

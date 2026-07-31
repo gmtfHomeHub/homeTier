@@ -78,7 +78,7 @@ export function EasyTierVersionManager() {
   };
 
   return (
-    <section className="border border-[var(--color-border)] rounded-lg p-4 space-y-3">
+    <section className="border border-[var(--color-border)] rounded-lg py-4 space-y-3">
       <Flex align="center" gap="2">
         <Cpu size={16} className="text-[var(--color-primary)]" />
         <Text size="2" weight="bold">{t("settings.easytierEngine")}</Text>

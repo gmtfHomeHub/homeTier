@@ -15,7 +15,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   return (
     <div className="h-screen w-screen flex flex-col bg-[var(--color-bg)]">
       <TitleBar />
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="relative flex flex-1 overflow-hidden">
         {/* 浮层 Sidebar — fixed 定位，不参与流式布局 */}
         <AnimatePresence>
           {sidebarOpen && (
@@ -35,7 +35,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 animate={{ x: 0 }}
                 exit={{ x: "-100%" }}
                 transition={{ type: "spring", damping: 25, stiffness: 260 }}
-                className="fixed left-0 top-10 bottom-0 z-40 w-64 bg-[var(--color-surface)] border-r border-[var(--color-border)]"
+                className="fixed left-0 top-10 bottom-0 z-40 w-64 bg-[var(--color-bg)] border-r border-[var(--color-border)]"
               >
                 <Sidebar />
               </motion.aside>
@@ -43,7 +43,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           )}
         </AnimatePresence>
 
-        <main className="flex flex-col flex-1 overflow-hidden relative">
+        <main className="relative flex flex-col flex-1 overflow-hidden">
           {children}
           <AppWorkspace />
         </main>

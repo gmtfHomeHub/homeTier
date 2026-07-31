@@ -175,10 +175,6 @@ export function SettingsPage() {
 
               {/* EasyTier 引擎版本 */}
               <section>
-                <Flex align="center" gap="2" mb="3">
-                  <Network size={16} />
-                  <Text size="2" weight="bold">{t("settings.easytierEngine")}</Text>
-                </Flex>
                 <EasyTierVersionManager />
               </section>
 
