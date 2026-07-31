@@ -30,7 +30,11 @@
     "proxyLoadError": "无法在内部加载",
     "proxyLoadErrorDescription": "该网站无法通过代理加载。请点击下方按钮在系统浏览器中打开。",
     "permissionError": "无法获取权限信息",
-    "confirmDeleteApp": "确定要删除此应用吗？"
+    "confirmDeleteApp": "确定要删除此应用吗？",
+    "modeDesktop": "电脑模式",
+    "modeMobile": "手机模式",
+    "switchToDesktop": "切换到电脑模式",
+    "switchToMobile": "切换到手机模式"
   },
   "settings": {
     "title": "设置",

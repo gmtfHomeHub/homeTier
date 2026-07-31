@@ -1,28 +1,66 @@
-import { useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ShieldAlert } from "lucide-react";
 import { Button, Flex, Text, Card } from "@radix-ui/themes";
+import { DEVICE_VIEWPORTS, type DeviceMode } from "../../utils/device";
 
 interface ProxyFrameProps {
   proxyUrl: string;
   name: string;
+  deviceMode: DeviceMode;
   onOpenBrowser: () => void;
   onBack: () => void;
   onError?: () => void;
 }
 
-export function ProxyFrame({ proxyUrl, name, onOpenBrowser, onBack, onError }: ProxyFrameProps) {
+function useContainerSize<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setSize({ width: el.clientWidth, height: el.clientHeight });
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return { ref, ...size };
+}
+
+export function ProxyFrame({ proxyUrl, name, deviceMode, onOpenBrowser, onBack, onError }: ProxyFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const { ref: containerRef, width: cw, height: ch } = useContainerSize<HTMLDivElement>();
+
+  const viewport = DEVICE_VIEWPORTS[deviceMode];
+  const scale = cw > 0 && ch > 0 ? Math.min(cw / viewport.w, ch / viewport.h) : 1;
+  const offsetX = (cw - viewport.w * scale) / 2;
+  const offsetY = (ch - viewport.h * scale) / 2;
 
   return (
-    <iframe
-      ref={iframeRef}
-      src={proxyUrl}
-      className="w-full h-full border-none"
-      title={name}
-      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-      onError={onError}
-    />
+    <div ref={containerRef} className="absolute inset-0 overflow-hidden bg-white">
+      <div
+        style={{
+          position: "absolute",
+          left: offsetX,
+          top: offsetY,
+          width: viewport.w,
+          height: viewport.h,
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+        }}
+      >
+        <iframe
+          ref={iframeRef}
+          src={proxyUrl}
+          className="border-none"
+          style={{ width: viewport.w, height: viewport.h }}
+          title={name}
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+          onError={onError}
+        />
+      </div>
+    </div>
   );
 }
 

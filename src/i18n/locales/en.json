@@ -30,7 +30,11 @@
     "proxyLoadError": "Cannot load internally",
     "proxyLoadErrorDescription": "This website cannot be loaded through the proxy. Please click the button below to open it in your system browser.",
     "permissionError": "Unable to retrieve permission information",
-    "confirmDeleteApp": "Are you sure you want to delete this app?"
+    "confirmDeleteApp": "Are you sure you want to delete this app?",
+    "modeDesktop": "Desktop Mode",
+    "modeMobile": "Mobile Mode",
+    "switchToDesktop": "Switch to desktop mode",
+    "switchToMobile": "Switch to mobile mode"
   },
   "settings": {
     "title": "Settings",

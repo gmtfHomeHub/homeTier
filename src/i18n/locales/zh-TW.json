@@ -30,7 +30,11 @@
     "proxyLoadError": "無法在內部載入",
     "proxyLoadErrorDescription": "該網站無法透過代理載入。請點擊下方按鈕在系統瀏覽器中開啟。",
     "permissionError": "無法獲取權限資訊",
-    "confirmDeleteApp": "確定要刪除此應用嗎？"
+    "confirmDeleteApp": "確定要刪除此應用嗎？",
+    "modeDesktop": "電腦模式",
+    "modeMobile": "手機模式",
+    "switchToDesktop": "切換到電腦模式",
+    "switchToMobile": "切換到手機模式"
   },
   "settings": {
     "title": "設定",

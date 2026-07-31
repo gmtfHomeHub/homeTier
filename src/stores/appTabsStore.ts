@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { Space, SpaceApp } from "../types";
 import { buildAppUrl } from "../types";
 import { buildProxyUrl } from "../components/AppBrowser/ProxyFrame";
+import { detectDeviceMode, type DeviceMode } from "../utils/device";
 
 export const MAX_IFRAMES = 10;
 
@@ -20,6 +21,7 @@ interface AppTabsStore {
   openApps: AppTab[];
   activeKey: string | null;
   visible: boolean;
+  deviceMode: DeviceMode;
 
   openApp: (space: Space, app: SpaceApp) => void;
   setActive: (key: string) => void;
@@ -27,6 +29,7 @@ interface AppTabsStore {
   closeTab: (key: string) => void;
   clearSpace: (spaceId: string) => void;
   hide: () => void;
+  setDeviceMode: (mode: DeviceMode) => void;
 }
 
 function makeTab(space: Space, app: SpaceApp): AppTab {
@@ -47,6 +50,7 @@ export const useAppTabsStore = create<AppTabsStore>((set) => ({
   openApps: [],
   activeKey: null,
   visible: false,
+  deviceMode: detectDeviceMode(),
 
   openApp: (space, app) => {
     set((state) => {
@@ -117,5 +121,9 @@ export const useAppTabsStore = create<AppTabsStore>((set) => ({
 
   hide: () => {
     set({ visible: false });
+  },
+
+  setDeviceMode: (mode) => {
+    set({ deviceMode: mode });
   },
 }));

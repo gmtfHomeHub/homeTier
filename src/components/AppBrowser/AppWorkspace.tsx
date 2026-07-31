@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, RefreshCw, ExternalLink, X } from "lucide-react";
+import { ArrowLeft, RefreshCw, ExternalLink, Monitor, Smartphone, X } from "lucide-react";
 import { Button } from "@radix-ui/themes";
 import { useAppTabsStore } from "../../stores/appTabsStore";
 import { open } from "@tauri-apps/plugin-shell";
@@ -18,6 +18,8 @@ export function AppWorkspace() {
   const setLoadError = useAppTabsStore((s) => s.setLoadError);
   const closeTab = useAppTabsStore((s) => s.closeTab);
   const hide = useAppTabsStore((s) => s.hide);
+  const deviceMode = useAppTabsStore((s) => s.deviceMode);
+  const setDeviceMode = useAppTabsStore((s) => s.setDeviceMode);
   const [refreshNonce, setRefreshNonce] = useState<Record<string, number>>({});
 
   const activeTab = openApps.find((tab) => tab.key === activeKey) ?? null;
@@ -110,6 +112,18 @@ export function AppWorkspace() {
             </div>
           ))}
         </div>
+        <Button
+          onClick={() => setDeviceMode(deviceMode === "desktop" ? "mobile" : "desktop")}
+          variant="ghost"
+          size="2"
+          title={
+            deviceMode === "desktop"
+              ? t("common.switchToMobile")
+              : t("common.switchToDesktop")
+          }
+        >
+          {deviceMode === "desktop" ? <Monitor size={16} /> : <Smartphone size={16} />}
+        </Button>
         <Button onClick={handleOpenInBrowser} variant="ghost" size="2" title={t("common.openInBrowser")}>
           <ExternalLink size={16} />
         </Button>
@@ -132,6 +146,7 @@ export function AppWorkspace() {
                   key={refreshKey}
                   proxyUrl={tab.proxyUrl}
                   name={tab.app.name}
+                  deviceMode={deviceMode}
                   onOpenBrowser={handleOpenInBrowser}
                   onBack={handleBack}
                   onError={() => setLoadError(tab.key, true)}
