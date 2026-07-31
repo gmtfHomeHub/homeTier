@@ -76,6 +76,8 @@
     "easytierEngine": "EasyTier Engine",
     "systemConfig": "System-level EasyTier Configuration",
     "logs": "Logs",
+    "showLogs": "Show Logs",
+    "showLogsHelp": "When disabled, the system stops recording logs and the log entries in settings and space pages are hidden",
     "easytier": "EasyTier Configuration",
     "save_success": "Settings saved",
     "currentVersion": "Current Version",

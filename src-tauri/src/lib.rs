@@ -114,6 +114,11 @@ pub fn run() -> std::process::ExitCode {
             );
             app.manage(db.clone());
 
+            // 启动时应用日志开关（读取 DB 存储的设置）
+            if let Ok(log_enabled) = db.get_setting("LOG_ENABLED") {
+                crate::log::set_log_enabled(log_enabled.as_deref() != Some("0"));
+            }
+
             // 初始化 EasyTier 实例管理器
             let app_data = app
                 .path()
@@ -211,6 +216,8 @@ pub fn run() -> std::process::ExitCode {
                         std::thread::sleep(std::time::Duration::from_millis(200));
                     }
                     if !ready { return; }
+                    // 同步日志开关到 daemon
+                    let _ = client.send_sync(&crate::daemon::ipc::IpcRequest::SetLogEnabled { enabled: crate::log::is_log_enabled() });
                     // Flush 启动前缓存的日志
                     if !cached_logs.is_empty() {
                         let _ = client.send_sync(&crate::daemon::ipc::IpcRequest::WriteLog { entries: cached_logs });
@@ -393,6 +400,8 @@ pub fn run() -> std::process::ExitCode {
             commands::util::set_system_config,
             commands::util::get_relay_prefix,
             commands::util::set_relay_prefix,
+            commands::util::get_log_enabled,
+            commands::util::set_log_enabled,
             // 日志
             commands::log::get_logs,
             commands::log::get_space_logs,

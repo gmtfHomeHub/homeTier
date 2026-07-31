@@ -76,6 +76,8 @@
     "easytierEngine": "EasyTier 引擎",
     "systemConfig": "系統級 EasyTier 設定",
     "logs": "日誌",
+    "showLogs": "顯示日誌",
+    "showLogsHelp": "關閉後，系統將停止記錄日誌，且設定頁與空間頁的日誌入口將被隱藏",
     "easytier": "EasyTier 設定",
     "save_success": "設定已儲存",
     "currentVersion": "目前版本",

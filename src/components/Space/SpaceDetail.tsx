@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Users, ArrowLeft, MessageSquare, MoreHorizontal, Terminal, Trash2 } from "lucide-react";
 import { Button, Flex, DropdownMenu } from "@radix-ui/themes";
 import { useSpaceStore } from "../../stores/spaceStore";
+import { useSettingsStore } from "../../stores/settingsStore";
 import { useSpaceConnect } from "../../hooks/useSpaceConnect";
 import { MemberCount } from "../Common/MemberCount";
 import { MemberManager } from "./MemberManager";
@@ -18,6 +19,7 @@ export function SpaceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { spaces, deleteSpace, loadSpaces } = useSpaceStore();
+  const { logEnabled } = useSettingsStore();
   const { disconnectingId, connect, disconnect } = useSpaceConnect();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -116,10 +118,12 @@ export function SpaceDetail() {
               </Button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Content>
-              <DropdownMenu.Item onClick={() => navigate(`/space/${id}/logs`)}>
-                <Terminal size={16} />
-                {t("space.logs")}
-              </DropdownMenu.Item>
+              {logEnabled && (
+                <DropdownMenu.Item onClick={() => navigate(`/space/${id}/logs`)}>
+                  <Terminal size={16} />
+                  {t("space.logs")}
+                </DropdownMenu.Item>
+              )}
               {isOwner && (
                 <DropdownMenu.Item onClick={() => setShowMemberManager(true)}>
                   <Users size={16} />

@@ -44,6 +44,9 @@ pub enum IpcRequest {
         entries: Vec<crate::log::LogEntry>,
     },
     ClearDaemonLogs,
+    SetLogEnabled {
+        enabled: bool,
+    },
     CheckBinary,
     Shutdown,
 }

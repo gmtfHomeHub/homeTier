@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::sync::OnceLock;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 #[cfg(target_os = "windows")]
 use windows::Win32::System::Diagnostics::Debug::OutputDebugStringA;
@@ -27,7 +28,13 @@ pub struct LogEntry {
     pub space_id: Option<String>,
 }
 
-static LOG_STORE: OnceLock<Mutex<Vec<LogEntry>>> = OnceLock::new();
+/// 日志条数上限（超出时移除最早的记录）
+const MAX_LOG_ENTRIES: usize = 5000;
+
+/// 日志开关（默认开启；关闭时后端不再记录日志）
+static LOG_ENABLED: AtomicBool = AtomicBool::new(true);
+
+static LOG_STORE: OnceLock<Mutex<VecDeque<LogEntry>>> = OnceLock::new();
 static NEXT_SEQ: AtomicU64 = AtomicU64::new(1);
 
 /// 转发通道：GUI 进程的 log_info! 将日志发送到 daemon
@@ -38,8 +45,18 @@ pub fn init_forward(tx: std::sync::mpsc::Sender<LogEntry>) {
     let _ = FORWARD_TX.set(tx);
 }
 
-fn store() -> &'static Mutex<Vec<LogEntry>> {
-    LOG_STORE.get_or_init(|| Mutex::new(Vec::new()))
+fn store() -> &'static Mutex<VecDeque<LogEntry>> {
+    LOG_STORE.get_or_init(|| Mutex::new(VecDeque::new()))
+}
+
+/// 设置日志开关
+pub fn set_log_enabled(enabled: bool) {
+    LOG_ENABLED.store(enabled, Ordering::Relaxed);
+}
+
+/// 查询日志开关
+pub fn is_log_enabled() -> bool {
+    LOG_ENABLED.load(Ordering::Relaxed)
 }
 
 /// 清空所有日志（应用退出时调用）
@@ -104,6 +121,9 @@ pub fn log_system(tag: &str, message: &str) {
 
 /// 记录一条日志
 pub fn log(level: LogLevel, module: &str, message: String, space_id: Option<String>) {
+    if !LOG_ENABLED.load(Ordering::Relaxed) {
+        return;
+    }
     let seq = NEXT_SEQ.fetch_add(1, Ordering::Relaxed);
     let entry = LogEntry {
         seq,
@@ -114,7 +134,10 @@ pub fn log(level: LogLevel, module: &str, message: String, space_id: Option<Stri
         space_id,
     };
     if let Ok(mut logs) = store().lock() {
-        logs.push(entry.clone());
+        logs.push_back(entry.clone());
+        while logs.len() > MAX_LOG_ENTRIES {
+            logs.pop_front();
+        }
     }
     // 转发到 daemon（仅 GUI 进程）
     if let Some(tx) = FORWARD_TX.get() {
@@ -127,7 +150,7 @@ pub fn get_all(level_filter: Option<LogLevel>) -> Vec<LogEntry> {
     if let Ok(logs) = store().lock() {
         match level_filter {
             Some(lv) => logs.iter().filter(|e| e.level == lv).cloned().collect(),
-            None => logs.clone(),
+            None => logs.iter().cloned().collect(),
         }
     } else {
         vec![]

@@ -169,6 +169,14 @@ export async function clearLogs(): Promise<void> {
   return invoke("clear_logs");
 }
 
+export async function getLogEnabled(): Promise<boolean> {
+  return invoke("get_log_enabled");
+}
+
+export async function setLogEnabled(enabled: boolean): Promise<void> {
+  return invoke("set_log_enabled", { enabled });
+}
+
 // === System Config ===
 
 export async function getSystemConfig(): Promise<string | null> {

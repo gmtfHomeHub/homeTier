@@ -7,9 +7,11 @@ interface SettingsStore {
   language: LanguageEnum;
   relayPrefix: string;
   useProxy: boolean;
+  logEnabled: boolean;
   setTheme: (theme: ThemeEnum) => void;
   setLanguage: (lang: LanguageEnum) => void;
   setUseProxy: (v: boolean) => void;
+  setLogEnabled: (v: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -19,10 +21,12 @@ export const useSettingsStore = create<SettingsStore>()(
       language: LanguageEnum.ZH,
       relayPrefix: "homeTier_",
       useProxy: true,
+      logEnabled: true,
 
       setTheme: (theme) => set({ theme }),
       setLanguage: (language) => set({ language }),
       setUseProxy: (useProxy) => set({ useProxy }),
+      setLogEnabled: (logEnabled) => set({ logEnabled }),
     }),
     {
       name: 'settings-store',

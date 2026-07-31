@@ -28,3 +28,26 @@ pub fn set_relay_prefix(prefix: String, db: State<'_, Arc<Database>>) -> Result<
     crate::log_info!(format!("设置中继前缀: {}", prefix));
     db.set_setting("RELAY_NETWORK_PREFIX", &prefix)
 }
+
+/// 读取日志开关（默认开启）
+#[tauri::command]
+pub fn get_log_enabled(db: State<'_, Arc<Database>>) -> Result<bool, String> {
+    Ok(db.get_setting("LOG_ENABLED")?.as_deref() != Some("0"))
+}
+
+/// 设置日志开关（写 DB + 设本地标志 + 同步 daemon）
+#[tauri::command]
+pub async fn set_log_enabled(enabled: bool, db: State<'_, Arc<Database>>) -> Result<(), String> {
+    crate::log::set_log_enabled(enabled);
+    db.set_setting("LOG_ENABLED", if enabled { "1" } else { "0" })?;
+    // 同步 daemon 进程的日志开关
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let client = crate::daemon::client::IpcClient::get_global();
+        if client.ping().await {
+            let _ = client.set_log_enabled(enabled).await;
+        }
+    }
+    crate::log_info!(format!("设置日志开关: {}", if enabled { "开启" } else { "关闭" }));
+    Ok(())
+}

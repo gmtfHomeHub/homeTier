@@ -3,20 +3,30 @@ import { LogViewer } from "../Log/LogViewer";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { EasyTierVersionManager } from "./EasyTierVersionManager";
 import { Terminal, Network, Palette, Languages, HelpCircle } from "lucide-react";
-import { getSystemConfig, setSystemConfig, getRelayPrefix, setRelayPrefix } from "../../utils/api";
+import { getSystemConfig, setSystemConfig, getRelayPrefix, setRelayPrefix, getLogEnabled, setLogEnabled as setLogEnabledApi } from "../../utils/api";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { NetworkConfig } from "../../types/network";
 import { useTranslation } from "react-i18next";
-import { Tabs, Tooltip, Button, TextField, Flex, Text } from "@radix-ui/themes";
+import { Tabs, Tooltip, Button, TextField, Flex, Text, Switch } from "@radix-ui/themes";
 import { SettingTabEnum, LanguageEnum, ThemeEnum } from "../../enum";
 
 export function SettingsPage() {
-  const { theme, language, setTheme, setLanguage, relayPrefix: defRelayPrefix } = useSettingsStore();
+  const { theme, language, setTheme, setLanguage, relayPrefix: defRelayPrefix, logEnabled, setLogEnabled: setStoreLogEnabled } = useSettingsStore();
   const [activeTab, setActiveTab] = useState<SettingTabEnum>(SettingTabEnum.BASIC);
   const [easytierConfig, setEasytierConfig] = useState<Partial<NetworkConfig>>({});
   const [saving, setSaving] = useState(false);
   const [relayPrefix, setRelayPrefixState] = useState<string | undefined>(defRelayPrefix);
   const { t, i18n } = useTranslation();
+
+  useEffect(() => {
+    getLogEnabled().then((val) => setStoreLogEnabled(val)).catch(() => {});
+  }, [setStoreLogEnabled]);
+
+  useEffect(() => {
+    if (!logEnabled && activeTab === SettingTabEnum.LOG) {
+      setActiveTab(SettingTabEnum.BASIC);
+    }
+  }, [logEnabled, activeTab]);
 
   useEffect(() => {
     if (activeTab === SettingTabEnum.BASIC) {
@@ -55,7 +65,7 @@ export function SettingsPage() {
 
   const tabs: { key: SettingTabEnum; label: string; icon: React.ReactNode }[] = [
     { key: SettingTabEnum.BASIC, label: t("settings.basic"), icon: <Palette size={16} /> },
-    { key: SettingTabEnum.LOG, label: t("settings.logs"), icon: <Terminal size={16} /> },
+    ...(logEnabled ? [{ key: SettingTabEnum.LOG, label: t("settings.logs"), icon: <Terminal size={16} /> }] : []),
     { key: SettingTabEnum.ET, label: t("settings.easytier"), icon: <Network size={16} /> },
   ];
 
@@ -171,10 +181,32 @@ export function SettingsPage() {
                 </Flex>
                 <EasyTierVersionManager />
               </section>
+
+              {/* 显示日志开关 */}
+              <section>
+                <Flex align="center" justify="between" gap="2">
+                  <Flex align="center" gap="2">
+                    <Terminal size={16} />
+                    <Text size="2" weight="bold">{t("settings.showLogs")}</Text>
+                    <Tooltip content={t("settings.showLogsHelp")}>
+                      <span className="inline-flex items-center cursor-pointer text-[var(--color-text-secondary)]">
+                        <HelpCircle size={14} />
+                      </span>
+                    </Tooltip>
+                  </Flex>
+                  <Switch
+                    checked={logEnabled}
+                    onCheckedChange={(val) => {
+                      setStoreLogEnabled(val);
+                      setLogEnabledApi(val).catch((e) => alert(String(e)));
+                    }}
+                  />
+                </Flex>
+              </section>
             </div>
           </Tabs.Content>
 
-          <Tabs.Content value="logs" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex data-[state=active]:flex-col data-[state=active]:flex-1 min-h-0 overflow-hidden">
+          <Tabs.Content value="logs" className="data-[state=inactive]:hidden data-[state=active]:flex data-[state=active]:flex-col data-[state=active]:flex-1 min-h-0 overflow-hidden">
               <LogViewer />
           </Tabs.Content>
 

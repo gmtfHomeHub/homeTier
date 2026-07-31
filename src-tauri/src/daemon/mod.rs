@@ -438,6 +438,10 @@ impl Daemon {
                 crate::log::clear();
                 ipc::IpcResponse::Ok { data: None }
             }
+            ipc::IpcRequest::SetLogEnabled { enabled } => {
+                crate::log::set_log_enabled(enabled);
+                ipc::IpcResponse::Ok { data: None }
+            }
             ipc::IpcRequest::CheckBinary => {
                 crate::log_info!("[Daemon] 检查 EasyTier 二进制");
                 match easytier.downloader.ensure_binary().await {

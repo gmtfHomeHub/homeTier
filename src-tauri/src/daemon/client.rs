@@ -251,6 +251,11 @@ impl IpcClient {
         self.send(&IpcRequest::ClearDaemonLogs).await
     }
 
+    /// 设置 daemon 日志开关
+    pub async fn set_log_enabled(&self, enabled: bool) -> Result<IpcResponse, String> {
+        self.send(&IpcRequest::SetLogEnabled { enabled }).await
+    }
+
     /// 检查 EasyTier 二进制
     pub async fn check_binary(&self) -> Result<IpcResponse, String> {
         self.send(&IpcRequest::CheckBinary).await
