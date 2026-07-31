@@ -11,7 +11,6 @@ import { ConfirmDialog } from "../Common/ConfirmDialog";
 import { ScreenShareView } from "../ScreenShare/ScreenShareView";
 import { AppNavPage } from "../AppNav/AppNavPage";
 import { NetworkStatsPanel } from "../Common/NetworkStatsPanel";
-import { useLayoutStore } from "../../stores/layoutStore";
 
 export function SpaceDetail() {
   const { t } = useTranslation();
@@ -22,7 +21,6 @@ export function SpaceDetail() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showMemberManager, setShowMemberManager] = useState(false);
-  const { setSidebarOpen } = useLayoutStore();
 
   const space = spaces.find((s) => s.id === id);
   const isOwner = !!space?.owner_id;
@@ -72,7 +70,7 @@ export function SpaceDetail() {
             }`}
           />
           <span className="font-semibold">{space.name}</span>
-          {space.status === "disconnected" && (
+          {space.status !== "connected" ? (
             <Button
               onClick={() => connect(space.id)}
               variant="soft"
@@ -80,8 +78,7 @@ export function SpaceDetail() {
             >
               {t("space.connect")}
             </Button>
-          )}
-          {space.status === "connected" && (
+          ) : (
             <Button
               onClick={() => disconnect(space.id)}
               disabled={disconnectingId === id}
