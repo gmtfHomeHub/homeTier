@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, Text } from "@radix-ui/themes";
+import { Card, Text, Flex, Grid } from "@radix-ui/themes";
 import { useTranslation } from "react-i18next";
 import { Signal, Wifi, Activity, Users } from "lucide-react";
 import { getSpacePeers, getNetworkStats } from "../../utils/api";
@@ -87,12 +87,12 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
 
   return (
     <Card className="w-full">
-      <div className="p-4 border-b border-[var(--color-border)]">
+      <div className="pb-4 px-4 border-b border-[var(--color-border)]">
         <Text size="2" weight="bold">{t('network.stats')}</Text>
       </div>
-      <div className="p-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1">
+      <div className="px-4">
+        <Grid columns="4" gap="4">
+          <Flex align="center" gap="4">
             <div className="flex items-center gap-2 text-sm">
               <Signal className="text-[var(--color-info)]" />
               <span className="font-medium">{t('network.downstream')}</span>
@@ -100,9 +100,9 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
             <Text size="1" weight="bold" className="text-[var(--color-info)]">
               {formatLocalBytes(stats.rx_bytes)}
             </Text>
-          </div>
+          </Flex>
 
-          <div className="space-y-1">
+          <Flex align="center" gap="4">
             <div className="flex items-center gap-2 text-sm">
               <Signal className="text-[var(--color-info)]" />
               <span className="font-medium">{t('network.upstream')}</span>
@@ -110,9 +110,9 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
             <Text size="1" weight="bold" className="text-[var(--color-info)]">
               {formatLocalBytes(stats.tx_bytes)}
             </Text>
-          </div>
+          </Flex>
 
-          <div className="space-y-1">
+          <Flex align="center" gap="4">
             <div className="flex items-center gap-2 text-sm">
               <Activity className="text-[var(--color-success)]" />
               <span className="font-medium">{t('network.latency')}</span>
@@ -120,26 +120,24 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
             <Text size="1" weight="bold" className="text-[var(--color-success)]">
               {formatLatency(stats.avg_latency_ms)}
             </Text>
-          </div>
-
-          <div
-            className="space-y-1 cursor-pointer hover:bg-[var(--color-surface-hover)] rounded p-1 -m-1 transition-colors"
-            onClick={() => setShowPeersDialog(true)}
-            role="button"
-            tabIndex={0}
-          >
-            <div className="flex items-center gap-2 text-sm">
+          </Flex>
+          <Flex align="center" gap="4">
+            <div
+              className="flex items-center gap-2 text-sm cursor-pointer hover:bg-[var(--color-surface-hover)] rounded transition-colors"
+              onClick={() => setShowPeersDialog(true)}
+            >
               <Wifi className="text-[var(--color-success)]" />
               <span className="font-medium">{t('network.peers')}</span>
               <Users size={12} className="text-[var(--color-text-secondary)]" />
+              <Text size="1" weight="bold" className="text-[var(--color-success)]">
+                {peersList.length || 0}
+              </Text>
             </div>
-            <Text size="1" weight="bold" className="text-[var(--color-success)]">
-              {peersList.length || 0}
-            </Text>
-          </div>
-        </div>
+          </Flex>
 
-        <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+        </Grid>
+
+        <div className="pt-4 border-t border-[var(--color-border)]">
           <div className="flex items-center justify-between text-xs text-[var(--color-text-secondary)]">
             <span>{t('network.networkActivity')}</span>
             <span>{t('network.lastUpdated')}</span>

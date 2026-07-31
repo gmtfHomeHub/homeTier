@@ -2,6 +2,7 @@ import { create } from "zustand";
 import * as api from "../utils/api";
 import { useAppTabsStore } from "./appTabsStore";
 import type { Space } from "../types";
+import { SpaceStatus } from "../enum";
 
 interface SpaceStore {
   spaces: Space[];
@@ -64,7 +65,7 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
     await api.leaveSpace(spaceId);
     set((state) => ({
       spaces: state.spaces.map((s) =>
-        s.id === spaceId ? { ...s, status: "disconnected" as const } : s
+        s.id === spaceId ? { ...s, status: SpaceStatus.DIS } : s
       ),
     }));
     syncTrayMenu(get().spaces);
@@ -97,11 +98,11 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
 
   connectSpace: async (spaceId) => {
     // 互斥：将其他已连接的空间设为 disconnected，目标空间设为 connecting
-    const prevConnected = get().spaces.find((s) => s.status === "connected" || s.status === "connecting");
+    const prevConnected = get().spaces.find((s) => s.status === SpaceStatus.CED || s.status === SpaceStatus.ING);
     set((state) => ({
       spaces: state.spaces.map((s) => {
-        if (s.id === spaceId) return { ...s, status: "connecting" as const };
-        if (s.status === "connected" || s.status === "connecting") return { ...s, status: "disconnected" as const, virtual_ip: undefined };
+        if (s.id === spaceId) return { ...s, status: SpaceStatus.ING };
+        if (s.status === SpaceStatus.CED || s.status === SpaceStatus.ING) return { ...s, status: SpaceStatus.DIS, virtual_ip: undefined };
         return s;
       }),
     }));
@@ -109,7 +110,7 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
       await api.connectSpace(spaceId);
       set((state) => ({
         spaces: state.spaces.map((s) =>
-          s.id === spaceId ? { ...s, status: "connected" as const } : s
+          s.id === spaceId ? { ...s, status: SpaceStatus.CED } : s
         ),
       }));
       // 空间互斥：清空上一个已连接空间的打开标签
@@ -120,7 +121,7 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
     } catch (e) {
       set((state) => ({
         spaces: state.spaces.map((s) =>
-          s.id === spaceId ? { ...s, status: "disconnected" as const } : s
+          s.id === spaceId ? { ...s, status: SpaceStatus.DIS } : s
         ),
         error: String(e),
       }));
@@ -132,7 +133,7 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
     await api.disconnectSpace(spaceId);
     set((state) => ({
       spaces: state.spaces.map((s) =>
-        s.id === spaceId ? { ...s, status: "disconnected", virtual_ip: undefined } : s
+        s.id === spaceId ? { ...s, status: SpaceStatus.DIS, virtual_ip: undefined } : s
       ),
     }));
     useAppTabsStore.getState().clearSpace(spaceId);

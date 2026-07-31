@@ -56,6 +56,9 @@ importers:
       react-router-dom:
         specifier: ^6
         version: 6.30.4(react-dom@18.3.0(react@18.3.0))(react@18.3.0)
+      react-window:
+        specifier: ^2.3.0
+        version: 2.3.0(react-dom@18.3.0(react@18.3.0))(react@18.3.0)
       uuid:
         specifier: ^14.0.1
         version: 14.0.1
@@ -2222,6 +2225,12 @@ packages:
     peerDependenciesMeta:
       '@types/react':
         optional: true
+
+  react-window@2.3.0:
+    resolution: {integrity: sha512-FW6TIpaOH646k51X7yE+LSCWGkt5Pfsnc1fVyq/sCI9h0pTqmMiBXM04pzFKg3Bt7NGkeV6kqbU8d/QjmFS7Ug==}
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
 
   react@18.3.0:
     resolution: {integrity: sha512-RPutkJftSAldDibyrjuku7q11d3oy6wKOyPe5K1HA/HwwrXcEqBdHsLypkC2FFYjP7bPUa6gbzSBhw4sY2JcDg==}
@@ -4534,6 +4543,11 @@ snapshots:
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 18.3.31
+
+  react-window@2.3.0(react-dom@18.3.0(react@18.3.0))(react@18.3.0):
+    dependencies:
+      react: 18.3.0
+      react-dom: 18.3.0(react@18.3.0)
 
   react@18.3.0:
     dependencies:
