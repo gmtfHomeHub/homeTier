@@ -509,12 +509,9 @@ pub fn run() -> std::process::ExitCode {
                     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
                     if let Some(guard) = DAEMON_CHILD.get() {
                         while std::time::Instant::now() < deadline {
-                            let exited = guard
-                                .lock()
-                                .ok()
-                                .and_then(|mut g| g.as_mut())
-                                .map(|h| !h.is_alive())
-                                .unwrap_or(true);
+                            let exited = guard.lock().ok().map_or(true, |mut g| {
+                                g.as_mut().map(|h| !h.is_alive()).unwrap_or(true)
+                            });
                             if exited {
                                 crate::log_info!("[GUI] daemon 已正常退出");
                                 break;
