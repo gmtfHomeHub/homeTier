@@ -4,42 +4,37 @@ import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { EasyTierVersionManager } from "./EasyTierVersionManager";
 import { Terminal, Network, Palette, Languages, HelpCircle } from "lucide-react";
 import { getSystemConfig, setSystemConfig, getRelayPrefix, setRelayPrefix } from "../../utils/api";
-import { useSettingsStore, type SettingsTab } from "../../stores/settingsStore";
+import { useSettingsStore } from "../../stores/settingsStore";
 import type { NetworkConfig } from "../../types/network";
 import { useTranslation } from "react-i18next";
 import { Tabs, Tooltip, Button, TextField, Flex, Text } from "@radix-ui/themes";
+import { SettingTabEnum, LanguageEnum, ThemeEnum } from "../../enum";
 
 export function SettingsPage() {
-  const { theme, language, setTheme, setLanguage, relayPrefix: storePrefix, setRelayPrefix: setStorePrefix, settingsTab, setSettingsTab } = useSettingsStore();
+  const { theme, language, setTheme, setLanguage, relayPrefix: defRelayPrefix } = useSettingsStore();
+  const [activeTab, setActiveTab] = useState<SettingTabEnum>(SettingTabEnum.BASIC);
   const [easytierConfig, setEasytierConfig] = useState<Partial<NetworkConfig>>({});
-  const [configLoaded, setConfigLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [relayPrefix, setRelayPrefixState] = useState("");
-  const [relayPrefixLoaded, setRelayPrefixLoaded] = useState(false);
+  const [relayPrefix, setRelayPrefixState] = useState<string | undefined>(defRelayPrefix);
   const { t, i18n } = useTranslation();
 
   useEffect(() => {
-    if (settingsTab === "basic" && !relayPrefixLoaded) {
+    if (activeTab === SettingTabEnum.BASIC) {
       getRelayPrefix().then((val) => {
         setRelayPrefixState(val);
-        setStorePrefix(val);
-        setRelayPrefixLoaded(true);
       });
     }
-  }, [settingsTab, relayPrefixLoaded]);
 
-  useEffect(() => {
-    if (settingsTab === "easytier" && !configLoaded) {
+    if (activeTab === SettingTabEnum.ET) {
       getSystemConfig().then((json) => {
         if (json) {
           try { setEasytierConfig(JSON.parse(json)); } catch (err) {
             console.log(err);
           }
         }
-        setConfigLoaded(true);
       });
     }
-  }, [settingsTab, configLoaded]);
+  }, [activeTab]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -53,32 +48,32 @@ export function SettingsPage() {
     }
   };
 
-  const handleLanguageChange = (lang: "zh" | "zh-TW" | "en") => {
+  const handleLanguageChange = (lang: LanguageEnum) => {
     setLanguage(lang);
     i18n.changeLanguage(lang);
   };
 
-  const tabs: { key: SettingsTab; label: string; icon: React.ReactNode }[] = [
-    { key: "basic", label: t("settings.basic"), icon: <Palette size={16} /> },
-    { key: "logs", label: t("settings.logs"), icon: <Terminal size={16} /> },
-    { key: "easytier", label: t("settings.easytier"), icon: <Network size={16} /> },
+  const tabs: { key: SettingTabEnum; label: string; icon: React.ReactNode }[] = [
+    { key: SettingTabEnum.BASIC, label: t("settings.basic"), icon: <Palette size={16} /> },
+    { key: SettingTabEnum.LOG, label: t("settings.logs"), icon: <Terminal size={16} /> },
+    { key: SettingTabEnum.ET, label: t("settings.easytier"), icon: <Network size={16} /> },
   ];
 
   const themeOptions = [
-    { value: "light" as const, label: t("settings.theme_light") },
-    { value: "dark" as const, label: t("settings.theme_dark") },
-    { value: "system" as const, label: t("settings.theme_system") },
+    { value: ThemeEnum.LIGHT, label: t("settings.theme_light") },
+    { value: ThemeEnum.DARK, label: t("settings.theme_dark") },
+    { value: ThemeEnum.SYS, label: t("settings.theme_system") },
   ];
 
   const langOptions = [
-    { value: "zh" as const, label: t("settings.lang_zh") },
-    { value: "zh-TW" as const, label: t("settings.lang_zh_TW") },
-    { value: "en" as const, label: t("settings.lang_en") },
+    { value: LanguageEnum.ZH, label: t("settings.lang_zh") },
+    { value: LanguageEnum.TW, label: t("settings.lang_zh_TW") },
+    { value: LanguageEnum.EN, label: t("settings.lang_en") },
   ];
 
   return (
       <div className="flex flex-col flex-1 min-h-0">
-        <Tabs.Root value={settingsTab} onValueChange={(v) => setSettingsTab(v as SettingsTab)} className="flex flex-col flex-1 min-h-0">
+        <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as SettingTabEnum)} className="flex flex-col flex-1 min-h-0">
           {/* 页签 */}
           <Tabs.List className="flex gap-1 px-4 py-1.5 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
             {tabs.map((tab) => (
@@ -160,9 +155,8 @@ export function SettingsPage() {
                     setRelayPrefixState(val);
                   }}
                   onBlur={() => {
-                    const final = relayPrefix.trim();
+                    const final = relayPrefix?.trim() || '';
                     setRelayPrefixState(final);
-                    setStorePrefix(final);
                     setRelayPrefix(final).catch((e) => alert(String(e)));
                   }}
                   placeholder="homeTier_"

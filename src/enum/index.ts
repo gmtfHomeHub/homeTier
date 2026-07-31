@@ -3,3 +3,21 @@ export enum SpaceStatus {
   ING = "connecting",
   CED = "connected",
 }
+
+export enum SettingTabEnum {
+  BASIC = "basic",
+  LOG = "logs",
+  ET = "easytier",
+}
+
+export enum LanguageEnum {
+  ZH = "zh",
+  TW = "zh-TW",
+  EN = "en"
+}
+
+export enum ThemeEnum {
+  LIGHT = "light",
+  DARK = "dark",
+  SYS = "system",
+}
