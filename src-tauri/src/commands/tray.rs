@@ -15,7 +15,8 @@ pub fn update_tray_menu(app: AppHandle, spaces: Vec<TraySpace>) -> Result<(), St
     let show = MenuItem::with_id(&app, "show", "显示/隐藏", true, None::<&str>)
         .map_err(|e| e.to_string())?;
     menu.append(&show).map_err(|e| e.to_string())?;
-    menu.append(&PredefinedMenuItem::separator(&app)).map_err(|e| e.to_string())?;
+    let sep1 = PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
+    menu.append(&sep1).map_err(|e| e.to_string())?;
 
     for space in &spaces {
         let item = MenuItem::with_id(&app, format!("space-{}", space.id), &space.name, true, None::<&str>)
@@ -24,7 +25,8 @@ pub fn update_tray_menu(app: AppHandle, spaces: Vec<TraySpace>) -> Result<(), St
     }
 
     if !spaces.is_empty() {
-        menu.append(&PredefinedMenuItem::separator(&app)).map_err(|e| e.to_string())?;
+        let sep2 = PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
+        menu.append(&sep2).map_err(|e| e.to_string())?;
     }
     let quit = MenuItem::with_id(&app, "quit", "退出", true, None::<&str>)
         .map_err(|e| e.to_string())?;
