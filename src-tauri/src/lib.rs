@@ -166,7 +166,7 @@ pub fn run() -> std::process::ExitCode {
             // 初始化 EasyTier 实例管理器
             let easytier_config_dir = app_data.join("easytier");
             crate::log_info!("[GUI] 应用启动，清理临时文件...");
-            crate::cleanup::cleanup_all(&easytier_config_dir);
+            crate::cleanup::cleanup_all(&app_data, &easytier_config_dir);
             crate::log_info!("[GUI] 清理完成");
             let _ = std::fs::create_dir_all(&easytier_config_dir);
             let instance_manager = Arc::new(easytier::EasyTierManager::new(easytier_config_dir, app_data.clone()));
@@ -618,13 +618,13 @@ pub fn run() -> std::process::ExitCode {
                     }
                 }
 
-                // 4. 最终清理（基于 PID 文件关闭残留 easytier-core）
-                let easytier_config_dir = app_handle
+                // 4. 最终清理（基于 PID 文件/端口关闭残留 daemon 与 easytier-core）
+                let app_data = app_handle
                     .path()
                     .app_data_dir()
-                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
-                    .join("easytier");
-                cleanup::cleanup_all(&easytier_config_dir);
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                let easytier_config_dir = app_data.join("easytier");
+                cleanup::cleanup_all(&app_data, &easytier_config_dir);
                 crate::log_info!("[GUI] 应用退出清理完成");
             }
             _ => {}
@@ -680,13 +680,17 @@ pub fn run_with_args(elevated: bool) -> std::process::ExitCode {
 }
 
 /// 守护进程入口点（--daemon 模式，路径从 CLI 参数传入）
-pub fn run_daemon(config_dir: std::path::PathBuf, data_dir: std::path::PathBuf) -> std::process::ExitCode {
+pub fn run_daemon(
+    config_dir: std::path::PathBuf,
+    data_dir: std::path::PathBuf,
+    gui_pid: Option<u32>,
+) -> std::process::ExitCode {
     // daemon 进程也读取同一份应用配置（端口等）。无 AppHandle，resource_dir 传 None
     crate::config::init(data_dir.join("homeTier.conf"), None);
     let rt = tokio::runtime::Runtime::new()
         .expect("创建 tokio 运行时失败");
 
-    let result = rt.block_on(daemon::run_daemon_async(config_dir, data_dir));
+    let result = rt.block_on(daemon::run_daemon_async(config_dir, data_dir, gui_pid));
 
     match result {
         Ok(()) => {
@@ -721,9 +725,10 @@ fn spawn_daemon(data_dir: &std::path::Path) -> Result<DaemonHandle, String> {
             crate::log_info!("[GUI] macOS 非 root 环境，经 osascript 提权启动 daemon");
             let log_file = data_dir.join("daemon.log");
             let script_path = std::path::PathBuf::from("/tmp/homeTier-daemon-launch.sh");
+            let gui_pid_str = std::process::id().to_string();
             let script_content = format!(
                 r#"#!/bin/sh
-"{}" --daemon --daemon-config "{}" --daemon-data "{}" < /dev/null > "{}" 2>&1 &
+"{}" --daemon --daemon-config "{}" --daemon-data "{}" --gui-pid "{}" < /dev/null > "{}" 2>&1 &
 DAEMON_PID=$!
 echo "homeTier daemon pid=$DAEMON_PID"
 echo "$DAEMON_PID" > "{}/daemon.pid"
@@ -740,6 +745,7 @@ exit 1
                 current_exe.display(),
                 data_dir.display(),
                 data_dir.display(),
+                gui_pid_str,
                 log_file.display(),
                 data_dir.display(),
                 data_dir.join("daemon_ready.signal").display(),
@@ -806,6 +812,8 @@ exit 1
        .arg(data_dir)
        .arg("--daemon-data")
        .arg(data_dir)
+       .arg("--gui-pid")
+       .arg(std::process::id().to_string())
        .stdout(Stdio::null())
        .stderr(Stdio::piped());
 

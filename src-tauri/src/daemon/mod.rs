@@ -31,10 +31,12 @@ pub struct Daemon {
     rpc_port: u16,
     shutdown_tx: broadcast::Sender<()>,
     data_dir: PathBuf,
+    /// GUI 进程 PID（S5 看门狗：GUI 异常退出时 daemon 自动关闭，防止孤儿进程残留）
+    gui_pid: Option<u32>,
 }
 
 impl Daemon {
-    pub fn new(config_dir: PathBuf, data_dir: PathBuf) -> Result<Self, String> {
+    pub fn new(config_dir: PathBuf, data_dir: PathBuf, gui_pid: Option<u32>) -> Result<Self, String> {
         // daemon 启动时清空历史日志
         crate::log::clear();
         let easytier_dir = config_dir.join("easytier");
@@ -60,6 +62,7 @@ impl Daemon {
             rpc_port: ipc::default_rpc_port(),
             shutdown_tx,
             data_dir,
+            gui_pid,
         })
     }
 
@@ -146,14 +149,51 @@ impl Daemon {
             }
         });
 
-        // 监听 ctrl_c 信号（参考 EasyTier stop_check_notifier）
+        // 监听 ctrl_c / SIGTERM 信号（S1 清理通过 SIGTERM 终止残留 daemon，需优雅退出）
         let mut shutdown_rx = self.shutdown_tx.subscribe();
         let shutdown_tx = self.shutdown_tx.clone();
         tokio::spawn(async move {
-            tokio::signal::ctrl_c().await.ok();
-            crate::log_info!("[Daemon] 收到 ctrl_c 信号，准备关闭");
+            #[cfg(unix)]
+            {
+                let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("注册 SIGTERM 监听失败");
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {
+                        crate::log_info!("[Daemon] 收到 ctrl_c 信号，准备关闭");
+                    }
+                    _ = sigterm.recv() => {
+                        crate::log_info!("[Daemon] 收到 SIGTERM 信号，准备关闭");
+                    }
+                }
+            }
+            #[cfg(not(unix))]
+            {
+                tokio::signal::ctrl_c().await.ok();
+                crate::log_info!("[Daemon] 收到 ctrl_c 信号，准备关闭");
+            }
             let _ = shutdown_tx.send(());
         });
+
+        // S5 看门狗：GUI 进程消失（异常退出）时自动关闭 daemon，防止 root 孤儿进程残留。
+        // 进程名校验避免 PID 复用误判；GUI 正常退出会先发 IPC Shutdown，本任务随之结束。
+        if let Some(gui_pid) = self.gui_pid {
+            let shutdown_tx = self.shutdown_tx.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    if !crate::cleanup::is_process_alive(gui_pid)
+                        || !crate::cleanup::is_hometier_gui_process(gui_pid)
+                    {
+                        crate::log_info!(format!(
+                            "[Daemon] GUI 进程已退出 (pid={})，daemon 自动关闭",
+                            gui_pid
+                        ));
+                        let _ = shutdown_tx.send(());
+                        break;
+                    }
+                }
+            });
+        }
 
         // 主循环：接受连接 + 监听 shutdown
         loop {
@@ -524,7 +564,7 @@ impl Daemon {
 }
 
 /// daemon 入口点（路径由 GUI 通过 CLI 传入）
-pub async fn run_daemon_async(config_dir: PathBuf, data_dir: PathBuf) -> Result<(), String> {
-    let daemon = Daemon::new(config_dir, data_dir)?;
+pub async fn run_daemon_async(config_dir: PathBuf, data_dir: PathBuf, gui_pid: Option<u32>) -> Result<(), String> {
+    let daemon = Daemon::new(config_dir, data_dir, gui_pid)?;
     daemon.run().await
 }

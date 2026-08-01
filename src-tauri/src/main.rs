@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// macOS 生产版不再自我提权（S3），GUI 保持普通用户权限；这些函数仅 Windows/Linux 使用。
+#[cfg(not(target_os = "macos"))]
 fn is_elevated() -> bool {
     #[cfg(target_os = "windows")]
     {
@@ -12,6 +14,7 @@ fn is_elevated() -> bool {
     }
 }
 
+#[cfg(not(target_os = "macos"))]
 fn elevate_self() -> bool {
     let exe = std::env::current_exe().unwrap_or_default();
 
@@ -35,17 +38,6 @@ fn elevate_self() -> bool {
         }
         return true;
     }
-    #[cfg(target_os = "macos")]
-    {
-        return std::process::Command::new("osascript")
-            .arg("-e")
-            .arg(format!(
-                r#"do shell script "{} --elevated" with administrator privileges"#,
-                exe.display()
-            ))
-            .spawn()
-            .is_ok();
-    }
     #[cfg(target_os = "linux")]
     {
         return std::process::Command::new("/usr/bin/pkexec")
@@ -61,7 +53,6 @@ fn elevate_self() -> bool {
 
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().collect();
-    let elevated = args.iter().any(|a| a == "--elevated");
     let daemon = args.iter().any(|a| a == "--daemon");
 
     if daemon {
@@ -77,19 +68,35 @@ fn main() -> std::process::ExitCode {
             .and_then(|i| args.get(i + 1))
             .map(|s| std::path::PathBuf::from(s))
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-        home_tier_lib::run_daemon(config_dir, data_dir)
+        let gui_pid = args
+            .iter()
+            .position(|a| a == "--gui-pid")
+            .and_then(|i| args.get(i + 1))
+            .and_then(|s| s.parse::<u32>().ok());
+        home_tier_lib::run_daemon(config_dir, data_dir, gui_pid)
     } else {
         #[cfg(debug_assertions)]
         return home_tier_lib::run_with_args(false);
         #[cfg(not(debug_assertions))]
         {
-            if !elevated && !is_elevated() {
-                if elevate_self() {
-                    std::process::exit(0);
-                }
+            #[cfg(target_os = "macos")]
+            {
+                // macOS 生产版：GUI 不再自我提权（保持普通用户权限，降低 WebView 权限面），
+                // 仅 daemon 经 osascript 提权运行（与 dev 路径一致）。
+                // daemon 生命周期由 S5 看门狗（--gui-pid）与 S1 启动清理兜底保障。
                 home_tier_lib::run_with_args(false)
-            } else {
-                home_tier_lib::run_with_args(elevated)
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                let elevated = args.iter().any(|a| a == "--elevated");
+                if !elevated && !is_elevated() {
+                    if elevate_self() {
+                        std::process::exit(0);
+                    }
+                    home_tier_lib::run_with_args(false)
+                } else {
+                    home_tier_lib::run_with_args(elevated)
+                }
             }
         }
     }
