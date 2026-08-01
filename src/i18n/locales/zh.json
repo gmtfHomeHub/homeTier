@@ -193,7 +193,20 @@
     "title": "屏幕共享",
     "start": "开始共享",
     "stop": "停止共享",
-    "view": "查看"
+    "view": "查看",
+    "quality": "画质",
+    "qualitySmooth": "流畅",
+    "qualityStandard": "清晰",
+    "qualityHd": "高清",
+    "viewerCount": "人正在查看",
+    "inviteTitle": "邀请成员查看",
+    "inviteDesc": "选择允许查看共享画面的成员（不选择则所有成员可查看）",
+    "inviteHint": "不选择任何成员 = 允许所有在线成员查看",
+    "noOnlineMembers": "暂无在线成员",
+    "exitView": "退出查看",
+    "shareEnded": "共享已结束",
+    "waitingShare": "等待共享开始...",
+    "notWatching": "当前没有正在进行的屏幕共享"
   },
   "file": {
     "title": "文件共享",

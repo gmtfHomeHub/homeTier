@@ -193,7 +193,20 @@
     "title": "螢幕分享",
     "start": "開始分享",
     "stop": "停止分享",
-    "view": "檢視"
+    "view": "檢視",
+    "quality": "畫質",
+    "qualitySmooth": "流暢",
+    "qualityStandard": "清晰",
+    "qualityHd": "高清",
+    "viewerCount": "人正在檢視",
+    "inviteTitle": "邀請成員檢視",
+    "inviteDesc": "選擇允許檢視共享畫面的成員（不選擇則所有成員可檢視）",
+    "inviteHint": "不選擇任何成員 = 允許所有線上成員檢視",
+    "noOnlineMembers": "暫無線上成員",
+    "exitView": "結束檢視",
+    "shareEnded": "分享已結束",
+    "waitingShare": "等待分享開始...",
+    "notWatching": "目前沒有正在進行的螢幕分享"
   },
   "file": {
     "title": "檔案分享",

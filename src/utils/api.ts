@@ -129,22 +129,6 @@ export async function listFiles(
 
 // === Screen Share Commands ===
 
-export async function startScreenShare(): Promise<void> {
-  return invoke("start_screen_share");
-}
-
-export async function stopScreenShare(): Promise<void> {
-  return invoke("stop_screen_share");
-}
-
-export async function isScreenSharing(): Promise<boolean> {
-  return invoke("is_screen_sharing");
-}
-
-export async function getScreenShareViewers(): Promise<string[]> {
-  return invoke("get_screen_share_viewers");
-}
-
 // === Events ===
 
 export async function getLogs(level?: string, sinceSeq?: number): Promise<LogEntry[]> {

@@ -68,7 +68,7 @@ export function ChatView() {
               <FileUp size={16} />
               文件共享
             </DropdownMenu.Item>
-            <DropdownMenu.Item onClick={() => startScreenShare()}>
+            <DropdownMenu.Item onClick={() => navigate(`/space/${id}/screen`)}>
               <Monitor size={16} />
               屏幕共享
             </DropdownMenu.Item>
@@ -97,13 +97,4 @@ export function ChatView() {
       {/* 在线成员列表弹窗 */}
     </div>
   );
-}
-
-async function startScreenShare() {
-  const { startScreenShare } = await import("../../utils/api");
-  try {
-    await startScreenShare();
-  } catch (e) {
-    console.error("Screen share failed:", e);
-  }
 }

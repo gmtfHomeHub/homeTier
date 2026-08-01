@@ -193,7 +193,20 @@
     "title": "Screen Sharing",
     "start": "Start Sharing",
     "stop": "Stop Sharing",
-    "view": "View"
+    "view": "View",
+    "quality": "Quality",
+    "qualitySmooth": "Smooth",
+    "qualityStandard": "Standard",
+    "qualityHd": "HD",
+    "viewerCount": "viewing",
+    "inviteTitle": "Invite members to view",
+    "inviteDesc": "Select members allowed to view (empty = everyone can view)",
+    "inviteHint": "No selection = allow all online members to view",
+    "noOnlineMembers": "No online members",
+    "exitView": "Exit view",
+    "shareEnded": "Sharing ended",
+    "waitingShare": "Waiting for sharing to start...",
+    "notWatching": "No screen sharing is currently active"
   },
   "file": {
     "title": "File Sharing",
