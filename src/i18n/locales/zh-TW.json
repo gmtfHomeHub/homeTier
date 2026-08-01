@@ -92,7 +92,18 @@
     "upgrade": "升級",
     "upgradedTo": "已升級到版本 {{version}}",
     "buildFromSource": "從原始碼編譯",
-    "builtFromSource": "已從原始碼編譯版本 {{version}}"
+    "builtFromSource": "已從原始碼編譯版本 {{version}}",
+    "shortcuts": "全域快捷鍵",
+    "shortcutsHelp": "全域生效，應用不在前景時也可使用；格式如 Ctrl+M",
+    "micShortcut": "麥克風靜音快捷鍵",
+    "speakerShortcut": "揚聲器靜音快捷鍵"
+  },
+  "shortcuts": {
+    "micMuted": "麥克風已靜音",
+    "micUnmuted": "麥克風已取消靜音",
+    "speakerMuted": "揚聲器已靜音",
+    "speakerUnmuted": "揚聲器已取消靜音",
+    "notJoined": "未加入語音頻道"
   },
   "space": {
     "create": "建立空間",

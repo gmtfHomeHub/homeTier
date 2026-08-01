@@ -3,6 +3,7 @@ import { Sidebar } from "./Sidebar";
 import { TitleBar } from "./TitleBar";
 import { AppWorkspace } from "../AppBrowser/AppWorkspace";
 import { VoiceAutoJoin } from "../Voice/VoiceAutoJoin";
+import { ShortcutOsd } from "../Common/ShortcutOsd";
 import { useLayoutStore } from "../../stores/layoutStore";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -48,6 +49,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           {children}
           <AppWorkspace />
           <VoiceAutoJoin />
+          <ShortcutOsd />
         </main>
       </div>
     </div>

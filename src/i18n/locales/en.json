@@ -92,7 +92,18 @@
     "upgrade": "Upgrade",
     "upgradedTo": "Upgraded to version {{version}}",
     "buildFromSource": "Build from Source",
-    "builtFromSource": "Built version {{version}} from source"
+    "builtFromSource": "Built version {{version}} from source",
+    "shortcuts": "Global shortcuts",
+    "shortcutsHelp": "Global shortcuts work even when the app is not focused; e.g. Ctrl+M",
+    "micShortcut": "Microphone mute shortcut",
+    "speakerShortcut": "Speaker mute shortcut"
+  },
+  "shortcuts": {
+    "micMuted": "Microphone muted",
+    "micUnmuted": "Microphone unmuted",
+    "speakerMuted": "Speaker muted",
+    "speakerUnmuted": "Speaker unmuted",
+    "notJoined": "Not in a voice channel"
   },
   "space": {
     "create": "Create Space",

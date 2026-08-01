@@ -19,6 +19,7 @@ import { Theme } from "@radix-ui/themes";
 import { isDaemonReady, getDaemonErrorReason } from "./utils/api";
 import { listen } from "@tauri-apps/api/event";
 import { initRealtime } from "./services/realtime";
+import { applyGlobalShortcuts } from "./services/shortcuts";
 
 const POLL_INTERVAL_MS = 1000;
 const POLL_MAX_ATTEMPTS = 30;
@@ -129,6 +130,10 @@ export default function App() {
         }
       })
       .catch((e) => console.error("[realtime] init failed:", e));
+
+    applyGlobalShortcuts().catch((e) =>
+      console.error("[shortcuts] init failed:", e)
+    );
 
     return () => {
       cancelled = true;

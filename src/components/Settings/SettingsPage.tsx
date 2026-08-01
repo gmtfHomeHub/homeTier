@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import { LogViewer } from "../Log/LogViewer";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { EasyTierVersionManager } from "./EasyTierVersionManager";
-import { Terminal, Network, Palette, Languages, HelpCircle } from "lucide-react";
+import { Terminal, Network, Palette, Languages, HelpCircle, Keyboard } from "lucide-react";
 import { getSystemConfig, setSystemConfig, getRelayPrefix, setRelayPrefix, getLogEnabled, setLogEnabled as setLogEnabledApi } from "../../utils/api";
+import { applyGlobalShortcuts } from "../../services/shortcuts";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { NetworkConfig } from "../../types/network";
 import { useTranslation } from "react-i18next";
@@ -11,11 +12,13 @@ import { Tabs, Tooltip, Button, TextField, Flex, Text, Switch } from "@radix-ui/
 import { SettingTabEnum, LanguageEnum, ThemeEnum } from "../../enum";
 
 export function SettingsPage() {
-  const { theme, language, setTheme, setLanguage, relayPrefix: defRelayPrefix, logEnabled, setLogEnabled: setStoreLogEnabled } = useSettingsStore();
+  const { theme, language, setTheme, setLanguage, relayPrefix: defRelayPrefix, logEnabled, setLogEnabled: setStoreLogEnabled, micShortcut: defMicShortcut, speakerShortcut: defSpeakerShortcut, setMicShortcut: storeSetMicShortcut, setSpeakerShortcut: storeSetSpeakerShortcut } = useSettingsStore();
   const [activeTab, setActiveTab] = useState<SettingTabEnum>(SettingTabEnum.BASIC);
   const [easytierConfig, setEasytierConfig] = useState<Partial<NetworkConfig>>({});
   const [saving, setSaving] = useState(false);
   const [relayPrefix, setRelayPrefixState] = useState<string | undefined>(defRelayPrefix);
+  const [micShortcut, setMicShortcutState] = useState<string>(defMicShortcut);
+  const [speakerShortcut, setSpeakerShortcutState] = useState<string>(defSpeakerShortcut);
   const { t, i18n } = useTranslation();
 
   useEffect(() => {
@@ -197,6 +200,65 @@ export function SettingsPage() {
                       setLogEnabledApi(val).catch((e) => alert(String(e)));
                     }}
                   />
+                </Flex>
+              </section>
+
+              {/* 全局快捷键 */}
+              <section>
+                <Flex align="center" gap="2" mb="3">
+                  <Keyboard size={16} />
+                  <Text size="2" weight="bold">{t("settings.shortcuts")}</Text>
+                  <Tooltip content={t("settings.shortcutsHelp")}>
+                    <span className="inline-flex items-center cursor-pointer text-[var(--color-text-secondary)]">
+                      <HelpCircle size={14} />
+                    </span>
+                  </Tooltip>
+                </Flex>
+                <Flex direction="column" gap="2">
+                  <Flex align="center" justify="between" gap="2">
+                    <Text size="2">{t("settings.micShortcut")}</Text>
+                    <TextField.Root
+                      value={micShortcut}
+                      onChange={(e) => setMicShortcutState(e.target.value)}
+                      style={{ width: 200 }}
+                    />
+                  </Flex>
+                  <Flex align="center" justify="between" gap="2">
+                    <Text size="2">{t("settings.speakerShortcut")}</Text>
+                    <TextField.Root
+                      value={speakerShortcut}
+                      onChange={(e) => setSpeakerShortcutState(e.target.value)}
+                      style={{ width: 200 }}
+                    />
+                  </Flex>
+                  <Flex justify="end" gap="2" mt="1">
+                    <Button
+                      variant="outline"
+                      size="2"
+                      onClick={() => {
+                        setMicShortcutState(defMicShortcut);
+                        setSpeakerShortcutState(defSpeakerShortcut);
+                      }}
+                    >
+                      {t("common.reset")}
+                    </Button>
+                    <Button
+                      variant="solid"
+                      color="blue"
+                      size="2"
+                      onClick={() => {
+                        const finalMic = micShortcut.trim() || defMicShortcut;
+                        const finalSpk = speakerShortcut.trim() || defSpeakerShortcut;
+                        setMicShortcutState(finalMic);
+                        setSpeakerShortcutState(finalSpk);
+                        storeSetMicShortcut(finalMic);
+                        storeSetSpeakerShortcut(finalSpk);
+                        applyGlobalShortcuts().catch((e) => console.error(e));
+                      }}
+                    >
+                      {t("common.save")}
+                    </Button>
+                  </Flex>
                 </Flex>
               </section>
             </div>
