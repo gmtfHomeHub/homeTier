@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod chat;
 pub mod cleanup;
+pub mod crypto;
 pub mod daemon;
 pub mod db;
 pub mod easytier;

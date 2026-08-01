@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use sha2::{Digest, Sha256};
 use tauri::State;
 use crate::proxy::{ActiveOrigin, ProxyKeyMap, ProxyServer};
 
@@ -28,9 +27,7 @@ pub async fn register_proxy_key(
     key_map: State<'_, ProxyKeyMap>,
 ) -> Result<String, String> {
     crate::log_debug!(format!("注册代理 key: url={}", url));
-    let mut hasher = Sha256::new();
-    hasher.update(url.as_bytes());
-    let hash = hasher.finalize();
+    let hash = crate::crypto::sha256(url.as_bytes());
     let key = hex::encode(&hash[..6]);
 
     key_map.write().await.insert(key.clone(), url);

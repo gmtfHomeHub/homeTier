@@ -5,8 +5,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use base64::Engine;
 use http::Uri;
 use reqwest::blocking::Client;
-use sha2::Digest;
-use sha2::Sha256;
 use tauri::{AppHandle, Runtime, UriSchemeContext, UriSchemeResponder};
 
 /// 代理服务器端口，由 lib.rs 在启动后设置
@@ -197,7 +195,7 @@ function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/
     );
 
 // function r(l){{var u=l;if(u.match(/hometierproxy/g).length>1){{var u1=u.slice(u.lastIndexOf('hometierproxy'));u = u1;}}if(u.indexOf("hometierproxy://")>= 0) {{u=u.slice(u.indexOf("hometierproxy://"));}} if(u.indexOf("hometierproxy")>=0){{var u2=u.slice(u.indexOf("hometierproxy")); if(u2.indexOf("://"+H)===0) {{return u2;}} if(u2.indexOf(H)<0&&u2.indexOf("://")<0) return u2.replace("hometierproxy","hometierproxy://"+H); return "hometierproxy://"+H+u2.slice(H);}}if(u.charAt(0) === "/") return "hometierproxy://" + H + "/" + u.replace(/^\//, "");var m = u.match(/^https?:\/\/hometierproxy(?::\d+)?(?=\/|\?|#|$)/i);if(m)return u.replace(/^https?:\/\/[^\/]+/, "hometierproxy://" + H); return u.replace(RegExp("^https?://"+H.replace(/\./g,"\\.")+"(?=/|\\?|#|$)","i"),"hometierproxy://"+H);}}
-    let hash = Sha256::digest(js_content.as_bytes());
+    let hash = crate::crypto::sha256(js_content.as_bytes());
     let encoded = base64::engine::general_purpose::STANDARD.encode(hash);
     let csp_hash = format!("'sha256-{}'", encoded);
     let script_tag = format!("<script id=\"__ht\">{}</script>", js_content);

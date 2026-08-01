@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 use crate::types::{FileInfo, TransferProgress, TransferStatus};
 use crate::file::compress;
-use crate::file::crypto;
+use crate::crypto;
 use crate::file::server::FileServer;
 
 /// 文件传输管理器
@@ -72,8 +72,7 @@ impl FileTransferManager {
         };
 
         // 计算哈希（基于原始数据）
-        use sha2::{Sha256, Digest};
-        let hash = hex::encode(Sha256::digest(&data));
+        let hash = crypto::sha256_hex(&data);
 
         let file_info = FileInfo {
             id: file_id,
@@ -231,8 +230,7 @@ impl FileTransferManager {
 
         // 完整性校验（SHA256）
         if let Some(expected) = expected_hash {
-            use sha2::{Sha256, Digest};
-            let actual = hex::encode(Sha256::digest(&data));
+            let actual = crypto::sha256_hex(&data);
             if actual != expected {
                 return Err(format!("文件完整性校验失败 (hash mismatch)"));
             }

@@ -51,6 +51,7 @@ url = { version = "2", features = ["serde"] }
 gethostname = "0.5"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli", "blocking", "stream"] }
 aes-gcm = "0.10"
+pbkdf2 = { version = "0.12", features = ["hmac"] }
 rand = "0.8"
 flate2 = "1"
 tar = "0.4"

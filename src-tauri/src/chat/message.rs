@@ -79,34 +79,21 @@ impl ChatMessage {
 
     /// 对消息签名
     pub fn sign(&mut self, secret: &str) {
-        use hmac::{Hmac, Mac};
-        use sha2::Sha256;
-        type HmacSha256 = Hmac<Sha256>;
-
         let data = format!(
             "{}{}{}{}",
             self.id, self.sender_id, self.content, self.timestamp
         );
-        let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
-        mac.update(data.as_bytes());
-        self.signature = Some(hex::encode(mac.finalize().into_bytes()));
+        self.signature = Some(crate::crypto::hmac_sha256(secret, data.as_bytes()));
     }
 
     /// 验证消息签名
     pub fn verify(&self, secret: &str) -> bool {
         if let Some(ref sig) = self.signature {
-            use hmac::{Hmac, Mac};
-            use sha2::Sha256;
-            type HmacSha256 = Hmac<Sha256>;
-
             let data = format!(
                 "{}{}{}{}",
                 self.id, self.sender_id, self.content, self.timestamp
             );
-            let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
-            mac.update(data.as_bytes());
-            let expected = hex::encode(mac.finalize().into_bytes());
-            sig == &expected
+            crate::crypto::verify_hmac(secret, data.as_bytes(), sig)
         } else {
             false
         }
