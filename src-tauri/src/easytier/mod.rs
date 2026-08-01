@@ -92,8 +92,6 @@ impl EasyTierManager {
             _ => (None, None),
         };
         
-        const DEFAULT_SPACE_IP: &str = "10.144.144.10";
-
         let effective_ipv4 = if !cfg.virtual_ipv4.is_empty() {
             Some(cfg.virtual_ipv4.clone())
         } else if let Some(ref ipv4) = cfg.ipv4 {
@@ -102,8 +100,10 @@ impl EasyTierManager {
             None
         };
 
+        let default_space_ip = crate::config::get_str(crate::config::KEY_DEFAULT_SPACE_IP, crate::config::DEFAULT_SPACE_IP);
+
         let effective_ipv4 = effective_ipv4.or_else(|| {
-            if !cfg.dhcp { Some(DEFAULT_SPACE_IP.to_string()) } else { None }
+            if !cfg.dhcp { Some(default_space_ip) } else { None }
         });
 
         NetworkConfig {
@@ -148,7 +148,7 @@ impl EasyTierManager {
         use easytier::tunnel::tcp::TcpTunnelConnector;
         use easytier::proto::api::manage::{WebClientServiceClientFactory, RunNetworkInstanceRequest};
 
-        let rpc_port = crate::daemon::ipc::EASYTIER_DAEMON_RPC_PORT;
+        let rpc_port = crate::daemon::ipc::easytier_daemon_rpc_port();
         let addr = format!("tcp://127.0.0.1:{}", rpc_port);
         let url: url::Url = addr.parse().map_err(|e| format!("解析 RPC 地址失败: {}", e))?;
 
@@ -184,7 +184,7 @@ impl EasyTierManager {
         use easytier::tunnel::tcp::TcpTunnelConnector;
         use easytier::proto::api::manage::{WebClientServiceClientFactory, DeleteNetworkInstanceRequest};
 
-        let rpc_port = crate::daemon::ipc::EASYTIER_DAEMON_RPC_PORT;
+        let rpc_port = crate::daemon::ipc::easytier_daemon_rpc_port();
         let addr = format!("tcp://127.0.0.1:{}", rpc_port);
         let url: url::Url = addr.parse().map_err(|e| format!("解析 RPC 地址失败: {}", e))?;
 
@@ -229,7 +229,7 @@ impl EasyTierManager {
             WebClientServiceClientFactory, RetainNetworkInstanceRequest,
         };
 
-        let rpc_port = crate::daemon::ipc::EASYTIER_DAEMON_RPC_PORT;
+        let rpc_port = crate::daemon::ipc::easytier_daemon_rpc_port();
         let addr = format!("tcp://127.0.0.1:{}", rpc_port);
         let url: url::Url = addr.parse().map_err(|e| format!("解析 RPC 地址失败: {}", e))?;
 
@@ -488,7 +488,7 @@ impl EasyTierManager {
 
     /// 获取实例的 RPC 端口（共享 daemon 端口）
     fn get_instance_rpc_port(&self, instance_id: &Uuid) -> Option<u16> {
-        Some(crate::daemon::ipc::EASYTIER_DAEMON_RPC_PORT)
+        Some(crate::daemon::ipc::easytier_daemon_rpc_port())
     }
 
     /// 获取连接的 peer 数量

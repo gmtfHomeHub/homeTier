@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { LogViewer } from "../Log/LogViewer";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { EasyTierVersionManager } from "./EasyTierVersionManager";
-import { Terminal, Network, Palette, Languages, HelpCircle, Keyboard } from "lucide-react";
+import { AppConfigEditor } from "./AppConfigEditor";
+import { Terminal, Network, Palette, Languages, HelpCircle, Keyboard, FileCog } from "lucide-react";
 import { getSystemConfig, setSystemConfig, getRelayPrefix, setRelayPrefix, getLogEnabled, setLogEnabled as setLogEnabledApi } from "../../utils/api";
 import { applyGlobalShortcuts } from "../../services/shortcuts";
 import { useSettingsStore } from "../../stores/settingsStore";
@@ -89,6 +90,7 @@ export function SettingsPage() {
     { key: SettingTabEnum.BASIC, label: t("settings.basic"), icon: <Palette size={16} /> },
     ...(logEnabled ? [{ key: SettingTabEnum.LOG, label: t("settings.logs"), icon: <Terminal size={16} /> }] : []),
     { key: SettingTabEnum.ET, label: t("settings.easytier"), icon: <Network size={16} /> },
+    { key: SettingTabEnum.CONFIG, label: t("settings.config"), icon: <FileCog size={16} /> },
   ];
 
   const themeOptions = [
@@ -317,6 +319,10 @@ export function SettingsPage() {
                 </Button>
               </Flex>
             </div>
+          </Tabs.Content>
+
+          <Tabs.Content value="config" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 overflow-y-auto">
+            <AppConfigEditor />
           </Tabs.Content>
         </Tabs.Root>
       </div>

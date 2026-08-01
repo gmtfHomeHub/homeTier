@@ -20,26 +20,46 @@ pub fn set_system_config(config: String, db: State<'_, Arc<Database>>) -> Result
 
 #[tauri::command]
 pub fn get_relay_prefix(db: State<'_, Arc<Database>>) -> Result<String, String> {
-    Ok(db.get_setting("RELAY_NETWORK_PREFIX")?.unwrap_or_else(|| "homeTier_".to_string()))
+    // 优先级：配置文件 > DB > 默认值
+    if let Some(cfg) = crate::config::global() {
+        if let Some(v) = cfg.get(crate::config::KEY_RELAY_NETWORK_PREFIX) {
+            return Ok(v);
+        }
+    }
+    Ok(db.get_setting("RELAY_NETWORK_PREFIX")?.unwrap_or_else(|| crate::config::DEFAULT_RELAY_NETWORK_PREFIX.to_string()))
 }
 
 #[tauri::command]
 pub fn set_relay_prefix(prefix: String, db: State<'_, Arc<Database>>) -> Result<(), String> {
     crate::log_info!(format!("设置中继前缀: {}", prefix));
-    db.set_setting("RELAY_NETWORK_PREFIX", &prefix)
+    db.set_setting("RELAY_NETWORK_PREFIX", &prefix)?;
+    // 同步写入配置文件（读取优先读配置文件）
+    if let Some(cfg) = crate::config::global() {
+        let _ = cfg.set(crate::config::KEY_RELAY_NETWORK_PREFIX, &prefix);
+    }
+    Ok(())
 }
 
-/// 读取日志开关（默认开启）
+/// 读取日志开关（默认开启，优先级：配置文件 > DB）
 #[tauri::command]
 pub fn get_log_enabled(db: State<'_, Arc<Database>>) -> Result<bool, String> {
+    if let Some(cfg) = crate::config::global() {
+        if let Some(v) = cfg.get(crate::config::KEY_LOG_ENABLED) {
+            return Ok(v != "0");
+        }
+    }
     Ok(db.get_setting("LOG_ENABLED")?.as_deref() != Some("0"))
 }
 
-/// 设置日志开关（写 DB + 设本地标志 + 同步 daemon）
+/// 设置日志开关（写 DB + 配置文件 + 设本地标志 + 同步 daemon）
 #[tauri::command]
 pub async fn set_log_enabled(enabled: bool, db: State<'_, Arc<Database>>) -> Result<(), String> {
     crate::log::set_log_enabled(enabled);
     db.set_setting("LOG_ENABLED", if enabled { "1" } else { "0" })?;
+    // 同步写入配置文件
+    if let Some(cfg) = crate::config::global() {
+        let _ = cfg.set(crate::config::KEY_LOG_ENABLED, if enabled { "1" } else { "0" });
+    }
     // 同步 daemon 进程的日志开关
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {

@@ -8,6 +8,7 @@ export enum SettingTabEnum {
   BASIC = "basic",
   LOG = "logs",
   ET = "easytier",
+  CONFIG = "config",
 }
 
 export enum LanguageEnum {

@@ -60,7 +60,8 @@ pub async fn upgrade_easytier_with_progress(
         "https://github.com/EasyTier/EasyTier/releases/download/v{}/{}",
         version, filename
     );
-    let proxy_url = format!("https://ghproxy.top/{}", direct_url);
+    let mirror = crate::config::get_str(crate::config::KEY_GITHUB_MIRROR, crate::config::DEFAULT_GITHUB_MIRROR);
+    let proxy_url = format!("{}/{}", mirror, direct_url);
 
     let urls: Vec<(&str, &str)> = if use_proxy {
         vec![(&proxy_url, "代理"), (&direct_url, "直连")]

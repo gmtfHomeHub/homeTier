@@ -203,6 +203,20 @@ export async function setRelayPrefix(prefix: string): Promise<void> {
   return invoke("set_relay_prefix", { prefix });
 }
 
+// === App Config (配置文件) ===
+
+export async function getAppConfig(): Promise<Record<string, string>> {
+  return invoke("get_app_config");
+}
+
+export async function setAppConfig(updates: Record<string, string>): Promise<void> {
+  return invoke("set_app_config", { updates });
+}
+
+export async function getConfigFilePath(): Promise<string> {
+  return invoke("get_config_file_path");
+}
+
 // === Space Config ===
 
 export async function updateSpaceConfig(spaceId: string, configJson: string): Promise<void> {

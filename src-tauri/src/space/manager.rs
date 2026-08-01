@@ -538,7 +538,8 @@ Self {
 
     /// 启动文件服务器
     async fn start_file_server(&self, space_id: Uuid) -> Result<(), String> {
-        let file_port = 19000 + (space_id.as_u128() % 1000) as u16;
+        let base = crate::config::get_u16(crate::config::KEY_FILE_SERVER_PORT_BASE, crate::config::DEFAULT_FILE_SERVER_PORT_BASE);
+        let file_port = base + (space_id.as_u128() % 1000) as u16;
         let storage_dir = self.storage_dir.read().await.join(space_id.to_string());
 
         let mut server = FileServer::new(space_id, storage_dir);
@@ -876,7 +877,8 @@ Self {
     /// 获取用于文件传输的 peer (IP, port) 列表
     pub async fn get_peers_for_file_transfer(&self, space_id: &Uuid) -> Result<Vec<(String, u16)>, String> {
         let peers = self.get_peers(space_id).await?;
-        let file_port = 19000 + (space_id.as_u128() % 1000) as u16;
+        let base = crate::config::get_u16(crate::config::KEY_FILE_SERVER_PORT_BASE, crate::config::DEFAULT_FILE_SERVER_PORT_BASE);
+        let file_port = base + (space_id.as_u128() % 1000) as u16;
 
         let mut results = Vec::new();
         for peer in peers {

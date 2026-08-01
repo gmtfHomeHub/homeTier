@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod chat;
 pub mod cleanup;
+pub mod config;
 pub mod crypto;
 pub mod daemon;
 pub mod db;
@@ -118,16 +119,50 @@ pub fn run() -> std::process::ExitCode {
             );
             app.manage(db.clone());
 
-            // 启动时应用日志开关（读取 DB 存储的设置）
-            if let Ok(log_enabled) = db.get_setting("LOG_ENABLED") {
-                crate::log::set_log_enabled(log_enabled.as_deref() != Some("0"));
-            }
-
-            // 初始化 EasyTier 实例管理器
+            // 初始化应用配置文件（{app_data_dir}/homeTier.conf）
             let app_data = app
                 .path()
                 .app_data_dir()
                 .unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let config_path = app_data.join("homeTier.conf");
+            let config_created = crate::config::init(config_path.clone());
+
+            // 首次生成配置文件时，继承 DB 中已有的业务设置（之后以配置文件为准）
+            if config_created {
+                if let Some(cfg) = crate::config::global() {
+                    if let Ok(Some(v)) = db.get_setting("RELAY_NETWORK_PREFIX") {
+                        let _ = cfg.set(crate::config::KEY_RELAY_NETWORK_PREFIX, &v);
+                    }
+                    if let Ok(Some(v)) = db.get_setting("LOG_ENABLED") {
+                        let _ = cfg.set(crate::config::KEY_LOG_ENABLED, &v);
+                    }
+                }
+            }
+
+            // 启动时应用日志开关（优先配置文件，其次 DB）
+            let log_enabled = crate::config::get_bool(
+                crate::config::KEY_LOG_ENABLED,
+                db.get_setting("LOG_ENABLED")
+                    .ok()
+                    .flatten()
+                    .map(|v| v != "0")
+                    .unwrap_or(crate::config::DEFAULT_LOG_ENABLED),
+            );
+            crate::log::set_log_enabled(log_enabled);
+
+            // 后台轮询配置文件热更新（mtime 变化时 reload + 广播 config:changed）
+            let app_handle_poll = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                if let Some(cfg) = crate::config::global() {
+                    if cfg.has_external_change() {
+                        cfg.reload();
+                        let _ = app_handle_poll.emit("config:changed", ());
+                    }
+                }
+            });
+
+            // 初始化 EasyTier 实例管理器
             let easytier_config_dir = app_data.join("easytier");
             crate::log_info!("[GUI] 应用启动，清理临时文件...");
             crate::cleanup::cleanup_all(&easytier_config_dir);
@@ -447,7 +482,9 @@ pub fn run() -> std::process::ExitCode {
             commands::app::delete_app,
             commands::app::list_apps,
             // 配置管理
-            
+            commands::config::get_app_config,
+            commands::config::set_app_config,
+            commands::config::get_config_file_path,
             // 代理服务
             commands::proxy::get_proxy_url,
             commands::proxy::get_proxy_status,
@@ -642,6 +679,8 @@ pub fn run_with_args(elevated: bool) -> std::process::ExitCode {
 
 /// 守护进程入口点（--daemon 模式，路径从 CLI 参数传入）
 pub fn run_daemon(config_dir: std::path::PathBuf, data_dir: std::path::PathBuf) -> std::process::ExitCode {
+    // daemon 进程也读取同一份应用配置（端口等）
+    crate::config::init(data_dir.join("homeTier.conf"));
     let rt = tokio::runtime::Runtime::new()
         .expect("创建 tokio 运行时失败");
 

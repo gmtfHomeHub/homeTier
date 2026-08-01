@@ -96,7 +96,8 @@
     "shortcuts": "Global shortcuts",
     "shortcutsHelp": "Global shortcuts work even when the app is not focused; e.g. Ctrl+M",
     "micShortcut": "Microphone mute shortcut",
-    "speakerShortcut": "Speaker mute shortcut"
+    "speakerShortcut": "Speaker mute shortcut",
+    "config": "Config File"
   },
   "shortcuts": {
     "micMuted": "Microphone muted",
@@ -397,5 +398,21 @@
   },
   "errors": {
     "selectSpace": "Please select a space first"
+  },
+  "config": {
+    "title": "Config File",
+    "path": "Config file path",
+    "restartHint": "Note: Port settings (DAEMON_IPC_PORT / EASYTIER_RPC_PORT) take effect after restarting the app. Other settings apply immediately on save.",
+    "default": "Default",
+    "saved": "Saved",
+    "portNeedsRestart": "Restart required",
+    "descDaemonIpcPort": "homeTier daemon IPC port",
+    "descEasytierRpcPort": "easytier-core RPC port",
+    "descFileServerPortBase": "File server port base (actual port = base + space_id % 1000)",
+    "descDefaultSpaceIp": "Default virtual IPv4 for new spaces",
+    "descGithubApi": "EasyTier GitHub Releases API URL",
+    "descGithubMirror": "Download mirror prefix (empty = direct GitHub)",
+    "descRelayPrefix": "Relay network prefix",
+    "descLogEnabled": "Logging switch"
   }
 }

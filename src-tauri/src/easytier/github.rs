@@ -1,7 +1,12 @@
 use serde::Deserialize;
 
-const GITHUB_API: &str = "https://api.github.com/repos/EasyTier/EasyTier/releases";
-const GITHUB_MIRROR: &str = "https://ghproxy.top";
+fn github_api() -> String {
+    crate::config::get_str(crate::config::KEY_GITHUB_API, crate::config::DEFAULT_GITHUB_API)
+}
+
+fn github_mirror() -> String {
+    crate::config::get_str(crate::config::KEY_GITHUB_MIRROR, crate::config::DEFAULT_GITHUB_MIRROR)
+}
 
 #[derive(Deserialize)]
 struct Release {
@@ -23,7 +28,7 @@ pub async fn fetch_available_versions() -> Result<Vec<String>, String> {
         .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
 
     let resp = client
-        .get(GITHUB_API)
+        .get(github_api())
         .query(&[("per_page", "20")])
         .send()
         .await
@@ -61,7 +66,7 @@ pub async fn fetch_available_versions() -> Result<Vec<String>, String> {
 pub fn download_url(version: &str, platform: &str) -> String {
     format!(
         "{}/https://github.com/EasyTier/EasyTier/releases/download/v{}/easytier-{}-v{}.zip",
-        GITHUB_MIRROR, version, platform, version
+        github_mirror(), version, platform, version
     )
 }
 
@@ -73,7 +78,7 @@ pub async fn fetch_checksum(version: &str, platform: &str) -> Result<Option<Stri
         .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
 
     // 尝试从 Release assets 获取 checksums.txt
-    let url = format!("{}/repos/EasyTier/EasyTier/releases/tags/v{}", GITHUB_API, version);
+    let url = format!("{}/repos/EasyTier/EasyTier/releases/tags/v{}", github_api(), version);
     let resp = client.get(&url).send().await
         .map_err(|e| format!("获取 Release 信息失败: {}", e))?;
 
@@ -89,7 +94,7 @@ pub async fn fetch_checksum(version: &str, platform: &str) -> Result<Option<Stri
     // 查找 checksums.txt 或同名 .sha256 文件
     for asset in &release.assets {
         if asset.name == "checksums.txt" || asset.name.ends_with(".sha256") {
-            let checksum_url = format!("{}/{}", GITHUB_MIRROR, asset.browser_download_url);
+            let checksum_url = format!("{}/{}", github_mirror(), asset.browser_download_url);
             let checksum_resp = client.get(&checksum_url).send().await
                 .map_err(|e| format!("下载校验文件失败: {}", e))?;
             if checksum_resp.status().is_success() {

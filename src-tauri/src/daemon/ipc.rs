@@ -1,9 +1,19 @@
 use serde::{Deserialize, Serialize};
 
-/// 默认 RPC 端口
+/// 默认 RPC 端口（可通过配置文件 DAEMON_IPC_PORT 覆盖，下次 daemon 启动生效）
 pub const DEFAULT_RPC_PORT: u16 = 15889;
-/// easytier-core daemon 的 RPC 端口（与 homeTier daemon IPC 端口分离）
+/// easytier-core daemon 的 RPC 端口（可通过配置文件 EASYTIER_RPC_PORT 覆盖，下次 daemon 启动生效）
 pub const EASYTIER_DAEMON_RPC_PORT: u16 = 15888;
+
+/// 读取配置后的 homeTier daemon IPC 端口（回退默认值）
+pub fn default_rpc_port() -> u16 {
+    crate::config::get_u16(crate::config::KEY_DAEMON_IPC_PORT, DEFAULT_RPC_PORT)
+}
+
+/// 读取配置后的 easytier-core RPC 端口（回退默认值）
+pub fn easytier_daemon_rpc_port() -> u16 {
+    crate::config::get_u16(crate::config::KEY_EASYTIER_RPC_PORT, EASYTIER_DAEMON_RPC_PORT)
+}
 
 /// IPC 请求
 #[derive(Debug, Clone, Serialize, Deserialize)]

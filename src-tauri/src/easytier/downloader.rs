@@ -307,7 +307,8 @@ impl EasyTierDownloader {
             "https://github.com/EasyTier/EasyTier/releases/download/v{}/{}",
             version, filename
         );
-        let mirror_url = format!("https://ghproxy.top/{}", direct_url);
+        let mirror = crate::config::get_str(crate::config::KEY_GITHUB_MIRROR, crate::config::DEFAULT_GITHUB_MIRROR);
+        let mirror_url = format!("{}/{}", mirror, direct_url);
 
         let urls = [(mirror_url.as_str(), "镜像"), (direct_url.as_str(), "直连")];
 

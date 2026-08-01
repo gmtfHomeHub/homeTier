@@ -50,14 +50,14 @@ impl Daemon {
             pid: std::process::id(),
             connected_spaces: Vec::new(),
             version: env!("CARGO_PKG_VERSION").into(),
-            rpc_port: ipc::DEFAULT_RPC_PORT,
+            rpc_port: ipc::default_rpc_port(),
         };
 
         Ok(Self {
             status: Arc::new(RwLock::new(status)),
             easytier,
             easytier_process,
-            rpc_port: ipc::DEFAULT_RPC_PORT,
+            rpc_port: ipc::default_rpc_port(),
             shutdown_tx,
             data_dir,
         })
@@ -124,7 +124,7 @@ impl Daemon {
             let config_dir = easytier.get_config_dir();
 
             let process = crate::easytier::EasyTierProcess::start_daemon(
-                &binary, &config_dir, ipc::EASYTIER_DAEMON_RPC_PORT,
+                &binary, &config_dir, ipc::easytier_daemon_rpc_port(),
             ).await;
 
             match process {

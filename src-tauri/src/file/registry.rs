@@ -26,7 +26,8 @@ impl FileServerRegistry {
     }
 
     fn port_for(space_id: &Uuid) -> u16 {
-        19000 + (space_id.as_u128() % 1000) as u16
+        let base = crate::config::get_u16(crate::config::KEY_FILE_SERVER_PORT_BASE, crate::config::DEFAULT_FILE_SERVER_PORT_BASE);
+        base + (space_id.as_u128() % 1000) as u16
     }
 
     pub fn db(&self) -> Arc<Database> {

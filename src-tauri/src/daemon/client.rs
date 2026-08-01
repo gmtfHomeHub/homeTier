@@ -1,4 +1,4 @@
-use super::ipc::{IpcRequest, IpcResponse, DEFAULT_RPC_PORT};
+use super::ipc::{IpcRequest, IpcResponse};
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -17,9 +17,9 @@ impl IpcClient {
         Self { port, stream: tokio::sync::Mutex::new(None) }
     }
 
-    /// 创建默认端口的客户端
+    /// 创建默认端口的客户端（端口取自配置文件 DAEMON_IPC_PORT，回退默认值）
     pub fn default_port() -> Self {
-        Self::new(DEFAULT_RPC_PORT)
+        Self::new(crate::daemon::ipc::default_rpc_port())
     }
 
     /// 发送请求到 daemon（复用长连接，断线自动重连）
@@ -284,7 +284,7 @@ mod tests {
 
     #[test]
     fn test_client_creation() {
-        let client = IpcClient::new(DEFAULT_RPC_PORT);
-        assert_eq!(client.port, DEFAULT_RPC_PORT);
+        let client = IpcClient::new(super::ipc::DEFAULT_RPC_PORT);
+        assert_eq!(client.port, super::ipc::DEFAULT_RPC_PORT);
     }
 }

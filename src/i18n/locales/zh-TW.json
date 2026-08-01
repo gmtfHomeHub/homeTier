@@ -96,7 +96,8 @@
     "shortcuts": "全域快捷鍵",
     "shortcutsHelp": "全域生效，應用不在前景時也可使用；格式如 Ctrl+M",
     "micShortcut": "麥克風靜音快捷鍵",
-    "speakerShortcut": "揚聲器靜音快捷鍵"
+    "speakerShortcut": "揚聲器靜音快捷鍵",
+    "config": "設定檔"
   },
   "shortcuts": {
     "micMuted": "麥克風已靜音",
@@ -397,5 +398,21 @@
   },
   "errors": {
     "selectSpace": "請先選擇一個空間"
+  },
+  "config": {
+    "title": "設定檔",
+    "path": "設定檔路徑",
+    "restartHint": "提示：連接埠類設定（DAEMON_IPC_PORT / EASYTIER_RPC_PORT）修改後需重新啟動應用程式才生效，其餘設定儲存後立即生效。",
+    "default": "預設值",
+    "saved": "已儲存",
+    "portNeedsRestart": "修改後重啟生效",
+    "descDaemonIpcPort": "homeTier 守護行程 IPC 連接埠",
+    "descEasytierRpcPort": "easytier-core RPC 連接埠",
+    "descFileServerPortBase": "檔案伺服器連接埠基數（實際連接埠 = 基數 + space_id % 1000）",
+    "descDefaultSpaceIp": "新建空間的預設虛擬 IPv4 位址",
+    "descGithubApi": "EasyTier GitHub Releases API 位址",
+    "descGithubMirror": "下載鏡像前綴（留空則直連 GitHub）",
+    "descRelayPrefix": "中繼網路前綴",
+    "descLogEnabled": "日誌開關"
   }
 }

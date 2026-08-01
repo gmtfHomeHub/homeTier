@@ -96,7 +96,8 @@
     "shortcuts": "全局快捷键",
     "shortcutsHelp": "全局生效，应用不在前台时也可使用；格式如 Ctrl+M",
     "micShortcut": "麦克风静音快捷键",
-    "speakerShortcut": "扬声器静音快捷键"
+    "speakerShortcut": "扬声器静音快捷键",
+    "config": "配置文件"
   },
   "shortcuts": {
     "micMuted": "麦克风已静音",
@@ -397,5 +398,21 @@
   },
   "errors": {
     "selectSpace": "请先选择一个空间"
+  },
+  "config": {
+    "title": "配置文件",
+    "path": "配置文件路径",
+    "restartHint": "提示：端口类配置（DAEMON_IPC_PORT / EASYTIER_RPC_PORT）修改后需要重启应用才生效，其余配置保存后立即生效。",
+    "default": "默认值",
+    "saved": "已保存",
+    "portNeedsRestart": "修改后重启生效",
+    "descDaemonIpcPort": "homeTier 守护进程 IPC 端口",
+    "descEasytierRpcPort": "easytier-core RPC 端口",
+    "descFileServerPortBase": "文件服务器端口基数（实际端口 = 基数 + space_id % 1000）",
+    "descDefaultSpaceIp": "新建空间的默认虚拟 IPv4 地址",
+    "descGithubApi": "EasyTier GitHub Releases API 地址",
+    "descGithubMirror": "下载镜像前缀（留空则直连 GitHub）",
+    "descRelayPrefix": "中继网络前缀",
+    "descLogEnabled": "日志开关"
   }
 }
