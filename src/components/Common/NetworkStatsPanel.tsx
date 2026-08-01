@@ -14,9 +14,10 @@ interface StatsData {
 
 interface NetworkStatsPanelProps {
   spaceId: string;
+  connected?: boolean;
 }
 
-export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
+export function NetworkStatsPanel({ spaceId, connected = false }: NetworkStatsPanelProps) {
   const { t } = useTranslation();
   const [stats, setStats] = useState<StatsData>({
     rx_bytes: 0,
@@ -28,6 +29,12 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
   const [showPeersDialog, setShowPeersDialog] = useState(false);
 
   useEffect(() => {
+    if (!connected) {
+      setStats({ rx_bytes: 0, tx_bytes: 0, avg_latency_ms: 0 });
+      setPeersList([]);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     const loadStats = async () => {
       try {
@@ -57,7 +64,7 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [spaceId]);
+  }, [spaceId, connected]);
 
   const formatLocalBytes = (bytes: number): string => {
     if (bytes === 0) return "0 B";
@@ -71,6 +78,19 @@ export function NetworkStatsPanel({ spaceId }: NetworkStatsPanelProps) {
     if (latency < 1) return "< 1ms";
     return `${latency.toFixed(1)}ms`;
   };
+
+  if (!connected) {
+    return (
+      <Card className="w-full">
+        <div className="p-4 border-b border-[var(--color-border)]">
+          <Text size="2" weight="bold">{t('network.stats')}</Text>
+        </div>
+        <div className="p-4">
+          <Text size="1" color="gray">{t('network.disconnected')}</Text>
+        </div>
+      </Card>
+    );
+  }
 
   if (loading) {
     return (

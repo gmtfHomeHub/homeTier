@@ -142,7 +142,7 @@ export function SpaceDetail() {
       </div>
 
        <div className="px-4 py-2">
-         <NetworkStatsPanel spaceId={id} />
+         <NetworkStatsPanel spaceId={id} connected={isRunning} />
        </div>
 
        {isRunning && (
