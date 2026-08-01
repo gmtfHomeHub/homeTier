@@ -104,20 +104,48 @@ export async function sendSignal(
 
 // === File Commands ===
 
+export interface SendFileResult {
+  transfer_id: string;
+  file_info: FileInfo;
+}
+
+export interface FileTransferProgress {
+  transfer_id: string;
+  file_name: string;
+  bytes_transferred: number;
+  total_bytes: number;
+  speed_bytes_per_sec: number;
+  status: "Transferring" | "Paused" | "Completed" | "Failed";
+}
+
 export async function receiveFile(
+  spaceId: string,
   fileId: string,
   savePath: string,
   password?: string
 ): Promise<void> {
-  return invoke("receive_file", { fileId, savePath, password });
+  return invoke("receive_file", { spaceId, fileId, savePath, password });
 }
 
 export async function sendFile(
   spaceId: string,
   filePath: string,
   password?: string
-): Promise<FileInfo> {
+): Promise<SendFileResult> {
   return invoke("send_file", { spaceId, filePath, password });
+}
+
+export async function recordReceivedFile(
+  file: FileInfo
+): Promise<void> {
+  return invoke("record_received_file", { file });
+}
+
+export async function deleteFile(
+  spaceId: string,
+  fileId: string
+): Promise<void> {
+  return invoke("delete_file", { spaceId, fileId });
 }
 
 export async function listFiles(
@@ -125,6 +153,12 @@ export async function listFiles(
   limit?: number
 ): Promise<FileInfo[]> {
   return invoke("list_files", { spaceId, limit });
+}
+
+export async function getTransferProgress(
+  transferId: string
+): Promise<FileTransferProgress | null> {
+  return invoke("get_transfer_progress", { transferId });
 }
 
 // === Screen Share Commands ===

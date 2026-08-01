@@ -232,7 +232,22 @@
     "selectFile": "選擇檔案",
     "noFiles": "暫無檔案",
     "compressed": "已壓縮",
-    "encrypted": "加密"
+    "encrypted": "加密",
+    "password": "存取密碼",
+    "passwordPlaceholder": "如需密碼保護請輸入",
+    "enterPassword": "請輸入檔案存取密碼",
+    "confirm": "確認",
+    "cancel": "取消",
+    "uploading": "傳送中",
+    "downloading": "下載中",
+    "speed": "速度",
+    "remaining": "剩餘",
+    "completed": "已完成",
+    "failed": "失敗",
+    "verified": "完整性校驗通過",
+    "saveTo": "儲存到",
+    "batchSend": "批次傳送",
+    "delete": "刪除"
   },
   "network": {
     "title": "網路設定",

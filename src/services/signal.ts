@@ -13,7 +13,7 @@ import { sendSignal as sendSignalApi } from "../utils/api";
  *   const off = registerSignalHandler("voice", (spaceId, env, fromMember) => {...});
  */
 
-export type SignalKind = "voice" | "screen";
+export type SignalKind = "voice" | "screen" | "file";
 
 export interface SignalEnvelope {
   kind: SignalKind;

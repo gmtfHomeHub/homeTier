@@ -1,9 +1,18 @@
 use tauri::State;
+use serde::Serialize;
 use crate::types::{FileInfo, TransferProgress};
 use crate::file::transfer::FileTransferManager;
+use crate::file::registry::FileServerRegistry;
 use crate::space::manager::SpaceManager;
 use crate::db::Database;
 use std::sync::Arc;
+
+/// send_file 的返回：transfer_id 用于查询进度，file_info 用于列表
+#[derive(Serialize)]
+pub struct SendFileResult {
+    pub transfer_id: String,
+    pub file_info: FileInfo,
+}
 
 #[tauri::command]
 pub async fn send_file(
@@ -13,32 +22,39 @@ pub async fn send_file(
     file_manager: State<'_, Arc<FileTransferManager>>,
     space_manager: State<'_, Arc<SpaceManager>>,
     db: State<'_, Arc<Database>>,
-) -> Result<FileInfo, String> {
+) -> Result<SendFileResult, String> {
     let space_uuid = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
     let sender_id = space_uuid;
     let path = std::path::PathBuf::from(&file_path);
 
-    // 获取 peer 列表
+    // 获取 peer 列表（虚拟 IP + 文件服务器端口）
     let peers = space_manager.get_peers_for_file_transfer(&space_uuid).await?;
 
     if peers.is_empty() {
         return Err("没有可用的 peers".to_string());
     }
 
-    // 选择第一个 peer
-    let (target_ip, target_port) = &peers[0];
+    // 发送给所有在线成员（复用同一 file_id）
+    let mut last_file_info = None;
+    let mut shared_file_id: Option<uuid::Uuid> = None;
+    for (target_ip, target_port) in &peers {
+        crate::log_info!(format!("发送文件: {} -> {}:{}", file_path, target_ip, target_port), &space_id);
 
-    crate::log_info!(format!("发送文件: {} -> {}:{}", file_path, target_ip, target_port), &space_id);
+        let file_info = file_manager.send_file(
+            space_uuid,
+            sender_id,
+            path.clone(),
+            password.clone(),
+            target_ip,
+            *target_port,
+            shared_file_id,
+        ).await?;
 
-    // 执行文件传输
-    let file_info = file_manager.send_file(
-        space_uuid,
-        sender_id,
-        path.clone(),
-        password,
-        target_ip,
-        *target_port,
-    ).await?;
+        shared_file_id = Some(file_info.id);
+        last_file_info = Some(file_info);
+    }
+
+    let file_info = last_file_info.ok_or_else(|| "文件发送失败".to_string())?;
 
     // 保存到数据库
     let row = crate::db::models::FileRow {
@@ -56,22 +72,62 @@ pub async fn send_file(
     };
     db.insert_file(&row)?;
 
-    Ok(file_info)
+    Ok(SendFileResult {
+        transfer_id: file_info.id.to_string(),
+        file_info,
+    })
 }
 
 #[tauri::command]
 pub async fn receive_file(
+    space_id: String,
     file_id: String,
     save_path: String,
     password: Option<String>,
     file_manager: State<'_, Arc<FileTransferManager>>,
+    file_registry: State<'_, Arc<FileServerRegistry>>,
+    db: State<'_, Arc<Database>>,
 ) -> Result<(), String> {
+    let space_uuid = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
     let id = uuid::Uuid::parse_str(&file_id).map_err(|e| e.to_string())?;
 
-    // 从远程节点下载文件
-    // 通过 EasyTier 虚拟网络连接到文件发送方
+    // 获取该空间的 FileServer（本地存储的接收文件）
+    let file_server = file_registry.get_or_start(&space_uuid).await?;
+
+    // 从数据库查询文件哈希用于完整性校验
+    let expected_hash = db.get_file(&space_id, &file_id)?.and_then(|f| f.file_hash);
+
     crate::log_info!(format!("接收文件: id={}, save_path={}", file_id, save_path));
-    file_manager.receive_file(id, save_path, password).await
+    file_manager.receive_file(&file_server, id, save_path, password, expected_hash).await
+}
+
+/// 接收端记录收到的新文件（由前端收到 file 信令后调用）
+#[tauri::command]
+pub async fn record_received_file(
+    file: crate::db::models::FileRow,
+    db: State<'_, Arc<Database>>,
+) -> Result<(), String> {
+    db.insert_file(&file)
+}
+
+#[tauri::command]
+pub async fn delete_file(
+    space_id: String,
+    file_id: String,
+    file_registry: State<'_, Arc<FileServerRegistry>>,
+    db: State<'_, Arc<Database>>,
+) -> Result<(), String> {
+    db.delete_file(&space_id, &file_id)?;
+
+    // 删除本地存储的 .bin 文件
+    if let Ok(space_uuid) = uuid::Uuid::parse_str(&space_id) {
+        if let Some(fs) = file_registry.get(&space_uuid).await {
+            let _ = fs.delete_file(&uuid::Uuid::parse_str(&file_id).unwrap_or_default()).await;
+        }
+    }
+
+    crate::log_info!(format!("删除文件: space_id={}, file_id={}", space_id, file_id));
+    Ok(())
 }
 
 #[tauri::command]

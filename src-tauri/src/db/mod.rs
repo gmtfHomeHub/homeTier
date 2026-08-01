@@ -396,6 +396,42 @@ impl Database {
         Ok(files)
     }
 
+    pub fn get_file(&self, space_id: &str, file_id: &str) -> Result<Option<models::FileRow>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare(
+            "SELECT id, space_id, sender_id, file_name, file_size, file_hash, mime_type, is_compressed, is_password_protected, storage_path, created_at FROM files WHERE space_id=?1 AND id=?2",
+        ).map_err(|e| format!("Query error: {}", e))?;
+
+        let mut rows = stmt.query_map(params![space_id, file_id], |row| {
+            Ok(models::FileRow {
+                id: row.get(0)?,
+                space_id: row.get(1)?,
+                sender_id: row.get(2)?,
+                file_name: row.get(3)?,
+                file_size: row.get(4)?,
+                file_hash: row.get(5)?,
+                mime_type: row.get(6)?,
+                is_compressed: row.get(7)?,
+                is_password_protected: row.get(8)?,
+                storage_path: row.get(9)?,
+                created_at: row.get(10)?,
+            })
+        }).map_err(|e| format!("Query error: {}", e))?;
+
+        rows.next()
+            .map(|r| r.map_err(|e| format!("Row error: {}", e)))
+            .transpose()
+    }
+
+    pub fn delete_file(&self, space_id: &str, file_id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM files WHERE space_id=?1 AND id=?2",
+            params![space_id, file_id],
+        ).map_err(|e| format!("Delete file error: {}", e))?;
+        Ok(())
+    }
+
     // --- ACL Rules ---
 
     pub fn insert_acl_rule(&self, rule: &models::AclRuleRow) -> Result<(), String> {

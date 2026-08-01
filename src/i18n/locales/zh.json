@@ -232,7 +232,22 @@
     "selectFile": "选择文件",
     "noFiles": "暂无文件",
     "compressed": "已压缩",
-    "encrypted": "加密"
+    "encrypted": "加密",
+    "password": "访问密码",
+    "passwordPlaceholder": "如需密码保护请输入",
+    "enterPassword": "请输入文件访问密码",
+    "confirm": "确认",
+    "cancel": "取消",
+    "uploading": "发送中",
+    "downloading": "下载中",
+    "speed": "速度",
+    "remaining": "剩余",
+    "completed": "已完成",
+    "failed": "失败",
+    "verified": "完整性校验通过",
+    "saveTo": "保存到",
+    "batchSend": "批量发送",
+    "delete": "删除"
   },
   "network": {
     "title": "网络配置",

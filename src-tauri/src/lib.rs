@@ -88,6 +88,7 @@ pub fn run() -> std::process::ExitCode {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build());
 
     let builder = proxy::hometier_protocol::register_protocol(builder);
@@ -254,6 +255,33 @@ pub fn run() -> std::process::ExitCode {
             let file_manager = Arc::new(file::transfer::FileTransferManager::new());
             app.manage(file_manager);
 
+            // 初始化文件服务器注册表（每空间一个 HTTP 文件服务器）
+            let file_storage_dir = app_data.join("files");
+            let file_registry = Arc::new(file::registry::FileServerRegistry::new(
+                file_storage_dir.clone(),
+                db.clone(),
+            ));
+            app.manage(file_registry.clone());
+            crate::log_info!("[GUI] 文件服务器注册表已初始化");
+
+            // 后台同步文件服务器状态（随空间连接状态启停）
+            {
+                let file_registry_sync = file_registry.clone();
+                let space_manager_sync = space_manager_clone.clone();
+                std::thread::spawn(move || {
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_time()
+                        .build()
+                        .unwrap();
+                    rt.block_on(async {
+                        loop {
+                            file_registry_sync.sync(&space_manager_sync).await;
+                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        }
+                    });
+                });
+            }
+
             // 初始化屏幕共享引擎
             let screen_share = Arc::new(screen::share::ScreenShareEngine::new());
             app.manage(screen_share);
@@ -393,6 +421,8 @@ pub fn run() -> std::process::ExitCode {
             commands::file::receive_file,
             commands::file::list_files,
             commands::file::get_transfer_progress,
+            commands::file::record_received_file,
+            commands::file::delete_file,
             // 屏幕共享
             commands::screen::start_screen_share,
             commands::screen::stop_screen_share,

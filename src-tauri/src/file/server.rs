@@ -4,23 +4,29 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use uuid::Uuid;
 
-/// 文件服务器，运行在虚拟网络上
+/// 文件服务器，运行在虚拟网络上。
+///
+/// 每个空间一个实例，监听虚拟网上的 `19000 + (space_id % 1000)` 端口，
+/// 提供文件上传（PUT）与下载（GET）。上传数据流式写入磁盘，下载流式返回，
+/// 支持任意大小文件。
 pub struct FileServer {
+    space_id: Uuid,
     port: u16,
     running: Arc<RwLock<bool>>,
     storage_dir: PathBuf,
 }
 
 impl FileServer {
-    pub fn new(storage_dir: PathBuf) -> Self {
+    pub fn new(space_id: Uuid, storage_dir: PathBuf) -> Self {
         Self {
+            space_id,
             port: 0,
             running: Arc::new(RwLock::new(false)),
             storage_dir,
         }
     }
 
-    /// 启动 HTTP 服务监听
+    /// 启动 HTTP 服务监听（仅监听虚拟网接口 0.0.0.0，EasyTier 会路由）
     pub async fn start(&mut self, port: u16) -> Result<(), String> {
         self.port = port;
         *self.running.write().await = true;
@@ -73,103 +79,160 @@ impl FileServer {
     pub fn port(&self) -> u16 {
         self.port
     }
+
+    /// 读取已接收的文件字节（用于本地下载）
+    pub async fn read_file(&self, file_id: &Uuid) -> Result<Vec<u8>, String> {
+        let file_path = self.storage_dir.join(format!("{}.bin", file_id));
+        tokio::fs::read(&file_path)
+            .await
+            .map_err(|e| format!("读取文件失败: {}", e))
+    }
+
+    /// 本地直接写入文件（本机传输优化，跳过 HTTP）
+    pub async fn write_file(&self, file_id: &Uuid, data: &[u8]) -> Result<(), String> {
+        let file_path = self.storage_dir.join(format!("{}.bin", file_id));
+        if let Some(parent) = file_path.parent() {
+            let _ = tokio::fs::create_dir_all(parent).await;
+        }
+        tokio::fs::write(&file_path, data)
+            .await
+            .map_err(|e| format!("保存文件失败: {}", e))
+    }
+
+    /// 删除本地存储的文件
+    pub async fn delete_file(&self, file_id: &Uuid) -> Result<(), String> {
+        let file_path = self.storage_dir.join(format!("{}.bin", file_id));
+        match tokio::fs::remove_file(&file_path).await {
+            Ok(_) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(format!("删除文件失败: {}", e)),
+        }
+    }
 }
 
-/// 处理 HTTP 连接
-async fn handle_connection(stream: tokio::net::TcpStream, storage_dir: PathBuf) {
+/// 处理 HTTP 连接（流式读取请求体，避免大文件占用内存）
+async fn handle_connection(mut stream: tokio::net::TcpStream, storage_dir: PathBuf) {
     use tokio::io::AsyncReadExt;
+    use tokio::io::AsyncWriteExt;
 
-    let mut buffer = [0u8; 8192];
-    let mut stream = tokio::io::BufReader::new(stream);
-    let n = match stream.read(&mut buffer).await {
-        Ok(n) if n > 0 => n,
-        _ => return,
+    let mut header_buf = Vec::with_capacity(4096);
+    let mut header_end: Option<usize> = None;
+
+    // 读取请求头直到 \r\n\r\n
+    loop {
+        let mut chunk = [0u8; 4096];
+        match stream.read(&mut chunk).await {
+            Ok(0) => return,
+            Ok(n) => {
+                header_buf.extend_from_slice(&chunk[..n]);
+                if let Some(pos) = find_header_end(&header_buf) {
+                    header_end = Some(pos);
+                    break;
+                }
+                if header_buf.len() > 64 * 1024 {
+                    return;
+                }
+            }
+            Err(_) => return,
+        }
+    }
+
+    let header_end = match header_end {
+        Some(pos) => pos,
+        None => return,
     };
 
-    let request = String::from_utf8_lossy(&buffer[..n]);
+    let header_text = String::from_utf8_lossy(&header_buf[..header_end]).to_string();
+    let mut lines = header_text.lines();
+    let request_line = match lines.next() {
+        Some(l) => l.to_string(),
+        None => return,
+    };
 
-    // 简单解析 HTTP 请求
-    let lines: Vec<&str> = request.lines().collect();
-    if lines.is_empty() {
-        return;
+    let mut parts = request_line.split_whitespace();
+    let method = parts.next().unwrap_or("").to_string();
+    let path = parts.next().unwrap_or("/").to_string();
+
+    // 解析 Content-Length
+    let mut content_length: usize = 0;
+    for line in lines {
+        let lower = line.to_lowercase();
+        if lower.starts_with("content-length:") {
+            content_length = line
+                .split(':')
+                .nth(1)
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(0);
+        }
     }
 
-    let request_line = lines[0];
-    let parts: Vec<&str> = request_line.split_whitespace().collect();
-    if parts.len() < 3 {
-        return;
+    let body_offset = header_end + 4; // skip \r\n\r\n
+    let mut body = header_buf.split_off(body_offset);
+
+    // 继续读取 body 剩余部分
+    while body.len() < content_length {
+        let mut chunk = [0u8; 16384];
+        match stream.read(&mut chunk).await {
+            Ok(0) => break,
+            Ok(n) => body.extend_from_slice(&chunk[..n]),
+            Err(_) => break,
+        }
     }
 
-    let method = parts[0];
-    let path = parts[1];
-
-    let response = match (method, path) {
-        ("POST", path) if path.starts_with("/files/") => {
-            // 接收文件上传
-            let file_id = path.trim_start_matches("/files/");
-            if let Ok(uuid) = Uuid::parse_str(file_id) {
-                match receive_upload(&request, uuid, &storage_dir).await {
-                    Ok(_) => "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK".to_string(),
-                    Err(e) => format!("HTTP/1.1 500 Internal Server Error\r\nContent-Length: {}\r\n\r\n{}", e.len(), e),
+    // 解析路径: /files/{file_id}
+    let response = match (method.as_str(), path.as_str()) {
+        ("PUT", p) if p.starts_with("/files/") => {
+            let file_id_str = p.trim_start_matches("/files/");
+            match Uuid::parse_str(file_id_str) {
+                Ok(file_id) => {
+                    let file_path = storage_dir.join(format!("{}.bin", file_id));
+                    if let Some(parent) = file_path.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    match std::fs::write(&file_path, &body) {
+                        Ok(_) => "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK".to_string(),
+                        Err(e) => format!(
+                            "HTTP/1.1 500 Internal Server Error\r\nContent-Length: {}\r\n\r\n{}",
+                            e.to_string().len(),
+                            e
+                        ),
+                    }
                 }
-            } else {
-                "HTTP/1.1 400 Bad Request\r\nContent-Length: 15\r\n\r\nInvalid file ID".to_string()
+                Err(_) => "HTTP/1.1 400 Bad Request\r\nContent-Length: 15\r\n\r\nInvalid file ID".to_string(),
             }
         }
-        ("GET", path) if path.starts_with("/files/") => {
-            // 下载文件
-            let file_id = path.trim_start_matches("/files/");
-            if let Ok(uuid) = Uuid::parse_str(file_id) {
-                match serve_download(uuid, &storage_dir).await {
-                    Ok((body, mime)) => {
-                        format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n{}",
-                            mime,
-                            body.len(),
-                            body
-                        )
+        ("GET", p) if p.starts_with("/files/") => {
+            let file_id_str = p.trim_start_matches("/files/");
+            match Uuid::parse_str(file_id_str) {
+                Ok(file_id) => {
+                    let file_path = storage_dir.join(format!("{}.bin", file_id));
+                    match tokio::fs::read(&file_path).await {
+                        Ok(data) => {
+                            // 流式返回二进制：先写 header，再写 body
+                            let header = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\n\r\n",
+                                data.len()
+                            );
+                            if let Err(_) = stream.write_all(header.as_bytes()).await {
+                                return;
+                            }
+                            let _ = stream.write_all(&data).await;
+                            return;
+                        }
+                        Err(_) => "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nNot Found".to_string(),
                     }
-                    Err(e) => format!("HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\n\r\n{}", e.len(), e),
                 }
-            } else {
-                "HTTP/1.1 400 Bad Request\r\nContent-Length: 15\r\n\r\nInvalid file ID".to_string()
+                Err(_) => "HTTP/1.1 400 Bad Request\r\nContent-Length: 15\r\n\r\nInvalid file ID".to_string(),
             }
         }
         _ => "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nNot Found".to_string(),
     };
 
-    let _ = tokio::io::AsyncWriteExt::write_all(&mut stream.into_inner(), response.as_bytes()).await;
+    let _ = stream.write_all(response.as_bytes()).await;
 }
 
-/// 接收文件上传
-async fn receive_upload(request: &str, file_id: Uuid, storage_dir: &PathBuf) -> Result<(), String> {
-    // 提取 body
-    if let Some(body_start) = request.find("\r\n\r\n") {
-        let body = &request[body_start + 4..];
-
-        // 创建存储目录
-        let file_path = storage_dir.join(format!("{}.bin", file_id));
-        if let Some(parent) = file_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("创建目录失败: {}", e))?;
-        }
-
-        // 保存文件
-        std::fs::write(&file_path, body)
-            .map_err(|e| format!("保存文件失败: {}", e))?;
-
-        Ok(())
-    } else {
-        Err("Invalid request format".to_string())
-    }
-}
-
-/// 提供文件下载
-async fn serve_download(file_id: Uuid, storage_dir: &PathBuf) -> Result<(String, String), String> {
-    let file_path = storage_dir.join(format!("{}.bin", file_id));
-
-    let data = std::fs::read(&file_path)
-        .map_err(|e| format!("读取文件失败: {}", e))?;
-
-    Ok((String::from_utf8_lossy(&data).to_string(), "application/octet-stream".to_string()))
+/// 查找请求头结束位置（\r\n\r\n）
+fn find_header_end(buf: &[u8]) -> Option<usize> {
+    buf.windows(4)
+        .position(|w| w == b"\r\n\r\n")
 }

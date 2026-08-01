@@ -20,6 +20,10 @@ import { isDaemonReady, getDaemonErrorReason } from "./utils/api";
 import { listen } from "@tauri-apps/api/event";
 import { initRealtime } from "./services/realtime";
 import { applyGlobalShortcuts } from "./services/shortcuts";
+import { registerSignalHandler, resolveMember } from "./services/signal";
+import * as api from "./utils/api";
+import { useFileStore } from "./stores/fileStore";
+import type { FileInfo } from "./types";
 
 const POLL_INTERVAL_MS = 1000;
 const POLL_MAX_ATTEMPTS = 30;
@@ -135,8 +139,40 @@ export default function App() {
       console.error("[shortcuts] init failed:", e)
     );
 
+    // 文件信令：收到 "sent" 时落库并刷新文件列表
+    const unregisterFileSignal = registerSignalHandler("file", async (spaceId, env) => {
+      if (env.type !== "sent") return;
+      try {
+        const payload = env.data as unknown as { file?: FileInfo };
+        const fileInfo = payload?.file;
+        if (!fileInfo || !fileInfo.id) return;
+        await api.recordReceivedFile(fileInfo);
+        const fresh = await api.listFiles(spaceId);
+        useFileStore.getState().setFiles(spaceId, fresh);
+        // 系统通知：收到新文件
+        try {
+          const { isPermissionGranted, requestPermission, sendNotification } =
+            await import("@tauri-apps/plugin-notification");
+          let granted = await isPermissionGranted();
+          if (!granted) granted = (await requestPermission()) === "granted";
+          if (granted) {
+            const member = resolveMember(spaceId, env.from);
+            sendNotification({
+              title: fileInfo.file_name,
+              body: member?.nickname || env.from || "",
+            });
+          }
+        } catch (e) {
+          console.warn("[file] notification error:", e);
+        }
+      } catch (e) {
+        console.error("[file] record received file failed:", e);
+      }
+    });
+
     return () => {
       cancelled = true;
+      unregisterFileSignal();
       unlisten?.();
     };
   }, [appReady]);

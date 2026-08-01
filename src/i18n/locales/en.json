@@ -232,7 +232,22 @@
     "selectFile": "Select File",
     "noFiles": "No files yet",
     "compressed": "Compressed",
-    "encrypted": "Encrypted"
+    "encrypted": "Encrypted",
+    "password": "Password",
+    "passwordPlaceholder": "Enter a password to protect the file",
+    "enterPassword": "Enter the file access password",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "uploading": "Uploading",
+    "downloading": "Downloading",
+    "speed": "Speed",
+    "remaining": "Remaining",
+    "completed": "Completed",
+    "failed": "Failed",
+    "verified": "Integrity verified",
+    "saveTo": "Save to",
+    "batchSend": "Batch Send",
+    "delete": "Delete"
   },
   "network": {
     "title": "Network Configuration",
