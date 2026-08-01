@@ -62,15 +62,15 @@ export function ChatView() {
           <DropdownMenu.Content>
             <DropdownMenu.Item onClick={() => navigate(`/space/${id}/voice`)}>
               <Mic size={16} />
-              实时语音
+              {t('voice.title')}
             </DropdownMenu.Item>
             <DropdownMenu.Item onClick={() => navigate(`/space/${id}/files`)}>
               <FileUp size={16} />
-              文件共享
+              {t('file.title')}
             </DropdownMenu.Item>
             <DropdownMenu.Item onClick={() => navigate(`/space/${id}/screen`)}>
               <Monitor size={16} />
-              屏幕共享
+              {t('screen.title')}
             </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Root>

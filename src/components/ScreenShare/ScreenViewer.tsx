@@ -58,7 +58,7 @@ export function ScreenViewer() {
         )}
         {remoteStream && (
           <Badge size="1" color="blue" variant="soft">
-            {t(SCREEN_QUALITY_PRESETS[remoteQuality as ScreenQuality].labelKey)}
+            {t(SCREEN_QUALITY_PRESETS[(remoteQuality || "standard") as ScreenQuality].labelKey)}
           </Badge>
         )}
         <Button

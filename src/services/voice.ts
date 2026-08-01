@@ -59,53 +59,72 @@ class VoiceService {
       throw new Error("当前环境不支持麦克风采集（mediaDevices 不可用）");
     }
 
-    // 1. 采集本地麦克风（内置回声消除/噪声抑制/自动增益）
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    });
-    this.localStream = stream;
-    this.localTrack = stream.getAudioTracks()[0] ?? null;
+    useVoiceStore.getState().setJoining(true);
 
-    // 2. 建立 Web Audio 上下文，用于本地音量 / VAD
-    this.audioCtx = new AudioContext();
-    this.localAnalyser = this.audioCtx.createAnalyser();
-    this.localAnalyser.fftSize = 1024;
-    this.localBuffer = new Uint8Array(this.localAnalyser.fftSize);
-    this.remoteBuffer = new Uint8Array(this.localAnalyser.fftSize);
-    this.audioCtx.createMediaStreamSource(stream).connect(this.localAnalyser);
-
-    this.spaceId = spaceId;
-    useVoiceStore.getState().setJoined(true);
-    useVoiceStore.getState().setMicMuted(false);
-    useVoiceStore.getState().setSpeakerMuted(false);
-
-    // 3. 预取成员列表（信令 from -> 昵称 解析）
     try {
-      await preloadMembers(spaceId);
-    } catch {
-      // 成员列表获取失败不阻塞入会
+      // 1. 采集本地麦克风（内置回声消除/噪声抑制/自动增益）
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      this.localStream = stream;
+      this.localTrack = stream.getAudioTracks()[0] ?? null;
+
+      // 2. 建立 Web Audio 上下文，用于本地音量 / VAD
+      this.audioCtx = new AudioContext();
+      this.localAnalyser = this.audioCtx.createAnalyser();
+      this.localAnalyser.fftSize = 1024;
+      this.localBuffer = new Uint8Array(this.localAnalyser.fftSize);
+      this.remoteBuffer = new Uint8Array(this.localAnalyser.fftSize);
+      this.audioCtx.createMediaStreamSource(stream).connect(this.localAnalyser);
+
+      this.spaceId = spaceId;
+      useVoiceStore.getState().setJoined(true);
+      useVoiceStore.getState().setJoining(false);
+      useVoiceStore.getState().setMicMuted(false);
+      useVoiceStore.getState().setSpeakerMuted(false);
+
+      // 3. 预取成员列表（信令 from -> 昵称 解析）
+      try {
+        await preloadMembers(spaceId);
+      } catch {
+        // 成员列表获取失败不阻塞入会
+      }
+
+      // 4. 注册信令处理
+      this.unregister = registerSignalHandler("voice", (sp, env) => {
+        if (sp !== this.spaceId) return;
+        void this.handleSignal(env);
+      });
+
+      // 5. 广播入会
+      await sendSignal(spaceId, "voice", "join");
+
+      // 6. 主动对已知成员建链（覆盖"对方已在线但未广播 join"的场景）
+      await this.ensurePeersFromMembers(spaceId);
+
+      // 7. 启动 VAD 与音量轮询
+      this.silentSince = 0;
+      this.vadTimer = setInterval(() => this.tickVad(), VAD_INTERVAL_MS);
+      this.volumeTimer = setInterval(() => this.tickVolume(), 100);
+    } catch (e) {
+      // 入会失败：清理已获取的资源并复位状态
+      this.spaceId = null;
+      this.localTrack?.stop();
+      this.localTrack = null;
+      this.localStream = null;
+      if (this.audioCtx) {
+        void this.audioCtx.close();
+        this.audioCtx = null;
+      }
+      this.localAnalyser = null;
+      useVoiceStore.getState().setJoined(false);
+      useVoiceStore.getState().setJoining(false);
+      throw e;
     }
-
-    // 4. 注册信令处理
-    this.unregister = registerSignalHandler("voice", (sp, env) => {
-      if (sp !== this.spaceId) return;
-      void this.handleSignal(env);
-    });
-
-    // 5. 广播入会
-    await sendSignal(spaceId, "voice", "join");
-
-    // 6. 主动对已知成员建链（覆盖"对方已在线但未广播 join"的场景）
-    await this.ensurePeersFromMembers(spaceId);
-
-    // 7. 启动 VAD 与音量轮询
-    this.silentSince = 0;
-    this.vadTimer = setInterval(() => this.tickVad(), VAD_INTERVAL_MS);
-    this.volumeTimer = setInterval(() => this.tickVolume(), 100);
   }
 
   async leave(): Promise<void> {
@@ -129,6 +148,7 @@ class VoiceService {
         // 广播失败不阻塞退出
       }
       useVoiceStore.getState().setJoined(false);
+      useVoiceStore.getState().setJoining(false);
     }
     this.spaceId = null;
 

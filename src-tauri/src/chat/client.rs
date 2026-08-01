@@ -35,7 +35,7 @@ impl ChatClient {
             let body = match serde_json::to_string(msg) {
                 Ok(b) => b,
                 Err(e) => {
-                    errors.push((member_id.clone(), e.to_string()));
+                    errors.push((virtual_ip.clone(), e.to_string()));
                     continue;
                 }
             };
