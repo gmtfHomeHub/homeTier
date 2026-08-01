@@ -1,4 +1,5 @@
-import type { Space } from '../types';
+import { MouseEvent, MouseEventHandler } from "react";
+import type { Space } from "../types";
 
 export const getSpaceIp = (space: Space): string | undefined => {
   if (space.virtual_ip) return space.virtual_ip;
@@ -9,4 +10,10 @@ export const getSpaceIp = (space: Space): string | undefined => {
   } catch {
     return undefined;
   }
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const handleStopProp = (func: () => void) => (e: any) => {
+  e.stopPropagation();
+  return func();
 };

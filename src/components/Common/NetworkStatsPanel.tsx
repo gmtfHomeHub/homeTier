@@ -38,18 +38,20 @@ export function NetworkStatsPanel({ spaceId, connected = false }: NetworkStatsPa
     let cancelled = false;
     const loadStats = async () => {
       try {
-        const [networkStats, getPeerList] = await Promise.all([
-          getNetworkStats(spaceId),
-          getSpacePeers(spaceId),
-        ]);
-        if (!cancelled) {
-          setStats({
-            rx_bytes: networkStats.rx_bytes,
-            tx_bytes: networkStats.tx_bytes,
-            avg_latency_ms: networkStats.avg_latency_ms,
-          });
-          setPeersList(getPeerList);
-        }
+        getNetworkStats(spaceId).then((networkStats) => {
+          if (!cancelled) {
+            setStats({
+              rx_bytes: networkStats.rx_bytes,
+              tx_bytes: networkStats.tx_bytes,
+              avg_latency_ms: networkStats.avg_latency_ms,
+            });
+          }
+        });
+        getSpacePeers(spaceId).then((getPeerList) => {
+          if (!cancelled) {
+            setPeersList(getPeerList);
+          }
+        });
       } catch (error) {
         console.error("Failed to load network stats:", error);
       } finally {
@@ -79,32 +81,20 @@ export function NetworkStatsPanel({ spaceId, connected = false }: NetworkStatsPa
     return `${latency.toFixed(1)}ms`;
   };
 
-  if (!connected) {
-    return (
-      <Card className="w-full">
-        <div className="p-4 border-b border-[var(--color-border)]">
-          <Text size="2" weight="bold">{t('network.stats')}</Text>
-        </div>
-        <div className="pb-4 text-center">
-          <Text size="1" color="gray">{t('network.disconnected')}</Text>
-        </div>
-      </Card>
-    );
-  }
-
   if (loading) {
     return (
       <Card className="w-full">
         <div className="p-4 border-b border-[var(--color-border)]">
-          <Text size="2" weight="bold">{t('network.stats')}</Text>
+          <Text size="2" weight="bold">{loading ? t('network.stats') : t('network.stats')}</Text>
         </div>
-        <div className="p-4">
-          <Text size="1" color="gray">{t("common.loading")}</Text>
+        <div className="pb-4 text-center">
+          <Text size="1" color="gray">{loading ? t("common.loading") : t('network.disconnected')}</Text>
         </div>
       </Card>
     );
   }
 
+  const cls = `text-[var(--color-${connected ? 'success' : 'info'})]`;
   return (
     <Card className="w-full">
       <div className="pb-4 px-4 border-b border-[var(--color-border)]">
@@ -114,30 +104,30 @@ export function NetworkStatsPanel({ spaceId, connected = false }: NetworkStatsPa
         <Grid columns="4" gap="4">
           <Flex align="center" gap="4">
             <div className="flex items-center gap-2 text-sm">
-              <Signal className="text-[var(--color-success)]" />
+              <Signal className={cls} />
               <span className="font-medium">{t('network.downstream')}</span>
             </div>
-            <Text size="1" weight="bold" className="text-[var(--color-success)]">
+            <Text size="1" weight="bold" className={cls}>
               {formatLocalBytes(stats.rx_bytes)}
             </Text>
           </Flex>
 
           <Flex align="center" gap="4">
             <div className="flex items-center gap-2 text-sm">
-              <Signal className="text-[var(--color-success)]" />
+              <Signal className={cls} />
               <span className="font-medium">{t('network.upstream')}</span>
             </div>
-            <Text size="1" weight="bold" className="text-[var(--color-success)]">
+            <Text size="1" weight="bold" className={cls}>
               {formatLocalBytes(stats.tx_bytes)}
             </Text>
           </Flex>
 
           <Flex align="center" gap="4">
             <div className="flex items-center gap-2 text-sm">
-              <Activity className="text-[var(--color-success)]" />
+              <Activity className={cls} />
               <span className="font-medium">{t('network.latency')}</span>
             </div>
-            <Text size="1" weight="bold" className="text-[var(--color-success)]">
+            <Text size="1" weight="bold" className={cls}>
               {formatLatency(stats.avg_latency_ms)}
             </Text>
           </Flex>
@@ -146,10 +136,10 @@ export function NetworkStatsPanel({ spaceId, connected = false }: NetworkStatsPa
               className="flex items-center gap-2 text-sm cursor-pointer hover:bg-[var(--color-surface-hover)] rounded transition-colors"
               onClick={() => setShowPeersDialog(true)}
             >
-              <Wifi className="text-[var(--color-success)]" />
+              <Wifi className={cls} />
               <span className="font-medium">{t('network.peers')}</span>
               <Users size={12} className="text-[var(--color-text-secondary)]" />
-              <Text size="1" weight="bold" className="text-[var(--color-success)]">
+              <Text size="1" weight="bold" className={cls}>
                 {peersList.length || 0}
               </Text>
             </div>

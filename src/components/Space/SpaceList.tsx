@@ -8,11 +8,11 @@ import { ShareSpaceDialog } from "../Common/ShareSpaceDialog";
 import { ConfirmDialog } from "../Common/ConfirmDialog";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { MemberCount } from "../Common/MemberCount";
-import { Button, Flex, Grid, Badge, DropdownMenu, Separator } from "@radix-ui/themes";
+import { Button, Flex, Grid, Badge, DropdownMenu } from "@radix-ui/themes";
 import { getSystemConfig, updateSpaceConfig, getRelayPrefix } from "../../utils/api";
 import type { NetworkConfig } from "../../types/network";
 import { DEFAULT_NETWORK_CONFIG } from "../../types/network";
-import { getSpaceIp } from "../../utils";
+import { getSpaceIp, handleStopProp } from "../../utils";
 import { CreateSpaceDialog } from "../Space/CreateSpaceDialog";
 import { JoinSpaceDialog } from "../Space/JoinSpaceDialog";
 
@@ -104,17 +104,13 @@ export function SpaceList() {
             </Button>
           </DropdownMenu.Trigger>
           <DropdownMenu.Content>
-            <DropdownMenu.Item
-              onClick={() => setShowCreate(true)}
-              shortcut={t("space.create")}
-            >
+            <DropdownMenu.Item onClick={() => setShowCreate(true)}>
               <Plus size={16} />
+              {t("space.create")}
             </DropdownMenu.Item>
-            <DropdownMenu.Item
-              onClick={() => setShowJoin(true)}
-              shortcut={t("space.join")}
-            >
+            <DropdownMenu.Item onClick={() => setShowJoin(true)}>
               <LogIn size={16} />
+              {t("space.join")}
             </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Root>
@@ -176,11 +172,11 @@ export function SpaceList() {
                 />
               </div>
             </div>
-            <Grid columns="2" gap="3" onClick={(e) => e.stopPropagation()}>
+            <Grid columns="2" gap="3">
               <Flex>
                 {space.status === "connected" ? (
                   <Button
-                    onClick={() => disconnect(space.id)}
+                    onClick={handleStopProp(() => disconnect(space.id))}
                     disabled={disconnectingId === space.id}
                     loading={disconnectingId === space.id}
                     variant="outline"
@@ -192,7 +188,7 @@ export function SpaceList() {
                   </Button>
                 ) : (
                   <Button
-                    onClick={() => connect(space.id)}
+                    onClick={handleStopProp(() => connect(space.id))}
                     disabled={
                       space.status === "connecting" || connectingId === space.id
                     }
@@ -210,7 +206,7 @@ export function SpaceList() {
               </Flex>
               <Flex align="center" justify="end" gap="4">
                 <Button
-                  onClick={() => setShareTarget(space.id)}
+                  onClick={handleStopProp(() => setShareTarget(space.id))}
                   variant="ghost"
                   size="2"
                   title={t("space.share")}
@@ -218,7 +214,7 @@ export function SpaceList() {
                   <Share2 size={16} />
                 </Button>
                 <Button
-                  onClick={() => setConfigTarget(space.id)}
+                  onClick={handleStopProp(() => setConfigTarget(space.id))}
                   variant="ghost"
                   size="2"
                   title={t("space.spaceConfig")}
@@ -227,13 +223,13 @@ export function SpaceList() {
                 </Button>
                 {space.owner_id && (
                   <Button
-                    onClick={() =>
+                    onClick={handleStopProp(() =>
                       setDeleteTarget({
                         id: space.id,
                         name: space.name,
                         ownerId: space.owner_id,
-                      })
-                    }
+                      }),
+                    )}
                     variant="ghost"
                     color="red"
                     size="2"

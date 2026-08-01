@@ -124,7 +124,7 @@ export function AppWorkspace() {
               : t("common.switchToDesktop")
           }
         >
-          {deviceMode === "desktop" ? <Monitor size={16} /> : <Smartphone size={16} />}
+          {deviceMode === "desktop" ? <Smartphone size={16} /> : <Monitor size={16} />}
         </Button>
         <Button onClick={handleOpenInBrowser} variant="ghost" size="2" title={t("common.openInBrowser")}>
           <ExternalLink size={16} />

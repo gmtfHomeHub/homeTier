@@ -525,6 +525,9 @@ pub fn run() -> std::process::ExitCode {
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        #[cfg(target_os = "macos")]
+        activate_main_window(app);
+        #[cfg(not(target_os = "macos"))]
         if let Some(window) = app.get_webview_window("main") {
             let _ = window.show();
             let _ = window.set_focus();
@@ -607,7 +610,7 @@ pub fn run() -> std::process::ExitCode {
                                         crate::log_warn!(format!("[GUI] daemon 未在超时内退出, 尝试 osascript 提权终止 pid={}", pid));
                                         let _ = std::process::Command::new("osascript")
                                             .arg("-e")
-                                            .arg(format!(r#"do shell script "kill -9 {}" with administrator privileges"#, pid))
+                                            .arg(format!(r#"do shell script "kill -9 {}" with administrator privileges with prompt "homeTier 需要管理员权限以结束后台进程""#, pid))
                                             .stdout(std::process::Stdio::null())
                                             .stderr(std::process::Stdio::null())
                                             .spawn();
@@ -644,6 +647,27 @@ pub fn run() -> std::process::ExitCode {
     std::process::ExitCode::SUCCESS
 }
 
+/// macOS：强制应用激活到前台并聚焦主窗口。
+/// `set_focus()` 仅调用 makeKeyWindow，无法激活应用进程；从 Accessory（托盘态）
+/// 切回 Regular 后必须显式调用 NSRunningApplication activateWithOptions 才能置顶。
+#[cfg(target_os = "macos")]
+fn activate_main_window(app: &tauri::AppHandle) {
+    use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
+
+    let app_handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        unsafe {
+            let current = NSRunningApplication::currentApplication();
+            let _ = current.activateWithOptions(NSApplicationActivationOptions::ActivateIgnoringOtherApps);
+        }
+        if let Some(window) = app_handle.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+    });
+}
+
 #[cfg(not(target_os = "android"))]
 fn toggle_window_visibility(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -659,10 +683,14 @@ fn toggle_window_visibility(app: &tauri::AppHandle) {
             {
                 use tauri::ActivationPolicy;
                 let _ = app.set_activation_policy(ActivationPolicy::Regular);
+                activate_main_window(app);
             }
-            let _ = window.show();
-            let _ = window.unminimize();
-            let _ = window.set_focus();
+            #[cfg(not(target_os = "macos"))]
+            {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
         }
     }
 }
@@ -757,7 +785,7 @@ exit 1
 
             let escaped_script = script_path.as_path().to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
             let osascript_program = format!(
-                "do shell script \"/bin/sh {}\" with administrator privileges",
+                "do shell script \"/bin/sh {}\" with administrator privileges with prompt \"homeTier 需要管理员权限以启动网络服务\"",
                 escaped_script
             );
 

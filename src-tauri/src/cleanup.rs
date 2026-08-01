@@ -164,7 +164,7 @@ fn escalate_kill(pid: u32, signal: libc::c_int) {
     let _ = std::process::Command::new("osascript")
         .arg("-e")
         .arg(format!(
-            r#"do shell script "kill -{} {}" with administrator privileges"#,
+            r#"do shell script "kill -{} {}" with administrator privileges with prompt "homeTier 需要管理员权限以结束后台进程""#,
             sig.trim_start_matches("SIG"),
             pid
         ))

@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { Send, Image } from "lucide-react";
-import { Button, TextArea } from "@radix-ui/themes";
+import { Button, TextArea, Flex } from "@radix-ui/themes";
 
 interface MessageInputProps {
   spaceId: string;
@@ -39,14 +39,14 @@ export function MessageInput({ spaceId, onSend, disabled }: MessageInputProps) {
 
   return (
     <div className="p-4 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
-      <div className="flex items-end gap-2">
+      <Flex align="center" gap="2">
         <Button
           onClick={() => fileInputRef.current?.click()}
           variant="ghost"
           size="2"
           disabled={disabled}
         >
-          <Image size={20} />
+          <Image size={24} />
         </Button>
         <input
           ref={fileInputRef}
@@ -62,7 +62,7 @@ export function MessageInput({ spaceId, onSend, disabled }: MessageInputProps) {
           placeholder={disabled ? "请先连接到空间" : "输入消息，Enter 发送"}
           rows={1}
           disabled={disabled}
-          className="flex-1"
+          className="flex-1 min-h-[var(--space-5)]"
         />
         <Button
           onClick={handleSend}
@@ -73,7 +73,7 @@ export function MessageInput({ spaceId, onSend, disabled }: MessageInputProps) {
         >
           <Send size={18} />
         </Button>
-      </div>
+      </Flex>
     </div>
   );
 }

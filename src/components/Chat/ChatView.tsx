@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useChatStore } from "../../stores/chatStore";
 import { useSpaceStore } from "../../stores/spaceStore";
@@ -9,6 +9,7 @@ import { ArrowLeft, Mic, Monitor, FileUp, MoreHorizontal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Button, DropdownMenu } from "@radix-ui/themes";
+import { View } from "../Common/PageView";
 
 export function ChatView() {
   const { id } = useParams<{ id: string }>();
@@ -35,47 +36,50 @@ export function ChatView() {
   if (!id || !space) {
     return (
       <div className="flex-1 flex items-center justify-center text-[var(--color-text-secondary)]">
-        {t('space.selectSpace')}
+        {t("space.selectSpace")}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col flex-1">
-      {/* 头部 — 对话专用操作栏 */}
-      <div className="h-14 flex items-center gap-3 px-4 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
-        <Button
-          onClick={() => navigate(`/space/${id}`)}
-          variant="ghost"
-          size="2"
-        >
-          <ArrowLeft size={20} />
-        </Button>
-        <span className="font-semibold">{t('chat.title')}</span>
-        <div className="flex-1" />
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger>
-            <Button variant="ghost" size="2">
-              <MoreHorizontal size={18} />
-            </Button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Content>
-            <DropdownMenu.Item onClick={() => navigate(`/space/${id}/voice`)}>
-              <Mic size={16} />
-              {t('voice.title')}
-            </DropdownMenu.Item>
-            <DropdownMenu.Item onClick={() => navigate(`/space/${id}/files`)}>
-              <FileUp size={16} />
-              {t('file.title')}
-            </DropdownMenu.Item>
-            <DropdownMenu.Item onClick={() => navigate(`/space/${id}/screen`)}>
-              <Monitor size={16} />
-              {t('screen.title')}
-            </DropdownMenu.Item>
-          </DropdownMenu.Content>
-        </DropdownMenu.Root>
-      </div>
-
+    <View
+      header={
+        <>
+          <Button
+            onClick={() => navigate(`/space/${id}`)}
+            variant="ghost"
+            size="2"
+          >
+            <ArrowLeft size={20} />
+          </Button>
+          <span className="font-semibold">{t("chat.title")}</span>
+          <div className="flex-1" />
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger>
+              <Button variant="ghost" size="2">
+                <MoreHorizontal size={18} />
+              </Button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content>
+              <DropdownMenu.Item onClick={() => navigate(`/space/${id}/voice`)}>
+                <Mic size={16} />
+                {t("voice.title")}
+              </DropdownMenu.Item>
+              <DropdownMenu.Item onClick={() => navigate(`/space/${id}/files`)}>
+                <FileUp size={16} />
+                {t("file.title")}
+              </DropdownMenu.Item>
+              <DropdownMenu.Item
+                onClick={() => navigate(`/space/${id}/screen`)}
+              >
+                <Monitor size={16} />
+                {t("screen.title")}
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
+        </>
+      }
+    >
       {/* 消息列表 */}
       <MessageList messages={spaceMessages} />
 
@@ -95,6 +99,6 @@ export function ChatView() {
       />
 
       {/* 在线成员列表弹窗 */}
-    </div>
+    </View>
   );
 }
