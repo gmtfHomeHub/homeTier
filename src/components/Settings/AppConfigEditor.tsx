@@ -4,6 +4,7 @@ import {
   getAppConfig,
   setAppConfig,
   getConfigFilePath,
+  getConfigTemplatePath,
 } from "../../utils/api";
 import { listen } from "@tauri-apps/api/event";
 import { Button, TextField, Text, Flex, Callout } from "@radix-ui/themes";
@@ -33,14 +34,20 @@ export function AppConfigEditor() {
   const { t } = useTranslation();
   const [config, setConfig] = useState<Record<string, string>>({});
   const [path, setPath] = useState("");
+  const [templatePath, setTemplatePath] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const load = async () => {
     try {
-      const [cfg, cfgPath] = await Promise.all([getAppConfig(), getConfigFilePath()]);
+      const [cfg, cfgPath, tmplPath] = await Promise.all([
+        getAppConfig(),
+        getConfigFilePath(),
+        getConfigTemplatePath(),
+      ]);
       setConfig(cfg);
       setPath(cfgPath);
+      setTemplatePath(tmplPath);
     } catch (e) {
       console.error(e);
     }
@@ -91,6 +98,17 @@ export function AppConfigEditor() {
           <Text as="span" size="1">{t("config.path")}: <code>{path}</code></Text>
         </Callout.Text>
       </Callout.Root>
+
+      {templatePath && (
+        <Callout.Root size="1" variant="outline" color="gray">
+          <Callout.Icon>
+            <FileCog size={14} />
+          </Callout.Icon>
+          <Callout.Text>
+            <Text as="span" size="1">{t("config.templatePath")}: <code>{templatePath}</code></Text>
+          </Callout.Text>
+        </Callout.Root>
+      )}
 
       <Callout.Root size="1" variant="soft" color="amber">
         <Callout.Icon>

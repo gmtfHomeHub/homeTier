@@ -217,6 +217,10 @@ export async function getConfigFilePath(): Promise<string> {
   return invoke("get_config_file_path");
 }
 
+export async function getConfigTemplatePath(): Promise<string> {
+  return invoke("get_config_template_path");
+}
+
 // === Space Config ===
 
 export async function updateSpaceConfig(spaceId: string, configJson: string): Promise<void> {

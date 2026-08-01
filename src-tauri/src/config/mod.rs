@@ -1,17 +1,26 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{OnceLock, RwLock};
 use std::time::SystemTime;
 
+pub mod template;
+
 /// 应用配置文件（.env 风格 KEY=VALUE）
 ///
-/// 优先级：配置文件 > DB settings > 代码默认值。
+/// 三层读取模式：
+/// 模板层(homeTier.conf.example) > 运行时配置 > 内置默认值。
 /// 通过文件 mtime 轮询实现热更新，修改后无需重启即生效。
 pub struct AppConfig {
     path: PathBuf,
     inner: RwLock<HashMap<String, String>>,
     last_modified: RwLock<Option<SystemTime>>,
+    /// 模板原文（save 时作为骨架，保留注释）
+    template: RwLock<Option<String>>,
+    /// 模板解析后的键值（get 回退）
+    template_map: RwLock<HashMap<String, String>>,
+    /// 模板来源路径（用于前端展示）
+    template_path: RwLock<Option<PathBuf>>,
 }
 
 /// 全局配置实例（setup 阶段初始化）
@@ -36,11 +45,18 @@ pub const DEFAULT_RELAY_NETWORK_PREFIX: &str = "homeTier_";
 pub const DEFAULT_LOG_ENABLED: bool = true;
 
 impl AppConfig {
-    pub fn new(path: PathBuf) -> Self {
+    pub fn new(path: PathBuf, template: Option<String>, template_path: Option<PathBuf>) -> Self {
+        let template_map = template
+            .as_deref()
+            .map(parse_env)
+            .unwrap_or_default();
         Self {
             path,
             inner: RwLock::new(HashMap::new()),
             last_modified: RwLock::new(None),
+            template: RwLock::new(template),
+            template_map: RwLock::new(template_map),
+            template_path: RwLock::new(template_path),
         }
     }
 
@@ -83,9 +99,20 @@ impl AppConfig {
         }
     }
 
-    /// 读取配置值（优先级：文件 > DB 已由调用方处理 > 默认）
+    /// 读取配置值（优先级：运行时配置 > 模板默认值）
     pub fn get(&self, key: &str) -> Option<String> {
-        self.inner.read().map(|m| m.get(key).cloned()).unwrap_or(None)
+        let from_inner = self
+            .inner
+            .read()
+            .map(|m| m.get(key).cloned())
+            .unwrap_or(None);
+        if from_inner.is_some() {
+            return from_inner;
+        }
+        self.template_map
+            .read()
+            .map(|m| m.get(key).cloned())
+            .unwrap_or(None)
     }
 
     /// 读取 u16 端口类配置
@@ -121,10 +148,13 @@ impl AppConfig {
         self.save()
     }
 
-    /// 将内存配置写回文件（带注释模板）
+    /// 将内存配置写回文件（以模板为骨架，保留注释；模板缺失时用内置模板）
     pub fn save(&self) -> Result<(), String> {
         let map = self.inner.read().map(|m| m.clone()).unwrap_or_default();
-        let content = build_template(&map);
+        let content = match self.template.read().map(|t| t.clone()).unwrap_or(None) {
+            Some(raw) => render_from_template(&raw, &map),
+            None => build_template(&map),
+        };
         fs::write(&self.path, content).map_err(|e| format!("写入配置文件失败: {}", e))?;
         if let Ok(meta) = fs::metadata(&self.path) {
             if let Ok(modified) = meta.modified() {
@@ -136,23 +166,42 @@ impl AppConfig {
         Ok(())
     }
 
-    /// 全部配置（键值）
+    /// 全部配置（合并模板默认值 + 运行时覆盖）
     pub fn all(&self) -> HashMap<String, String> {
-        self.inner.read().map(|m| m.clone()).unwrap_or_default()
+        let mut result = self
+            .template_map
+            .read()
+            .map(|m| m.clone())
+            .unwrap_or_default();
+        for (k, v) in self.inner.read().map(|m| m.clone()).unwrap_or_default() {
+            result.insert(k, v);
+        }
+        result
     }
 
     pub fn path(&self) -> PathBuf {
         self.path.clone()
     }
+
+    /// 模板来源路径
+    pub fn template_path(&self) -> Option<PathBuf> {
+        self.template_path.read().map(|p| p.clone()).unwrap_or(None)
+    }
 }
 
 /// 初始化全局配置（setup 阶段调用）。返回是否首次创建配置文件。
-pub fn init(path: PathBuf) -> bool {
+///
+/// resource_dir 用于定位模板（生产打包资源目录）；daemon 等无 AppHandle 场景传 None。
+pub fn init(path: PathBuf, resource_dir: Option<&Path>) -> bool {
     if GLOBAL.get().is_some() {
         return false;
     }
+    let template_path = template::locate_template(resource_dir);
+    let template = template_path
+        .as_ref()
+        .and_then(|p| template::read_template(p));
     let created = !path.exists();
-    let config = AppConfig::new(path);
+    let config = AppConfig::new(path, template, template_path);
     if created {
         let _ = config.save();
     }
@@ -217,7 +266,39 @@ fn parse_env(content: &str) -> HashMap<String, String> {
     map
 }
 
-/// 生成配置文件模板（含注释说明：枚举值、默认值）
+/// 以模板为骨架渲染配置（保留注释/顺序，替换已有键的值，追加新键）
+fn render_from_template(template: &str, map: &HashMap<String, String>) -> String {
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut out = String::new();
+    for line in template.lines() {
+        let trimmed = line.trim();
+        let mut replaced = false;
+        if !trimmed.is_empty() && !trimmed.starts_with('#') {
+            if let Some(eq) = line.find('=') {
+                let key = line[..eq].trim().to_string();
+                if !key.is_empty() {
+                    seen.insert(key.clone());
+                    if let Some(v) = map.get(&key) {
+                        out.push_str(&format!("{}={}", key, v));
+                        replaced = true;
+                    }
+                }
+            }
+        }
+        if !replaced {
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
+    for (k, v) in map {
+        if !seen.contains(k) {
+            out.push_str(&format!("{}={}\n", k, v));
+        }
+    }
+    out
+}
+
+/// 内置默认模板（模板文件缺失时回退使用）
 fn build_template(map: &HashMap<String, String>) -> String {
     let mut lines = Vec::new();
     lines.push("# homeTier 应用配置文件");

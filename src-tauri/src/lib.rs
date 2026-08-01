@@ -125,7 +125,8 @@ pub fn run() -> std::process::ExitCode {
                 .app_data_dir()
                 .unwrap_or_else(|_| std::path::PathBuf::from("."));
             let config_path = app_data.join("homeTier.conf");
-            let config_created = crate::config::init(config_path.clone());
+            let resource_dir = app.path().resource_dir().ok();
+            let config_created = crate::config::init(config_path.clone(), resource_dir.as_deref());
 
             // 首次生成配置文件时，继承 DB 中已有的业务设置（之后以配置文件为准）
             if config_created {
@@ -485,6 +486,7 @@ pub fn run() -> std::process::ExitCode {
             commands::config::get_app_config,
             commands::config::set_app_config,
             commands::config::get_config_file_path,
+            commands::config::get_config_template_path,
             // 代理服务
             commands::proxy::get_proxy_url,
             commands::proxy::get_proxy_status,
@@ -679,8 +681,8 @@ pub fn run_with_args(elevated: bool) -> std::process::ExitCode {
 
 /// 守护进程入口点（--daemon 模式，路径从 CLI 参数传入）
 pub fn run_daemon(config_dir: std::path::PathBuf, data_dir: std::path::PathBuf) -> std::process::ExitCode {
-    // daemon 进程也读取同一份应用配置（端口等）
-    crate::config::init(data_dir.join("homeTier.conf"));
+    // daemon 进程也读取同一份应用配置（端口等）。无 AppHandle，resource_dir 传 None
+    crate::config::init(data_dir.join("homeTier.conf"), None);
     let rt = tokio::runtime::Runtime::new()
         .expect("创建 tokio 运行时失败");
 

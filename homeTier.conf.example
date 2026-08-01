@@ -1,0 +1,34 @@
+# homeTier 应用配置文件模板
+# 本文件是配置模板，包含全部可用键、默认值与枚举说明。
+# 应用首次启动时会将本模板复制为运行时配置 {app_data_dir}/homeTier.conf，
+# 后续修改运行时配置即可生效（自动检测，无需重启）。
+# 优先级：运行时配置 > 模板默认值 > 内置默认值。
+# 修改本模板可改变"缺失键"的默认值；已生成的运行时配置以用户修改为准。
+
+# ===== 端口类配置 =====（修改后下次 daemon 启动生效）
+# homeTier daemon IPC 端口（默认值: 15889；整数，1-65535）
+DAEMON_IPC_PORT=15889
+
+# easytier-core RPC 端口（默认值: 15888；整数，1-65535）
+EASYTIER_RPC_PORT=15888
+
+# ===== 网络配置 =====（修改后下次使用生效）
+# 文件服务器端口基数（实际端口 = 基数 + space_id % 1000）（默认值: 19000；整数，建议 1024-65535）
+FILE_SERVER_PORT_BASE=19000
+
+# 新建空间的默认虚拟 IPv4 地址（默认值: 10.144.144.10；IPv4 地址）
+DEFAULT_SPACE_IP=10.144.144.10
+
+# ===== 更新与下载配置 =====（修改后下次使用生效）
+# EasyTier GitHub Releases API 地址（默认值: https://api.github.com/repos/EasyTier/EasyTier/releases；URL）
+GITHUB_API=https://api.github.com/repos/EasyTier/EasyTier/releases
+
+# 下载镜像前缀（留空则直连 GitHub）（默认值: https://ghproxy.top；URL，可为空）
+GITHUB_MIRROR=https://ghproxy.top
+
+# ===== 业务配置 =====（立即生效）
+# 中继网络前缀（配合 EasyTier 转发白名单）（默认值: homeTier_；字符串）
+RELAY_NETWORK_PREFIX=homeTier_
+
+# 日志开关（默认值: 1；枚举：1=开启，0=关闭）
+LOG_ENABLED=1

@@ -402,6 +402,7 @@
   "config": {
     "title": "Config File",
     "path": "Config file path",
+    "templatePath": "Template source path",
     "restartHint": "Note: Port settings (DAEMON_IPC_PORT / EASYTIER_RPC_PORT) take effect after restarting the app. Other settings apply immediately on save.",
     "default": "Default",
     "saved": "Saved",

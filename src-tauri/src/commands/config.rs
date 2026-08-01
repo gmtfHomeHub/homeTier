@@ -31,3 +31,15 @@ pub fn get_config_file_path() -> Result<String, String> {
         None => Err("配置尚未初始化".to_string()),
     }
 }
+
+/// 获取配置模板来源路径（打包资源目录或仓库根）
+#[tauri::command]
+pub fn get_config_template_path() -> Result<String, String> {
+    match crate::config::global() {
+        Some(cfg) => Ok(cfg
+            .template_path()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default()),
+        None => Err("配置尚未初始化".to_string()),
+    }
+}
