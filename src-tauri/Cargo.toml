@@ -79,7 +79,7 @@ webpki-roots = "0.26"
 tun-easytier = { git = "https://github.com/EasyTier/rust-tun", features = ["async"] }
 
 # EasyTier (本地引用)
-easytier = { path = "./third_libs/easytier/easytier", features = [
+easytier = { path = "./resources/easytier_lib/easytier", features = [
     "wireguard",
     "websocket",
     "tun",

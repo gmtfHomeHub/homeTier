@@ -126,7 +126,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { nodeApi } from '../api'
+import { nodeApi } from '../api/index.js'
 import {
   ArrowLeft,
   Plus,

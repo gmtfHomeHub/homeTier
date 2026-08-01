@@ -294,7 +294,7 @@
 <script setup>
 import { ref, reactive, onMounted, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
-import { nodeApi } from '../api'
+import { nodeApi } from '../api/index.js'
 import dayjs from 'dayjs'
 import HealthTimeline from '../components/HealthTimeline.vue'
 import {
@@ -307,7 +307,7 @@ import {
   Refresh,
   Plus
 } from '@element-plus/icons-vue'
-import { getTagStyle } from '../utils/tagColor'
+import { getTagStyle } from '../utils/tagColor.js'
 
 // 响应式数据
 const loading = ref(false)

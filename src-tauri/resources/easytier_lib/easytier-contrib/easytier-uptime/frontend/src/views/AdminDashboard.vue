@@ -246,12 +246,12 @@
 </template>
 
 <script>
-import { adminApi } from '../api'
+import { adminApi } from '../api/index.js'
 import dayjs from 'dayjs'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Check, Clock, DataAnalysis, CircleCheck, Loading } from '@element-plus/icons-vue'
 import NodeForm from '../components/NodeForm.vue'
-import { getTagStyle } from '../utils/tagColor'
+import { getTagStyle } from '../utils/tagColor.js'
 
 export default {
   name: 'AdminDashboard',

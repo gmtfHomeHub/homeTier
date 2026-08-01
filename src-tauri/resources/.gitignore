@@ -1,0 +1,25 @@
+# 三方包 忽略文件
+
+easytier_lib/easytier-gui
+
+easytier_lib/easytier-web
+
+# easytier_lib/easytier_lib-contrib
+
+easytier_lib/tauri-plugin-vpnservice
+
+easytier_lib/assets
+
+easytier_lib/script
+
+easytier_lib/flake.nix
+easytier_lib/flake.lock
+easytier_lib/.envrc
+easytier_lib/android.nix
+
+easytier_lib/.github
+
+easytier_lib/easytier/docs
+easytier_lib/easytier/assets
+easytier_lib/easytier/locales
+easytier_lib/easytier/*.md

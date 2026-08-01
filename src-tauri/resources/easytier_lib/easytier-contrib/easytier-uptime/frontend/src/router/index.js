@@ -62,7 +62,7 @@ router.beforeEach(async (to, from, next) => {
 
     // 验证token有效性
     try {
-      const { adminApi } = await import('../api')
+      const { adminApi } = await import('../api/index.js')
       await adminApi.verifyToken()
     } catch (error) {
       console.error('Token verification failed:', error)
