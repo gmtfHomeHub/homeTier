@@ -239,10 +239,10 @@ pub fn run() -> std::process::ExitCode {
                     .try_state::<Arc<daemon::client::IpcClient>>()
                     .map(|s| s.inner().clone())
                     .ok_or_else(|| "IpcClient state not registered".to_string())?;
-                Arc::new(space::manager::SpaceManager::new(db, instance_manager, ipc_client))
+                Arc::new(space::manager::SpaceManager::new(db.clone(), instance_manager, ipc_client))
             };
             #[cfg(any(target_os = "android", target_os = "ios"))]
-            let space_manager = Arc::new(space::manager::SpaceManager::new(db, instance_manager));
+            let space_manager = Arc::new(space::manager::SpaceManager::new(db.clone(), instance_manager));
             let space_manager_clone = space_manager.clone();
             app.manage(space_manager);
             crate::log_info!("[GUI] 空间管理器已创建");

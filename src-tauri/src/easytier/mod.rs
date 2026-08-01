@@ -644,6 +644,12 @@ impl EasyTierManager {
         let hostname = if route.hostname.is_empty() { None } else { Some(route.hostname.clone()) };
         let version = if route.version.is_empty() { None } else { Some(route.version.clone()) };
 
+        // 从路由的 stun_info 提取 UDP NAT 类型（与 easytier PeerRoutePair::get_udp_nat_type 一致）
+        let nat_type = route.stun_info.as_ref().map(|stun| {
+            use easytier::proto::common::NatType;
+            format!("{:?}", NatType::try_from(stun.udp_nat_type).unwrap_or(NatType::Unknown))
+        });
+
         crate::easytier::launcher::PeerInfo {
             peer_id: route.peer_id,
             virtual_ip,
@@ -656,7 +662,7 @@ impl EasyTierManager {
             is_local: false,
             version,
             tunnel_proto: None,
-            nat_type: None,
+            nat_type,
         }
     }
 
@@ -679,6 +685,15 @@ impl EasyTierManager {
         peer: Option<&easytier::proto::api::instance::PeerInfo>,
     ) -> crate::easytier::launcher::PeerInfo {
         let mut info = Self::peer_from_route(route);
+
+        // 从路由的 stun_info 提取 UDP NAT 类型（与 easytier PeerRoutePair::get_udp_nat_type 一致）
+        if let Some(stun) = &route.stun_info {
+            use easytier::proto::common::NatType;
+            info.nat_type = Some(format!(
+                "{:?}",
+                NatType::try_from(stun.udp_nat_type).unwrap_or(NatType::Unknown)
+            ));
+        }
 
         if let Some(peer) = peer {
             for conn in &peer.conns {

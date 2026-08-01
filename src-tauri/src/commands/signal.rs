@@ -27,8 +27,8 @@ pub async fn send_signal(
     let mut msg = ChatMessage::signal(space_uuid, sender_id, sender_name, payload);
     msg.sign(&space.network_secret);
 
-    if let Some(t) = target {
-        space_manager.send_signal_to(&space_uuid, &t, &msg).await?;
+    if let Some(t) = &target {
+        space_manager.send_signal_to(&space_uuid, t, &msg).await?;
     } else {
         let errors = space_manager.broadcast_message(&msg).await;
         if !errors.is_empty() {

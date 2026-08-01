@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, RefreshCw, ExternalLink, Monitor, Smartphone, X } from "lucide-react";
-import { Button } from "@radix-ui/themes";
+import { Button, Badge } from "@radix-ui/themes";
 import { useAppTabsStore } from "../../stores/appTabsStore";
 import { open } from "@tauri-apps/plugin-shell";
 import * as api from "../../utils/api";
@@ -80,7 +80,7 @@ export function AppWorkspace() {
       style={visible ? undefined : { display: "none" }}
     >
       {/* 标签栏 */}
-      <div className="h-12 flex items-center gap-2 px-4 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
+      <div className="flex items-center gap-2 px-4 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
         <Button onClick={handleBack} variant="ghost" size="2" title={t("common.back")}>
           <ArrowLeft size={18} />
         </Button>
@@ -99,16 +99,18 @@ export function AppWorkspace() {
               }`}
             >
               <span className="max-w-[120px] truncate">{tab.app.name}</span>
-              <button
+              <Badge
                 onClick={(e) => {
                   e.stopPropagation();
                   handleCloseTab(tab.key);
                 }}
-                className="p-0.5 rounded hover:bg-[var(--color-border)]"
+                // variant="soft"
+                // size="1"
+                className="p-0.125 rounded hover:bg-[var(--color-border)]"
                 title={t("common.close")}
               >
-                <X size={14} />
-              </button>
+                <X size={12} />
+              </Badge>
             </div>
           ))}
         </div>
@@ -130,7 +132,7 @@ export function AppWorkspace() {
       </div>
 
       {/* 内容区：全部 iframe 保持挂载，仅活跃可见 */}
-      <div className="flex-1 relative bg-white">
+      <div className="relative flex-1 bg-white">
         {spaceTabs.map((tab) => {
           const isActive = tab.key === activeKey;
           const refreshKey = refreshNonce[tab.key] ?? 0;

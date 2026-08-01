@@ -12,14 +12,33 @@ import { Tabs, Tooltip, Button, TextField, Flex, Text, Switch } from "@radix-ui/
 import { SettingTabEnum, LanguageEnum, ThemeEnum } from "../../enum";
 
 export function SettingsPage() {
-  const { theme, language, setTheme, setLanguage, relayPrefix: defRelayPrefix, logEnabled, setLogEnabled: setStoreLogEnabled, micShortcut: defMicShortcut, speakerShortcut: defSpeakerShortcut, setMicShortcut: storeSetMicShortcut, setSpeakerShortcut: storeSetSpeakerShortcut } = useSettingsStore();
-  const [activeTab, setActiveTab] = useState<SettingTabEnum>(SettingTabEnum.BASIC);
+  const {
+    theme,
+    language,
+    setTheme,
+    setLanguage,
+    relayPrefix: defRelayPrefix,
+    settingsTab: activeTab,
+    setSettingsTab,
+    logEnabled,
+    setLogEnabled: setStoreLogEnabled,
+    micShortcut: defMicShortcut,
+    speakerShortcut: defSpeakerShortcut,
+    setMicShortcut: storeSetMicShortcut,
+    setSpeakerShortcut: storeSetSpeakerShortcut,
+  } = useSettingsStore();
+  // const [activeTab, setActiveTab] = useState<SettingTabEnum>(SettingTabEnum.BASIC);
   const [easytierConfig, setEasytierConfig] = useState<Partial<NetworkConfig>>({});
   const [saving, setSaving] = useState(false);
   const [relayPrefix, setRelayPrefixState] = useState<string | undefined>(defRelayPrefix);
   const [micShortcut, setMicShortcutState] = useState<string>(defMicShortcut);
   const [speakerShortcut, setSpeakerShortcutState] = useState<string>(defSpeakerShortcut);
   const { t, i18n } = useTranslation();
+
+  const setActiveTab = (tab: SettingTabEnum) => {
+    // setActiveTab(tab);
+    setSettingsTab(tab);
+  };
 
   useEffect(() => {
     getLogEnabled().then((val) => setStoreLogEnabled(val)).catch(() => {});

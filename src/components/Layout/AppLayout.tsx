@@ -37,7 +37,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 animate={{ x: 0 }}
                 exit={{ x: "-100%" }}
                 transition={{ type: "spring", damping: 25, stiffness: 260 }}
-                className="fixed left-0 top-10 bottom-0 z-40 w-64 bg-[var(--color-bg)] border-r border-[var(--color-border)]"
+                className="fixed left-0 top-0 bottom-0 z-40 w-64 bg-[var(--color-bg)] border-r border-[var(--color-border)]"
               >
                 <Sidebar />
               </motion.aside>
@@ -45,7 +45,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           )}
         </AnimatePresence>
 
-        <main className="relative flex flex-col flex-1 overflow-hidden">
+        <main className="relative flex flex-col flex-1 overflow-hidden bg-[var(--blue-a2)]">
           {children}
           <AppWorkspace />
           <VoiceAutoJoin />

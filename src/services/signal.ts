@@ -53,7 +53,7 @@ export function getSelfVirtualIp(spaceId: string): string | undefined {
   return useSpaceStore.getState().spaces.find((s) => s.id === spaceId)?.virtual_ip;
 }
 
-let memberCache: Record<string, { id: string; nickname: string; virtualIp?: string }[]> = {};
+const memberCache: Record<string, { id: string; nickname: string; virtualIp?: string }[]> = {};
 
 /** 预取空间成员（供 from 解析昵称），可手动调用或由 Voice/Screen 初始化 */
 export async function preloadMembers(spaceId: string): Promise<void> {

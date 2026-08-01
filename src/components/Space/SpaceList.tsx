@@ -1,17 +1,20 @@
 import { useSpaceStore } from "../../stores/spaceStore";
 import { useSpaceConnect } from "../../hooks/useSpaceConnect";
 import { useNavigate } from "react-router-dom";
-import { Share2, Trash2, Settings, X, Users } from "lucide-react";
+import { Share2, Trash2, Settings, X, LogIn, Plus, Ellipsis, House } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { ShareSpaceDialog } from "../Common/ShareSpaceDialog";
 import { ConfirmDialog } from "../Common/ConfirmDialog";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { MemberCount } from "../Common/MemberCount";
-import { Button, Flex, Grid } from "@radix-ui/themes";
+import { Button, Flex, Grid, Badge, DropdownMenu, Separator } from "@radix-ui/themes";
 import { getSystemConfig, updateSpaceConfig, getRelayPrefix } from "../../utils/api";
 import type { NetworkConfig } from "../../types/network";
 import { DEFAULT_NETWORK_CONFIG } from "../../types/network";
+import { getSpaceIp } from "../../utils";
+import { CreateSpaceDialog } from "../Space/CreateSpaceDialog";
+import { JoinSpaceDialog } from "../Space/JoinSpaceDialog";
 
 export function SpaceList() {
   const { spaces, deleteSpace, loadSpaces, loadSpacesOnce } = useSpaceStore();
@@ -23,6 +26,9 @@ export function SpaceList() {
   const [spaceConfig, setSpaceConfig] = useState<Partial<NetworkConfig>>({});
   const [savingConfig, setSavingConfig] = useState(false);
   const [shareTarget, setShareTarget] = useState<string | null>(null);
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [showJoin, setShowJoin] = useState(false);
 
   const configSpace = spaces.find(s => s.id === configTarget);
 
@@ -89,13 +95,35 @@ export function SpaceList() {
 
   return (
     <div className="flex-1 p-6 overflow-y-auto">
-      <h1 className="mb-6 text-2xl font-bold">{t('space.list')}</h1>
-
+      <Flex align="center" justify="between" className="mb-6">
+        <h1 className="text-2xl font-bold">{t("space.list")}</h1>
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger>
+            <Button variant="ghost" size="1" className="py-2.5 pb-[9px]">
+              <Ellipsis size={16} />
+            </Button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content>
+            <DropdownMenu.Item
+              onClick={() => setShowCreate(true)}
+              shortcut={t("space.create")}
+            >
+              <Plus size={16} />
+            </DropdownMenu.Item>
+            <DropdownMenu.Item
+              onClick={() => setShowJoin(true)}
+              shortcut={t("space.join")}
+            >
+              <LogIn size={16} />
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+      </Flex>
       {spaces.length === 0 && (
         <div className="text-center py-20 text-[var(--color-text-secondary)]">
           <div className="mb-4 text-5xl">🏠</div>
-          <p className="mb-2 text-lg">{t('space.notJoined')}</p>
-          <p className="text-sm">{t('space.createOrJoinHint')}</p>
+          <p className="mb-2 text-lg">{t("space.notJoined")}</p>
+          <p className="text-sm">{t("space.createOrJoinHint")}</p>
         </div>
       )}
 
@@ -121,17 +149,31 @@ export function SpaceList() {
                     space.status === "connected"
                       ? "bg-[var(--color-success)]"
                       : space.status === "connecting"
-                      ? "bg-yellow-400 animate-pulse"
-                      : "bg-[var(--color-text-secondary)]"
+                        ? "bg-yellow-400 animate-pulse"
+                        : "bg-[var(--color-text-secondary)]"
                   }`}
                 />
                 <h3 className="font-semibold truncate">{space.name}</h3>
+                {getSpaceIp(space) && (
+                  <Badge
+                    color="gray"
+                    variant="soft"
+                    size="1"
+                    className="mt-0.5 font-mono max-w-full truncate"
+                    title={getSpaceIp(space) || ""}
+                  >
+                    {getSpaceIp(space)}
+                  </Badge>
+                )}
               </div>
               <div
                 className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]"
                 onClick={(e) => e.stopPropagation()}
               >
-                <MemberCount spaceId={space.id} connected={space.status === "connected"} />
+                <MemberCount
+                  spaceId={space.id}
+                  connected={space.status === "connected"}
+                />
               </div>
             </div>
             <Grid columns="2" gap="3" onClick={(e) => e.stopPropagation()}>
@@ -144,17 +186,25 @@ export function SpaceList() {
                     variant="outline"
                     size="2"
                   >
-                    {disconnectingId === space.id ? t('space.disconnecting') : t('space.disconnect')}
+                    {disconnectingId === space.id
+                      ? t("space.disconnecting")
+                      : t("space.disconnect")}
                   </Button>
                 ) : (
                   <Button
                     onClick={() => connect(space.id)}
-                    disabled={space.status === "connecting" || connectingId === space.id}
+                    disabled={
+                      space.status === "connecting" || connectingId === space.id
+                    }
                     variant="soft"
                     size="2"
-                    loading={space.status === "connecting" || connectingId === space.id}
+                    loading={
+                      space.status === "connecting" || connectingId === space.id
+                    }
                   >
-                    {space.status === "connecting" ? t('space.connecting') : t('space.connect')}
+                    {space.status === "connecting"
+                      ? t("space.connecting")
+                      : t("space.connect")}
                   </Button>
                 )}
               </Flex>
@@ -177,7 +227,13 @@ export function SpaceList() {
                 </Button>
                 {space.owner_id && (
                   <Button
-                    onClick={() => setDeleteTarget({ id: space.id, name: space.name, ownerId: space.owner_id })}
+                    onClick={() =>
+                      setDeleteTarget({
+                        id: space.id,
+                        name: space.name,
+                        ownerId: space.owner_id,
+                      })
+                    }
                     variant="ghost"
                     color="red"
                     size="2"
@@ -195,7 +251,9 @@ export function SpaceList() {
       <ConfirmDialog
         open={deleteTarget !== null}
         title={t("space.deleteSpace")}
-        message={t("space.confirmDeleteMessage", { name: deleteTarget?.name || "" })}
+        message={t("space.confirmDeleteMessage", {
+          name: deleteTarget?.name || "",
+        })}
         confirmText={t("space.delete")}
         danger
         onConfirm={handleDelete}
@@ -206,8 +264,14 @@ export function SpaceList() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-[var(--color-surface)] rounded-xl w-[640px] max-h-[80vh] flex flex-col shadow-xl">
             <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
-              <h2 className="text-lg font-semibold">{t("space.spaceConfigTitle", { name: configSpace.name })}</h2>
-              <Button onClick={() => setConfigTarget(null)} variant="ghost" size="2">
+              <h2 className="text-lg font-semibold">
+                {t("space.spaceConfigTitle", { name: configSpace.name })}
+              </h2>
+              <Button
+                onClick={() => setConfigTarget(null)}
+                variant="ghost"
+                size="2"
+              >
                 <X size={20} />
               </Button>
             </div>
@@ -218,11 +282,28 @@ export function SpaceList() {
                 title={t("space.spaceConfigSubtitle")}
               />
             </div>
-            <Flex justify="end" gap="2" px="6" py="4" className="border-t border-[var(--color-border)]">
-              <Button onClick={() => setConfigTarget(null)} variant="outline" size="2">
+            <Flex
+              justify="end"
+              gap="2"
+              px="6"
+              py="4"
+              className="border-t border-[var(--color-border)]"
+            >
+              <Button
+                onClick={() => setConfigTarget(null)}
+                variant="outline"
+                size="2"
+              >
                 {t("common.cancel")}
               </Button>
-              <Button onClick={handleSaveConfig} disabled={savingConfig} variant="solid" color="blue" size="2" loading={savingConfig}>
+              <Button
+                onClick={handleSaveConfig}
+                disabled={savingConfig}
+                variant="solid"
+                color="blue"
+                size="2"
+                loading={savingConfig}
+              >
                 {savingConfig ? t("common.saving") : t("space.saveConfig")}
               </Button>
             </Flex>
@@ -231,8 +312,14 @@ export function SpaceList() {
       )}
 
       {shareTarget && (
-        <ShareSpaceDialog spaceId={shareTarget} onClose={() => setShareTarget(null)} />
+        <ShareSpaceDialog
+          spaceId={shareTarget}
+          onClose={() => setShareTarget(null)}
+        />
       )}
+
+      {showCreate && <CreateSpaceDialog onClose={() => setShowCreate(false)} />}
+      {showJoin && <JoinSpaceDialog onClose={() => setShowJoin(false)} />}
     </div>
   );
 }

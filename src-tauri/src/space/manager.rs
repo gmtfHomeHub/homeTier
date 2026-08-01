@@ -541,7 +541,7 @@ Self {
         let file_port = 19000 + (space_id.as_u128() % 1000) as u16;
         let storage_dir = self.storage_dir.read().await.join(space_id.to_string());
 
-        let mut server = FileServer::new(storage_dir);
+        let mut server = FileServer::new(space_id, storage_dir);
         server.start(file_port).await.map_err(|e| format!("启动文件服务器失败: {}", e))?;
 
         self.file_servers.write().await.insert(space_id, server);

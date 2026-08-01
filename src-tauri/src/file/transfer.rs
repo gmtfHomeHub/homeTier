@@ -152,7 +152,7 @@ impl FileTransferManager {
 
         let send_result = client
             .put(&url)
-            .body(reqwest::Body::from_stream(body_stream))
+            .body(reqwest::Body::wrap_stream(body_stream))
             .timeout(std::time::Duration::from_secs(300))
             .send()
             .await;

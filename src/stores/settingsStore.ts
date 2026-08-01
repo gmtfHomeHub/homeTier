@@ -1,10 +1,11 @@
 import { create } from "zustand";
 import { persist } from 'zustand/middleware';
-import { ThemeEnum, LanguageEnum } from "../enum";
+import { ThemeEnum, LanguageEnum, SettingTabEnum } from "../enum";
 
 interface SettingsStore {
   theme: ThemeEnum;
   language: LanguageEnum;
+  settingsTab: SettingTabEnum;
   relayPrefix: string;
   useProxy: boolean;
   logEnabled: boolean;
@@ -16,6 +17,7 @@ interface SettingsStore {
   setLogEnabled: (v: boolean) => void;
   setMicShortcut: (v: string) => void;
   setSpeakerShortcut: (v: string) => void;
+  setSettingsTab: (tab: SettingTabEnum) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -28,13 +30,14 @@ export const useSettingsStore = create<SettingsStore>()(
       logEnabled: true,
       micShortcut: "Ctrl+M",
       speakerShortcut: "Ctrl+T",
-
+      settingsTab: SettingTabEnum.BASIC,
       setTheme: (theme) => set({ theme }),
       setLanguage: (language) => set({ language }),
       setUseProxy: (useProxy) => set({ useProxy }),
       setLogEnabled: (logEnabled) => set({ logEnabled }),
       setMicShortcut: (micShortcut) => set({ micShortcut }),
       setSpeakerShortcut: (speakerShortcut) => set({ speakerShortcut }),
+      setSettingsTab: (settingsTab) => set({ settingsTab }),
     }),
     {
       name: 'settings-store',
@@ -44,6 +47,7 @@ export const useSettingsStore = create<SettingsStore>()(
         useProxy: state.useProxy,
         micShortcut: state.micShortcut,
         speakerShortcut: state.speakerShortcut,
+        settingsTab: state.settingsTab,
       }),
     }
   )

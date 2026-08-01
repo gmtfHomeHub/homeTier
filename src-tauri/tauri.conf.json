@@ -15,9 +15,7 @@
     ],
     "createUpdaterArtifacts": false,
     "macOS": {
-      "infoPlist": {
-        "NSMicrophoneUsageDescription": "需要使用麦克风进行实时语音通话"
-      }
+      "infoPlist": "Info.plist"
     }
   },
   "productName": "homeTier",
