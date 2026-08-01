@@ -13,8 +13,8 @@ pub fn get_app_config() -> Result<HashMap<String, String>, String> {
 #[tauri::command]
 pub fn set_app_config(updates: HashMap<String, String>) -> Result<(), String> {
     let cfg = crate::config::global().ok_or("配置尚未初始化")?;
-    for (key, value) in updates {
-        cfg.set(&key, &value)?;
+    for (key, value) in &updates {
+        cfg.set(key, value)?;
     }
     // LOG_ENABLED 立即生效（无需重启）
     if let Some(v) = updates.get(crate::config::KEY_LOG_ENABLED) {

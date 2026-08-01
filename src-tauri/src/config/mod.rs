@@ -300,27 +300,27 @@ fn render_from_template(template: &str, map: &HashMap<String, String>) -> String
 
 /// 内置默认模板（模板文件缺失时回退使用）
 fn build_template(map: &HashMap<String, String>) -> String {
-    let mut lines = Vec::new();
-    lines.push("# homeTier 应用配置文件");
-    lines.push("# 修改保存后热更新生效（自动检测，无需重启）。");
-    lines.push("# 优先级：配置文件 > 数据库设置 > 内置默认值。");
-    lines.push("");
-    lines.push("# ===== 端口类配置 =====（修改后下次 daemon 启动生效）");
+    let mut lines: Vec<String> = Vec::new();
+    lines.push("# homeTier 应用配置文件".to_string());
+    lines.push("# 修改保存后热更新生效（自动检测，无需重启）。".to_string());
+    lines.push("# 优先级：配置文件 > 数据库设置 > 内置默认值。".to_string());
+    lines.push("".to_string());
+    lines.push("# ===== 端口类配置 =====（修改后下次 daemon 启动生效）".to_string());
     push_key(&mut lines, map, KEY_DAEMON_IPC_PORT, "homeTier daemon IPC 端口", "15889", "整数，1-65535");
     push_key(&mut lines, map, KEY_EASYTIER_RPC_PORT, "easytier-core RPC 端口", "15888", "整数，1-65535");
-    lines.push("");
-    lines.push("# ===== 网络配置 =====（修改后下次使用生效）");
+    lines.push("".to_string());
+    lines.push("# ===== 网络配置 =====（修改后下次使用生效）".to_string());
     push_key(&mut lines, map, KEY_FILE_SERVER_PORT_BASE, "文件服务器端口基数（实际端口 = 基数 + space_id % 1000）", "19000", "整数，建议 1024-65535");
     push_key(&mut lines, map, KEY_DEFAULT_SPACE_IP, "新建空间的默认虚拟 IPv4 地址", "10.144.144.10", "IPv4 地址");
-    lines.push("");
-    lines.push("# ===== 更新与下载配置 =====（修改后下次使用生效）");
+    lines.push("".to_string());
+    lines.push("# ===== 更新与下载配置 =====（修改后下次使用生效）".to_string());
     push_key(&mut lines, map, KEY_GITHUB_API, "EasyTier GitHub Releases API 地址", "https://api.github.com/repos/EasyTier/EasyTier/releases", "URL");
     push_key(&mut lines, map, KEY_GITHUB_MIRROR, "下载镜像前缀（留空则直连 GitHub）", "https://ghproxy.top", "URL，可为空");
-    lines.push("");
-    lines.push("# ===== 业务配置 =====（立即生效）");
+    lines.push("".to_string());
+    lines.push("# ===== 业务配置 =====（立即生效）".to_string());
     push_key(&mut lines, map, KEY_RELAY_NETWORK_PREFIX, "中继网络前缀（配合 EasyTier 转发白名单）", "homeTier_", "字符串");
     push_key(&mut lines, map, KEY_LOG_ENABLED, "日志开关", "1", "枚举：1=开启，0=关闭");
-    lines.push("");
+    lines.push("".to_string());
     lines.join("\n")
 }
 
