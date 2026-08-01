@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useChatStore } from "../../stores/chatStore";
 import { useSpaceStore } from "../../stores/spaceStore";
+import { setActiveChatSpace } from "../../services/realtime";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
 import { ArrowLeft, Mic, Monitor, FileUp, MoreHorizontal } from "lucide-react";
@@ -24,6 +25,11 @@ export function ChatView() {
     if (id) {
       loadMessages(id);
     }
+  }, [id]);
+
+  useEffect(() => {
+    setActiveChatSpace(id || null);
+    return () => setActiveChatSpace(null);
   }, [id]);
 
   if (!id || !space) {

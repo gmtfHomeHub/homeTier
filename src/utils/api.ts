@@ -92,6 +92,14 @@ export async function getMessageHistory(
   return invoke("get_message_history", { spaceId, limit: limit ?? 50 });
 }
 
+export async function sendSignal(
+  spaceId: string,
+  payload: string,
+  target?: string
+): Promise<void> {
+  return invoke("send_signal", { spaceId, payload, target: target ?? null });
+}
+
 // === Voice Commands ===
 
 export async function joinVoiceChannel(spaceId: string): Promise<void> {

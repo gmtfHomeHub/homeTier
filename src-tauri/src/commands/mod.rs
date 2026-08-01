@@ -9,6 +9,7 @@ pub mod network_acls;
 pub mod network_port_forwards;
 pub mod proxy;
 pub mod screen;
+pub mod signal;
 pub mod space;
 pub mod tray;
 pub mod util;

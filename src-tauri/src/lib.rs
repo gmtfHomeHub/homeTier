@@ -86,7 +86,8 @@ pub fn run() -> std::process::ExitCode {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_os::init());
+        .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_notification::init());
 
     let builder = proxy::hometier_protocol::register_protocol(builder);
 
@@ -379,6 +380,8 @@ pub fn run() -> std::process::ExitCode {
             // 聊天
             commands::chat::send_message,
             commands::chat::get_message_history,
+            // 信令
+            commands::signal::send_signal,
             // 语音
             commands::voice::join_voice_channel,
             commands::voice::leave_voice_channel,

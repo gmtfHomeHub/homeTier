@@ -162,7 +162,11 @@
     "placeholder": "输入消息...",
     "image": "图片",
     "system": "系统消息",
-    "file": "文件"
+    "file": "文件",
+    "statusSending": "发送中...",
+    "statusSent": "已发送",
+    "statusDelivered": "已送达",
+    "statusFailed": "发送失败"
   },
   "voice": {
     "title": "语音通话",

@@ -51,17 +51,39 @@ pub async fn send_message(
         crate::log_warn!(format!("广播消息失败: {:?}", errors));
     }
 
-    crate::log_info!(format!("发送消息: space_id={}, type={}", space_id, msg_type));
+    // 送达判定：无可达 peer → sent；部分/全部成功 → delivered；全部失败 → failed
+    let peer_count = space_manager.chat_peer_count(&space_uuid).await;
+    let status = if peer_count == 0 {
+        crate::types::MessageStatus::Sent
+    } else if errors.len() < peer_count {
+        crate::types::MessageStatus::Delivered
+    } else {
+        crate::types::MessageStatus::Failed
+    };
+    // 同步 DB 状态
+    let status_str = match status {
+        crate::types::MessageStatus::Sending => "sending",
+        crate::types::MessageStatus::Sent => "sent",
+        crate::types::MessageStatus::Delivered => "delivered",
+        crate::types::MessageStatus::Failed => "failed",
+    };
+    let _ = db.update_message_status(&msg.id.to_string(), status_str);
+
+    crate::log_info!(format!("发送消息: space_id={}, type={}, status={:?}", space_id, msg_type, status));
     // 返回给前端
     Ok(Message {
         id: msg.id,
         space_id: msg.space_id,
         sender_id: msg.sender_id,
         sender_name: msg.sender_name,
-        msg_type: crate::types::MessageType::Text,
+        msg_type: if msg_type.as_str() == "image" {
+            crate::types::MessageType::Image
+        } else {
+            crate::types::MessageType::Text
+        },
         content: msg.content,
         timestamp: msg.timestamp,
-        status: crate::types::MessageStatus::Sent,
+        status,
     })
 }
 

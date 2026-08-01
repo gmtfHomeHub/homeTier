@@ -19,21 +19,23 @@ export function MemberManager({ spaceId, callerId, onClose }: MemberManagerProps
   const [error, setError] = useState<string | null>(null);
   const { removeMember, loadSpaces } = useSpaceStore();
 
-  const fetchMembers = async () => {
+  const fetchMembers = async (initial = false) => {
     try {
-      setLoading(true);
+      if (initial) setLoading(true);
       const data = await listMembers(spaceId);
       setMembers(data);
       setError(null);
     } catch (e) {
       setError(String(e));
     } finally {
-      setLoading(false);
+      if (initial) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchMembers();
+    fetchMembers(true);
+    const timer = setInterval(() => fetchMembers(), 5000);
+    return () => clearInterval(timer);
   }, [spaceId]);
 
   const handleRemove = async (member: Member) => {

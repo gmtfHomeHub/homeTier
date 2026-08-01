@@ -22,6 +22,11 @@ impl ChatClient {
         self.peers = peers;
     }
 
+    /// 获取对等节点数量
+    pub fn peer_count(&self) -> usize {
+        self.peers.len()
+    }
+
     /// 广播消息到所有对等节点
     pub async fn broadcast(&self, msg: &ChatMessage) -> Vec<(String, String)> {
         let mut errors = Vec::new();

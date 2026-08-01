@@ -49,6 +49,20 @@ impl ChatMessage {
         }
     }
 
+    /// 创建信令消息（WebRTC offer/answer/ice 等，不落库）
+    pub fn signal(space_id: Uuid, sender_id: Uuid, sender_name: String, payload: String) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            space_id,
+            sender_id,
+            sender_name,
+            msg_type: "signal".into(),
+            content: payload,
+            timestamp: Local::now(),
+            signature: None,
+        }
+    }
+
     /// 创建系统消息
     pub fn system(space_id: Uuid, content: String) -> Self {
         Self {

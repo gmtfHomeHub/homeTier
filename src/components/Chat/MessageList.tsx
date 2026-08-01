@@ -1,9 +1,45 @@
 import type { Message } from "../../types";
 import { formatTimestamp } from "../../utils/format";
 import { useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { Check, CheckCheck, Loader2, XCircle } from "lucide-react";
 
 interface MessageListProps {
   messages: Message[];
+}
+
+function StatusIndicator({ status }: { status: Message["status"] }) {
+  const { t } = useTranslation();
+  if (status === "sending") {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-yellow-500">
+        <Loader2 size={12} className="animate-spin" />
+        {t("chat.statusSending")}
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-red-500">
+        <XCircle size={12} />
+        {t("chat.statusFailed")}
+      </span>
+    );
+  }
+  if (status === "delivered") {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-[var(--color-success)]">
+        <CheckCheck size={12} />
+        {t("chat.statusDelivered")}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-xs text-[var(--color-text-secondary)]">
+      <Check size={12} />
+      {t("chat.statusSent")}
+    </span>
+  );
 }
 
 export function MessageList({ messages }: MessageListProps) {
@@ -41,12 +77,7 @@ export function MessageList({ messages }: MessageListProps) {
                 <span className="text-xs text-[var(--color-text-secondary)] opacity-0 group-hover:opacity-100 transition-opacity">
                   {formatTimestamp(msg.timestamp)}
                 </span>
-                {msg.status === "sending" && (
-                  <span className="text-xs text-yellow-500">发送中...</span>
-                )}
-                {msg.status === "failed" && (
-                  <span className="text-xs text-red-500">发送失败</span>
-                )}
+                <StatusIndicator status={msg.status} />
               </div>
               {msg.msg_type === "image" ? (
                 <img

@@ -9,6 +9,7 @@
     "process:default",
     "clipboard-manager:default",
     "global-shortcut:default",
-    "os:default"
+    "os:default",
+    "notification:default"
   ]
 }

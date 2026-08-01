@@ -162,7 +162,11 @@
     "placeholder": "輸入訊息...",
     "image": "圖片",
     "system": "系統訊息",
-    "file": "檔案"
+    "file": "檔案",
+    "statusSending": "傳送中...",
+    "statusSent": "已傳送",
+    "statusDelivered": "已送達",
+    "statusFailed": "傳送失敗"
   },
   "voice": {
     "title": "語音通話",

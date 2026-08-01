@@ -95,6 +95,15 @@ impl Database {
         Ok(())
     }
 
+    pub fn update_message_status(&self, id: &str, status: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE messages SET status=?2 WHERE id=?1",
+            params![id, status],
+        ).map_err(|e| format!("Update message status error: {}", e))?;
+        Ok(())
+    }
+
     pub fn get_messages(&self, space_id: &str, limit: u32) -> Result<Vec<models::MessageRow>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn.prepare(

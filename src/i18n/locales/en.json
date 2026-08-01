@@ -162,7 +162,11 @@
     "placeholder": "Enter message...",
     "image": "Image",
     "system": "System Message",
-    "file": "File"
+    "file": "File",
+    "statusSending": "Sending...",
+    "statusSent": "Sent",
+    "statusDelivered": "Delivered",
+    "statusFailed": "Failed"
   },
   "voice": {
     "title": "Voice Calls",

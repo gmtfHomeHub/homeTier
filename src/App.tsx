@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 import { Theme } from "@radix-ui/themes";
 import { isDaemonReady, getDaemonErrorReason } from "./utils/api";
 import { listen } from "@tauri-apps/api/event";
+import { initRealtime } from "./services/realtime";
 
 const POLL_INTERVAL_MS = 1000;
 const POLL_MAX_ATTEMPTS = 30;
@@ -111,6 +112,28 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
+  // 初始化实时事件中枢（监听 new_message，分发聊天/信令）
+  useEffect(() => {
+    if (!appReady) return;
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+
+    initRealtime()
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+        } else {
+          unlisten = fn;
+        }
+      })
+      .catch((e) => console.error("[realtime] init failed:", e));
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [appReady]);
 
   if (!appReady && !appError) {
     return (

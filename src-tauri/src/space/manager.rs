@@ -641,6 +641,22 @@ Self {
         }
     }
 
+    /// 获取当前已连接的可达 peer 数量
+    pub async fn chat_peer_count(&self, space_id: &Uuid) -> usize {
+        let clients = self.chat_clients.read().await;
+        clients.get(space_id).map(|c| c.peer_count()).unwrap_or(0)
+    }
+
+    /// 定向发送信令到指定成员
+    pub async fn send_signal_to(&self, space_id: &Uuid, target: &str, msg: &crate::chat::message::ChatMessage) -> Result<(), String> {
+        let clients = self.chat_clients.read().await;
+        if let Some(client) = clients.get(space_id) {
+            client.send_to(target, msg).await
+        } else {
+            Err("空间未连接，ChatClient 不存在".to_string())
+        }
+    }
+
     /// 获取 peer 列表（通过 RPC 查询）
     pub async fn get_peers(&self, space_id: &Uuid) -> Result<Vec<crate::easytier::launcher::PeerInfo>, String> {
         match self.ipc_client.list_peers(&space_id.to_string()).await {
@@ -1136,14 +1152,33 @@ impl SpaceManager {
     /// 获取空间成员列表
     pub async fn list_members(&self, space_id: &Uuid) -> Result<Vec<Member>, String> {
         let rows = self.db.list_members(&space_id.to_string())?;
+
+        // 构建在线虚拟 IP 集合：本机 IP + 已连接 peer 的 IP
+        let mut online_ips: std::collections::HashSet<String> = std::collections::HashSet::new();
+        if let Some(local_ip) = self.easytier.get_virtual_ip(space_id) {
+            online_ips.insert(local_ip);
+        }
+        if let Ok(peers) = self.easytier.get_peers(space_id).await {
+            for p in peers {
+                if p.connected {
+                    if let Some(ip) = p.virtual_ip {
+                        online_ips.insert(ip);
+                    }
+                }
+            }
+        }
+
         let members = rows.iter().map(|r| {
-            let is_online = self.easytier.get_connected_peers(space_id).unwrap_or(0) > 0;
+            let is_online = match &r.virtual_ip {
+                Some(ip) => online_ips.contains(ip),
+                None => false,
+            };
             Member {
                 id: r.id.parse().unwrap_or_default(),
                 space_id: r.space_id.parse().unwrap_or_default(),
                 nickname: r.nickname.clone(),
                 virtual_ip: r.virtual_ip.clone(),
-                is_online: r.is_online || is_online,
+                is_online,
                 is_owner: r.is_owner,
                 joined_at: chrono::DateTime::parse_from_rfc3339(&r.joined_at)
                     .map(|d| d.with_timezone(&chrono::Local))
