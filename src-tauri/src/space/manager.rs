@@ -614,10 +614,15 @@ Self {
         let mut peers_map = HashMap::new();
 
         for peer in peer_list {
+            // 过滤本机，避免广播/定向信令回环
+            if peer.is_local {
+                continue;
+            }
             if let Some(peer_ip) = peer.virtual_ip {
                 // peer 的聊天端口也是基于 space_id 计算
                 let peer_chat_port = 18000 + (space_id.as_u128() % 1000) as u16;
-                peers_map.insert(peer.peer_id.to_string(), (peer_ip, peer_chat_port));
+                // 以虚拟 IP 为 key，前端可直接用成员 virtual_ip 定向发送
+                peers_map.insert(peer_ip.clone(), (peer_ip, peer_chat_port));
             }
         }
 

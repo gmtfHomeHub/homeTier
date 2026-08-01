@@ -7,7 +7,7 @@ import type { Message } from "../types";
  * 后端 emit 的 new_message 事件载荷 = 原始 ChatMessage（Rust 序列化）
  * 包含 signature 字段，无 status 字段。
  */
-interface RawChatMessage {
+export interface RawChatMessage {
   id: string;
   space_id: string;
   sender_id: string;

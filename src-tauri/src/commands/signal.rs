@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 /// 发送 WebRTC 信令消息（offer/answer/ice 等）
 ///
-/// `target` 为 Some 时定向发送到指定 peer（peer_id 字符串），否则广播到所有 peers。
+/// `target` 为 Some 时定向发送到指定成员（目标虚拟 IP），否则广播到所有 peers。
 /// 信令消息不落库，仅走聊天广播通道。
 #[tauri::command]
 pub async fn send_signal(
