@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
 import { TitleBar } from "./TitleBar";
 import { AppWorkspace } from "../AppBrowser/AppWorkspace";
+import { VoiceAutoJoin } from "../Voice/VoiceAutoJoin";
 import { useLayoutStore } from "../../stores/layoutStore";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -46,6 +47,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <main className="relative flex flex-col flex-1 overflow-hidden">
           {children}
           <AppWorkspace />
+          <VoiceAutoJoin />
         </main>
       </div>
     </div>

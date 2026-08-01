@@ -174,7 +174,20 @@
     "stop": "停止",
     "participants": "参与者",
     "speaking": "正在说话",
-    "silent": "静音"
+    "silent": "静音",
+    "join": "加入语音",
+    "leave": "离开",
+    "joined": "已加入语音频道",
+    "notJoined": "未加入语音频道",
+    "noMembers": "暂无其他成员",
+    "you": "我",
+    "micMuted": "麦克风已静音",
+    "speakerMuted": "扬声器已静音",
+    "muteMic": "静音麦克风",
+    "unmuteMic": "取消静音",
+    "muteSpeaker": "静音扬声器",
+    "unmuteSpeaker": "取消静音",
+    "vadHint": "不讲话时自动静音 · 内置回声消除"
   },
   "screen": {
     "title": "屏幕共享",

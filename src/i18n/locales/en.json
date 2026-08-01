@@ -174,7 +174,20 @@
     "stop": "Stop",
     "participants": "Participants",
     "speaking": "Speaking",
-    "silent": "Silent"
+    "silent": "Silent",
+    "join": "Join Voice",
+    "leave": "Leave",
+    "joined": "Joined voice channel",
+    "notJoined": "Not in voice channel",
+    "noMembers": "No other members yet",
+    "you": "Me",
+    "micMuted": "Mic muted",
+    "speakerMuted": "Speaker muted",
+    "muteMic": "Mute mic",
+    "unmuteMic": "Unmute mic",
+    "muteSpeaker": "Mute speaker",
+    "unmuteSpeaker": "Unmute speaker",
+    "vadHint": "Auto-mutes when silent · built-in echo cancellation"
   },
   "screen": {
     "title": "Screen Sharing",

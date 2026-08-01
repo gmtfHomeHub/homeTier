@@ -174,7 +174,20 @@
     "stop": "停止",
     "participants": "參與者",
     "speaking": "正在說話",
-    "silent": "靜音"
+    "silent": "靜音",
+    "join": "加入語音",
+    "leave": "離開",
+    "joined": "已加入語音頻道",
+    "notJoined": "未加入語音頻道",
+    "noMembers": "暫無其他成員",
+    "you": "我",
+    "micMuted": "麥克風已靜音",
+    "speakerMuted": "揚聲器已靜音",
+    "muteMic": "靜音麥克風",
+    "unmuteMic": "取消靜音",
+    "muteSpeaker": "靜音揚聲器",
+    "unmuteSpeaker": "取消靜音",
+    "vadHint": "不說話時自動靜音 · 內建回音消除"
   },
   "screen": {
     "title": "螢幕分享",

@@ -100,24 +100,6 @@ export async function sendSignal(
   return invoke("send_signal", { spaceId, payload, target: target ?? null });
 }
 
-// === Voice Commands ===
-
-export async function joinVoiceChannel(spaceId: string): Promise<void> {
-  return invoke("join_voice_channel", { spaceId });
-}
-
-export async function leaveVoiceChannel(spaceId: string): Promise<void> {
-  return invoke("leave_voice_channel", { spaceId });
-}
-
-export async function toggleMic(spaceId: string): Promise<boolean> {
-  return invoke("toggle_mic", { spaceId });
-}
-
-export async function toggleSpeaker(spaceId: string): Promise<boolean> {
-  return invoke("toggle_speaker", { spaceId });
-}
-
 // === Space Configuration ===
 
 // === File Commands ===

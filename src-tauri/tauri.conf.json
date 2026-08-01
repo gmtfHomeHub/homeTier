@@ -13,7 +13,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": false
+    "createUpdaterArtifacts": false,
+    "macOS": {
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "需要使用麦克风进行实时语音通话"
+      }
+    }
   },
   "productName": "homeTier",
   "version": "0.1.0",
