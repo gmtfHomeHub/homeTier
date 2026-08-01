@@ -85,7 +85,7 @@ export function NetworkStatsPanel({ spaceId, connected = false }: NetworkStatsPa
         <div className="p-4 border-b border-[var(--color-border)]">
           <Text size="2" weight="bold">{t('network.stats')}</Text>
         </div>
-        <div className="p-4">
+        <div className="pb-4 text-center">
           <Text size="1" color="gray">{t('network.disconnected')}</Text>
         </div>
       </Card>
@@ -114,20 +114,20 @@ export function NetworkStatsPanel({ spaceId, connected = false }: NetworkStatsPa
         <Grid columns="4" gap="4">
           <Flex align="center" gap="4">
             <div className="flex items-center gap-2 text-sm">
-              <Signal className="text-[var(--color-info)]" />
+              <Signal className="text-[var(--color-success)]" />
               <span className="font-medium">{t('network.downstream')}</span>
             </div>
-            <Text size="1" weight="bold" className="text-[var(--color-info)]">
+            <Text size="1" weight="bold" className="text-[var(--color-success)]">
               {formatLocalBytes(stats.rx_bytes)}
             </Text>
           </Flex>
 
           <Flex align="center" gap="4">
             <div className="flex items-center gap-2 text-sm">
-              <Signal className="text-[var(--color-info)]" />
+              <Signal className="text-[var(--color-success)]" />
               <span className="font-medium">{t('network.upstream')}</span>
             </div>
-            <Text size="1" weight="bold" className="text-[var(--color-info)]">
+            <Text size="1" weight="bold" className="text-[var(--color-success)]">
               {formatLocalBytes(stats.tx_bytes)}
             </Text>
           </Flex>

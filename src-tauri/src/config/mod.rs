@@ -328,5 +328,5 @@ fn push_key(lines: &mut Vec<String>, map: &HashMap<String, String>, key: &str, d
     lines.push(format!("# {}（默认值: {}；{}）", desc, default, enum_note));
     let value = map.get(key).cloned().unwrap_or_else(|| default.to_string());
     lines.push(format!("{}={}", key, value));
-    lines.push("");
+    lines.push("".to_string());
 }

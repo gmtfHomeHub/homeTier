@@ -40,7 +40,7 @@ export function BaseTable<T>({ columns, dataSource, children }: BaseTableProps<T
       <Table.Header>
         <Table.Row>
           {columns.map((col, i) => {
-            const { title, align, ...props } = col as ColumnProps<T, keyof T>;
+            const { title, align, render, field, ...props } = col as ColumnProps<T, keyof T>;
             return (
               <Table.ColumnHeaderCell {...{...defaultProps, ...props}} key={i} justify={(align ? (ALIGNMAP[align as "left" | "right"] as JustifyProp) : align) || "center"}>
                 {title}
