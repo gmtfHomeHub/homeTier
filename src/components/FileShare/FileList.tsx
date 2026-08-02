@@ -294,7 +294,7 @@ export function FileList() {
 
       {/* 密码 Dialog */}
       <Dialog.Root open={passwordFile !== null} onOpenChange={(open) => !open && setPasswordFile(null)}>
-        <Dialog.Content className="w-[420px]">
+        <Dialog.Content className="w-full max-w-[calc(100vw-24px)] sm:w-[420px]">
           <Dialog.Title>{t('file.enterPassword')}</Dialog.Title>
           <Flex direction="column" gap="3" mt="3">
             <Text size="2" color="gray">
@@ -323,7 +323,7 @@ export function FileList() {
 
       {/* 删除确认 */}
       <AlertDialog.Root open={deleteFileInfo !== null} onOpenChange={(open) => !open && setDeleteFileInfo(null)}>
-        <AlertDialog.Content className="w-[420px]">
+        <AlertDialog.Content className="w-full max-w-[calc(100vw-24px)] sm:w-[420px]">
           <AlertDialog.Title>{t('file.delete')}</AlertDialog.Title>
           <AlertDialog.Description size="2" color="gray">
             {deleteFileInfo?.file_name}

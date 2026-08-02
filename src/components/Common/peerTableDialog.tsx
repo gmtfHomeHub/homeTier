@@ -85,7 +85,7 @@ export function PeerTableDialog({
     ];
   return open ? (
     <Dialog.Root open={open} onOpenChange={openChange}>
-      <Dialog.Content className="w-[820px] max-h-[80vh]">
+      <Dialog.Content className="w-full max-w-[calc(100vw-24px)] sm:w-[820px] max-h-[80vh]">
         <div className="flex items-center justify-between mb-4">
           <Text size="2" weight="bold">
             {t("space.onlineMembers")}

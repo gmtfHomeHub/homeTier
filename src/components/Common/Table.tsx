@@ -36,7 +36,8 @@ const defaultProps = {
 
 export function BaseTable<T>({ columns, dataSource, children }: BaseTableProps<T>) {
   return (
-    <Table.Root variant="surface" size="1">
+    <div className="overflow-x-auto">
+      <Table.Root variant="surface" size="1">
       <Table.Header>
         <Table.Row>
           {columns.map((col, i) => {
@@ -69,6 +70,7 @@ export function BaseTable<T>({ columns, dataSource, children }: BaseTableProps<T
           </Table.Row>
         ))}
       </Table.Body>
-    </Table.Root>
+      </Table.Root>
+    </div>
   );
 }

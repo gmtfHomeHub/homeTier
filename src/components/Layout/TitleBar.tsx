@@ -36,10 +36,10 @@ export function TitleBar() {
             <Button onClick={() => navigate("/")} variant="ghost" size="2">
               <Flex align="center" gap="2">
                 <House size={16} />
-                {t("space.spaces")}
+                <span className="hidden sm:inline">{t("space.spaces")}</span>
               </Flex>
             </Button>
-            <Separator orientation="vertical" />
+            <Separator orientation="vertical" className="hidden sm:block" />
             <Button
               onClick={() => navigate("/settings")}
               variant="ghost"
@@ -47,7 +47,7 @@ export function TitleBar() {
             >
               <Flex align="center" gap="2" justify="center">
                 <Settings size={16} />
-                <span>{t("settings.title")}</span>
+                <span className="hidden sm:inline">{t("settings.title")}</span>
               </Flex>
             </Button>
           </Flex>

@@ -80,7 +80,7 @@ export function AppFormDialog({ app, spaceId, callerId, existingCategories, onCl
 
   return (
     <Dialog.Root open={true} onOpenChange={() => onClose()}>
-      <Dialog.Content className="w-[520px]">
+      <Dialog.Content className="w-full max-w-[calc(100vw-24px)] sm:w-[520px]">
         <div className="flex items-center justify-between mb-4">
           <Dialog.Title className="m-0 text-lg font-semibold">
             {isEditing ? "编辑应用" : "添加应用"}

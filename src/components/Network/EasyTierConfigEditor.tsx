@@ -89,7 +89,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           <Text size="2" weight="medium">{t("network.basicSettings")}</Text>
         </div>
         <div className="p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("settings.networkName")}</label>
               <TextField.Root size="1" value={strVal("network_name")}
@@ -109,7 +109,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("network.virtualIpv4")}</label>
               <TextField.Root size="1" value={strVal("virtual_ipv4")}
@@ -247,7 +247,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           </div>
 
           {/* Routes & Exit Nodes */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("network.routes")}</label>
               <TextField.Root size="1"
@@ -265,7 +265,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           </div>
 
           {/* Dev Name, MTU, Instance Recv Bps Limit */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("network.devName")}</label>
               <TextField.Root size="1" value={strVal("dev_name")}
@@ -298,7 +298,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           </div>
 
           {/* SOCKS5 */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className={FIELD_CLASS}>
               <Text as="label" size="1" className="flex items-center gap-2">
                 <Checkbox checked={boolVal("enable_socks5")}
@@ -333,7 +333,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
       <CollapsibleSection title={t("network.portForwards")} defaultOpen>
         <div className="space-y-2">
           {port_forwards.map((pf, i) => (
-            <div key={i} className="flex items-center gap-2 p-2 border border-[var(--color-border)] rounded">
+            <div key={i} className="flex flex-wrap items-center gap-2 p-2 border border-[var(--color-border)] rounded">
               <Select.Root value={pf.proto}
                 onValueChange={(v) => {
                   const list = [...port_forwards];

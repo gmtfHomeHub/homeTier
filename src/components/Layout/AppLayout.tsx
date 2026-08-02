@@ -15,7 +15,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { sidebarOpen, setSidebarOpen } = useLayoutStore();
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-[var(--color-bg)]">
+    <div className="h-[100dvh] w-screen flex flex-col bg-[var(--color-bg)]">
       <TitleBar />
       <div className="relative flex flex-1 overflow-hidden">
         {/* 浮层 Sidebar — fixed 定位，不参与流式布局 */}

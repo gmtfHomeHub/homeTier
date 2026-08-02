@@ -190,7 +190,7 @@ export function ScreenViewer() {
 
       {/* 邀请成员对话框 */}
       <Dialog.Root open={inviteOpen} onOpenChange={setInviteOpen}>
-        <Dialog.Content style={{ maxWidth: 480 }}>
+        <Dialog.Content style={{ maxWidth: 480, width: "calc(100vw - 48px)" }}>
           <Dialog.Title>
             <Flex align="center" gap="2">
               <UserPlus size={18} />

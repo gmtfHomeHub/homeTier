@@ -172,7 +172,7 @@ export function SpaceList() {
                 />
               </div>
             </div>
-            <Grid columns="2" gap="3">
+            <Grid columns={{ initial: "1", sm: "2" }} gap="3">
               <Flex>
                 {space.status === "connected" ? (
                   <Button
@@ -258,7 +258,7 @@ export function SpaceList() {
 
       {configTarget && configSpace && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-[var(--color-surface)] rounded-xl w-[640px] max-h-[80vh] flex flex-col shadow-xl">
+          <div className="bg-[var(--color-surface)] rounded-xl w-full max-w-[calc(100vw-24px)] sm:w-[640px] max-h-[80vh] flex flex-col shadow-xl">
             <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
               <h2 className="text-lg font-semibold">
                 {t("space.spaceConfigTitle", { name: configSpace.name })}

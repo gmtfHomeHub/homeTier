@@ -101,7 +101,7 @@ export function NetworkStatsPanel({ spaceId, connected = false }: NetworkStatsPa
         <Text size="2" weight="bold">{t('network.stats')}</Text>
       </div>
       <div className="px-4">
-        <Grid columns="4" gap="4">
+        <Grid columns={{ initial: "2", sm: "4" }} gap="4">
           <Flex align="center" gap="4">
             <div className="flex items-center gap-2 text-sm">
               <Signal className={cls} />

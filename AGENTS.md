@@ -31,6 +31,7 @@ CodeGraph is indexed at `.codegraph/`. Prefer `codegraph explore "<query>"` over
 - **Database** is SQLite (rusqlite bundled) at `{app_data_dir}/homeTier.db`, auto-migrated on startup. Schema in `src-tauri/src/db/migrations.rs`.
 - **Tauri plugins**: shell, process, clipboard-manager, global-shortcut, os, single-instance.
 - **Window hides to tray** on close (does not quit). Handled via `CloseRequested` with `prevent_close()`.
+- **Mobile support**: viewport disables pinch-zoom (`maximum-scale=1`), safe-area padding on `body`, fixed-width dialogs use `w-full max-w-[calc(100vw-24px)] sm:w-[原值]`, tables wrap in `overflow-x-auto` (BaseTable does this). **Tooltip rule**: never wrap clickable controls in `Tooltip` — on touch it becomes two-step interaction (first tap shows tooltip, second fires action); use `toastInfo`/`toastError` from `src/utils/toast.ts` instead. Tooltip is only for non-interactive info icons.
 - **EasyTier compile features** required: `wireguard`, `websocket`, `tun`, `socks5`, `kcp`, `quic`, `zstd`.
 
 ## Type sync

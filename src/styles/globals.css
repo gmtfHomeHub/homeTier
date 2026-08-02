@@ -36,12 +36,13 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   overflow: hidden;
-  height: 100vh;
+  height: 100dvh;
   width: 100vw;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 #root {
-  height: 100vh;
+  height: 100dvh;
   width: 100vw;
 }
 
