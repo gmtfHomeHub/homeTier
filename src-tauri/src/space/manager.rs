@@ -296,7 +296,7 @@ Self {
             network_secret,
             host_hint: None,
             virtual_ip,
-            dhcp: Some(effective.dhcp),
+            dhcp: Some(virtual_ip.is_none()),
             peer_urls: effective.peer_urls.clone(),
             listener_urls: effective.listener_urls.clone(),
         };
@@ -1101,12 +1101,15 @@ impl SpaceManager {
         let spaces = self.spaces.read().await;
         let space = spaces.iter().find(|s| &s.id == space_id)
             .ok_or_else(|| "Space not found".to_string())?;
+        let virtual_ip = ip
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
         let info = ShareInfo {
             network_name: space.network_name.clone(),
             network_secret: space.network_secret.clone(),
             host_hint: None,
-            virtual_ip: ip.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
-            dhcp: None,
+            virtual_ip,
+            dhcp: Some(virtual_ip.is_none()),
             peer_urls: Vec::new(),
             listener_urls: Vec::new(),
         };
