@@ -185,6 +185,10 @@ pub fn run() -> std::process::ExitCode {
                 match spawn_daemon(&app_data, resource_dir.as_deref()) {
                     Ok(mut daemon_handle) => {
                         crate::log_info!(format!("[GUI] daemon 已启动, pid={:?}", daemon_handle.pid()));
+                        // 授权已通过，daemon 已启动：显示主窗口（初始为隐藏，避免授权取消时闪窗）
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                        }
                         let handle_arc = Arc::new(std::sync::Mutex::new(Some(daemon_handle)));
                         // 存到全局 OnceLock（Exit 事件兜底 kill 用）
                         let _ = DAEMON_CHILD.set(handle_arc.clone());
@@ -229,6 +233,12 @@ pub fn run() -> std::process::ExitCode {
                         });
                     }
                     Err(e) => {
+                        // 用户取消授权：应用直接退出，不再继续初始化
+                        if e.contains("取消") || e.contains("canceled") {
+                            crate::log_error!("[GUI] 授权被拒绝，应用退出");
+                            app.handle().exit(0);
+                            return Ok(());
+                        }
                         crate::log_error!(format!("[GUI] 启动 daemon 失败: {}", e));
                     }
                 }

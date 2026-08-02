@@ -291,12 +291,14 @@ Self {
         let virtual_ip = ip
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
+
+        let dhcp = Some(virtual_ip.is_none());   // 先借用计算结果
         let info = ShareInfo {
             network_name,
             network_secret,
             host_hint: None,
             virtual_ip,
-            dhcp: Some(virtual_ip.is_none()),
+            dhcp,
             peer_urls: effective.peer_urls.clone(),
             listener_urls: effective.listener_urls.clone(),
         };

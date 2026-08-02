@@ -284,7 +284,7 @@ mod tests {
 
     #[test]
     fn test_client_creation() {
-        let client = IpcClient::new(super::ipc::DEFAULT_RPC_PORT);
-        assert_eq!(client.port, super::ipc::DEFAULT_RPC_PORT);
+    let client = IpcClient::new(crate::daemon::ipc::DEFAULT_RPC_PORT);
+    assert_eq!(client.port, crate::daemon::ipc::DEFAULT_RPC_PORT);
     }
 }
