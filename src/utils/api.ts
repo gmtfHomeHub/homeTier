@@ -17,8 +17,8 @@ import type { NetworkConfig } from "../types/network";
 
 // === Space Commands ===
 
-export async function createSpace(name: string, networkSecret: string, ownerId: string, description?: string): Promise<Space> {
-  return invoke("create_space", { name, networkSecret, ownerId, description });
+export async function createSpace(name: string, networkSecret: string, description?: string): Promise<Space> {
+  return invoke("create_space", { name, networkSecret, description });
 }
 
 /** 加入空间：configJson 为含 network_name/network_secret 等字段的部分 easytier 配置 json，
@@ -31,8 +31,8 @@ export async function leaveSpace(spaceId: string): Promise<void> {
   return invoke("leave_space", { spaceId });
 }
 
-export async function deleteSpace(spaceId: string, callerId?: string): Promise<void> {
-  return invoke("delete_space", { spaceId, callerId: callerId ?? "" });
+export async function deleteSpace(spaceId: string): Promise<void> {
+  return invoke("delete_space", { spaceId });
 }
 
 export async function listSpaces(): Promise<Space[]> {
@@ -77,10 +77,6 @@ export async function syncTrayMenu(spaces: TraySpace[], labels: TrayLabels): Pro
 
 export async function getNetworkStats(spaceId: string): Promise<NetworkStats> {
   return invoke<NetworkStats>("get_network_stats", { spaceId });
-}
-
-export async function updateLocalConfig(spaceId: string, config: NetworkConfig): Promise<void> {
-  return invoke("update_local_config", { spaceId, config: JSON.stringify(config) });
 }
 
 // === Chat Commands ===
@@ -238,7 +234,6 @@ export async function getSpacePeers(spaceId: string): Promise<PeerInfo[]> {
 export async function addApp(
   spaceId: string,
   name: string,
-  callerId: string,
   options?: {
     category?: string;
     icon?: string;
@@ -251,7 +246,6 @@ export async function addApp(
   return invoke("add_app", {
     spaceId,
     name,
-    callerId,
     category: options?.category ?? null,
     icon: options?.icon ?? null,
     protocol: options?.protocol ?? null,
@@ -264,7 +258,6 @@ export async function addApp(
 export async function updateApp(
   appId: string,
   name: string,
-  callerId: string,
   options?: {
     category?: string;
     icon?: string;
@@ -277,7 +270,6 @@ export async function updateApp(
   return invoke("update_app", {
     appId,
     name,
-    callerId,
     category: options?.category ?? null,
     icon: options?.icon ?? null,
     protocol: options?.protocol ?? null,
@@ -287,8 +279,8 @@ export async function updateApp(
   });
 }
 
-export async function deleteApp(appId: string, callerId: string): Promise<void> {
-  return invoke("delete_app", { appId, callerId });
+export async function deleteApp(appId: string): Promise<void> {
+  return invoke("delete_app", { appId });
 }
 
 export async function listApps(spaceId: string): Promise<SpaceApp[]> {

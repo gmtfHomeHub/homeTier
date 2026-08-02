@@ -11,10 +11,10 @@ interface SpaceStore {
 
   loadSpaces: () => Promise<void>;
   loadSpacesOnce: () => Promise<void>;
-  createSpace: (name: string, networkSecret: string, ownerId: string, description?: string) => Promise<Space>;
+  createSpace: (name: string, networkSecret: string, description?: string) => Promise<Space>;
   joinSpace: (configJson: string) => Promise<Space>;
   leaveSpace: (spaceId: string) => Promise<void>;
-  deleteSpace: (spaceId: string, callerId?: string) => Promise<void>;
+  deleteSpace: (spaceId: string) => Promise<void>;
   setCurrentSpace: (id: string | null) => void;
   connectSpace: (spaceId: string) => Promise<void>;
   disconnectSpace: (spaceId: string) => Promise<void>;
@@ -55,8 +55,8 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
     }
   },
 
-  createSpace: async (name, networkSecret, ownerId, description) => {
-    const space = await api.createSpace(name, networkSecret, ownerId, description);
+  createSpace: async (name, networkSecret, description) => {
+    const space = await api.createSpace(name, networkSecret, description);
     set((state) => ({ spaces: [...state.spaces, space] }));
     syncTrayMenu(get().spaces);
     return space;
@@ -79,12 +79,8 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
     syncTrayMenu(get().spaces);
   },
 
-  deleteSpace: async (spaceId, callerId?: string) => {
-    if (callerId) {
-      await api.deleteSpace(spaceId, callerId);
-    } else {
-      await api.deleteSpace(spaceId, "");
-    }
+  deleteSpace: async (spaceId: string) => {
+    await api.deleteSpace(spaceId);
     set((state) => ({
       spaces: state.spaces.filter((s) => s.id !== spaceId),
       currentSpaceId: state.currentSpaceId === spaceId ? null : state.currentSpaceId,

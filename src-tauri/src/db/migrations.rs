@@ -1,4 +1,11 @@
 pub const SCHEMA_SQL: &str = "
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    config_json TEXT,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS spaces (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -9,8 +16,7 @@ CREATE TABLE IF NOT EXISTS spaces (
     created_at TEXT NOT NULL,
     last_connected_at TEXT,
     is_auto_connect INTEGER DEFAULT 0,
-    config_json TEXT,
-    local_config_json TEXT
+    config_json TEXT
 );
 
 CREATE TABLE IF NOT EXISTS members (
@@ -108,4 +114,11 @@ CREATE TABLE IF NOT EXISTS port_forward_rules (
 pub const SCHEMA_MIGRATIONS: &[&str] = &[
     "ALTER TABLE spaces ADD COLUMN owner_id TEXT",
     "ALTER TABLE members ADD COLUMN is_owner INTEGER DEFAULT 0",
+    "CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        config_json TEXT,
+        updated_at TEXT NOT NULL
+    )",
+    "ALTER TABLE spaces DROP COLUMN local_config_json",
 ];

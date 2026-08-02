@@ -9,13 +9,13 @@ pub async fn get_app_version() -> String {
 
 #[tauri::command]
 pub fn get_system_config(db: State<'_, Arc<Database>>) -> Result<Option<String>, String> {
-    db.get_setting("easytier_system_config")
+    db.get_user_config()
 }
 
 #[tauri::command]
 pub fn set_system_config(config: String, db: State<'_, Arc<Database>>) -> Result<(), String> {
     crate::log_info!("更新系统配置");
-    db.set_setting("easytier_system_config", &config)
+    db.update_user_config(&config)
 }
 
 /// 读取日志开关（默认开启，优先级：配置文件 > DB）

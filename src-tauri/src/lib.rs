@@ -119,6 +119,14 @@ pub fn run() -> std::process::ExitCode {
             );
             app.manage(db.clone());
 
+            // 确保本机用户存在（单行 users 表，id=machine_id）
+            let hostname = gethostname::gethostname().to_string_lossy().to_string();
+            let user_id = crate::platform::machine_id::get_machine_id()
+                .unwrap_or_else(|| format!("machine-{}", hostname));
+            if let Err(e) = db.ensure_user(&user_id, &hostname) {
+                log_error!("初始化本机用户失败: {}", e);
+            }
+
             // 初始化应用配置文件（{app_data_dir}/homeTier.conf）
             let app_data = app
                 .path()
@@ -457,7 +465,6 @@ pub fn run() -> std::process::ExitCode {
             commands::space::disconnect_space,
             commands::space::get_space_status,
             commands::space::patch_space_config,
-            commands::space::update_local_config,
             // 网络管理
             commands::network::get_network_stats,
             commands::network::update_group_config,

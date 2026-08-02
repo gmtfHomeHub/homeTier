@@ -34,12 +34,12 @@ impl Database {
     pub fn insert_space(&self, space: &models::SpaceRow) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.execute(
-            "INSERT INTO spaces (id, name, owner_id, network_name, network_secret, description, created_at, is_auto_connect, config_json, local_config_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO spaces (id, name, owner_id, network_name, network_secret, description, created_at, is_auto_connect, config_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 space.id, space.name, space.owner_id, space.network_name, space.network_secret,
                 space.description, space.created_at, space.is_auto_connect,
-                space.config_json, space.local_config_json,
+                space.config_json,
             ],
         ).map_err(|e| format!("Insert space error: {}", e))?;
         Ok(())
@@ -57,7 +57,7 @@ impl Database {
     pub fn list_spaces(&self) -> Result<Vec<models::SpaceRow>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn.prepare(
-            "SELECT id, name, owner_id, network_name, network_secret, description, created_at, last_connected_at, is_auto_connect, config_json, local_config_json FROM spaces ORDER BY created_at DESC"
+            "SELECT id, name, owner_id, network_name, network_secret, description, created_at, last_connected_at, is_auto_connect, config_json FROM spaces ORDER BY created_at DESC"
         ).map_err(|e| format!("Query error: {}", e))?;
 
         let rows = stmt.query_map([], |row| {
@@ -72,7 +72,6 @@ impl Database {
                 last_connected_at: row.get(7)?,
                 is_auto_connect: row.get(8)?,
                 config_json: row.get(9)?,
-                local_config_json: row.get(10)?,
             })
         }).map_err(|e| format!("Query error: {}", e))?;
 
@@ -153,6 +152,73 @@ impl Database {
         Ok(())
     }
 
+    // --- Users ---
+
+    /// 确保本机用户存在（幂等）。首次调用时插入。
+    pub fn ensure_user(&self, user_id: &str, name: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT OR IGNORE INTO users (id, name, config_json, updated_at) VALUES (?1, ?2, NULL, ?3)",
+            params![user_id, name, chrono::Local::now().to_rfc3339()],
+        ).map_err(|e| format!("Ensure user error: {}", e))?;
+        Ok(())
+    }
+
+    /// 获取本机用户（单行）
+    pub fn get_user(&self) -> Result<Option<models::UserRow>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare("SELECT id, name, config_json FROM users LIMIT 1")
+            .map_err(|e| format!("Query error: {}", e))?;
+        let result = stmt.query_row([], |row| {
+            Ok(models::UserRow {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                config_json: row.get(2)?,
+            })
+        });
+        match result {
+            Ok(user) => Ok(Some(user)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("Query error: {}", e)),
+        }
+    }
+
+    /// 获取本机用户 id（machine_id）
+    pub fn get_user_id(&self) -> Result<Option<String>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare("SELECT id FROM users LIMIT 1")
+            .map_err(|e| format!("Query error: {}", e))?;
+        let result = stmt.query_row([], |row| row.get::<_, String>(0));
+        match result {
+            Ok(id) => Ok(Some(id)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("Query error: {}", e)),
+        }
+    }
+
+    /// 获取本机用户配置（config_json，用于系统级配置）
+    pub fn get_user_config(&self) -> Result<Option<String>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare("SELECT config_json FROM users LIMIT 1")
+            .map_err(|e| format!("Query error: {}", e))?;
+        let result = stmt.query_row([], |row| row.get::<_, Option<String>>(0));
+        match result {
+            Ok(val) => Ok(val),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("Query error: {}", e)),
+        }
+    }
+
+    /// 更新本机用户配置（config_json）
+    pub fn update_user_config(&self, config_json: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE users SET config_json=?1, updated_at=?2",
+            params![config_json, chrono::Local::now().to_rfc3339()],
+        ).map_err(|e| format!("Update user config error: {}", e))?;
+        Ok(())
+    }
+
     // --- EasyTier Config ---
 
     /// 获取空间的 EasyTier 配置（config_json）
@@ -166,29 +232,6 @@ impl Database {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(format!("Query error: {}", e)),
         }
-    }
-
-    /// 获取空间的本地配置（local_config_json）
-    pub fn get_local_config_json(&self, space_id: &str) -> Result<Option<String>, String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let mut stmt = conn.prepare("SELECT local_config_json FROM spaces WHERE id=?1")
-            .map_err(|e| format!("Query error: {}", e))?;
-        let result = stmt.query_row(params![space_id], |row| row.get::<_, Option<String>>(0));
-        match result {
-            Ok(val) => Ok(val),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(format!("Query error: {}", e)),
-        }
-    }
-
-    /// 更新空间的本地配置（local_config_json）
-    pub fn update_local_config_json(&self, space_id: &str, config_json: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        conn.execute(
-            "UPDATE spaces SET local_config_json=?1 WHERE id=?2",
-            params![config_json, space_id],
-        ).map_err(|e| format!("Update local config error: {}", e))?;
-        Ok(())
     }
 
     /// 更新空间的 EasyTier 配置（config_json）

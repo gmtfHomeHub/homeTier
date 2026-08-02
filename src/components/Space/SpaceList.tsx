@@ -22,7 +22,7 @@ export function SpaceList() {
   const { connectingId, disconnectingId, connect, disconnect } = useSpaceConnect();
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; ownerId?: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [configTarget, setConfigTarget] = useState<string | null>(null);
   const [spaceConfig, setSpaceConfig] = useState<Partial<NetworkConfig>>({});
   const [savingConfig, setSavingConfig] = useState(false);
@@ -84,7 +84,7 @@ export function SpaceList() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      await deleteSpace(deleteTarget.id, deleteTarget.ownerId || "");
+      await deleteSpace(deleteTarget.id);
       await new Promise((r) => setTimeout(r, 300));
       await loadSpacesOnce();
       setDeleteTarget(null);
@@ -227,7 +227,6 @@ export function SpaceList() {
                       setDeleteTarget({
                         id: space.id,
                         name: space.name,
-                        ownerId: space.owner_id,
                       }),
                     )}
                     variant="ghost"

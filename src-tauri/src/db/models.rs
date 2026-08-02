@@ -1,5 +1,13 @@
 use serde::{Deserialize, Serialize};
 
+/// 用户行数据（数据库映射，单行表：本机用户）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserRow {
+    pub id: String, // machine_id
+    pub name: String, // hostname
+    pub config_json: Option<String>,
+}
+
 /// 空间行数据（数据库映射）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpaceRow {
@@ -13,7 +21,6 @@ pub struct SpaceRow {
     pub last_connected_at: Option<String>,
     pub is_auto_connect: bool,
     pub config_json: Option<String>,
-    pub local_config_json: Option<String>,
 }
 
 /// 消息行数据（数据库映射）

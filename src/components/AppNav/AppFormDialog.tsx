@@ -9,7 +9,6 @@ import { toastError } from "../../utils/toast";
 interface AppFormDialogProps {
   app: SpaceApp | null;
   spaceId: string;
-  callerId: string;
   existingCategories: string[];
   onClose: () => void;
   onSubmit: () => void;
@@ -22,7 +21,7 @@ const PROTOCOL_OPTIONS = [
 
 const NEW_CATEGORY_VALUE = "__new__";
 
-export function AppFormDialog({ app, spaceId, callerId, existingCategories, onClose, onSubmit }: AppFormDialogProps) {
+export function AppFormDialog({ app, spaceId, existingCategories, onClose, onSubmit }: AppFormDialogProps) {
   const isEditing = !!app;
   const [name, setName] = useState(app?.name ?? "");
   const [category, setCategory] = useState(app?.category ?? "");
@@ -62,9 +61,9 @@ export function AppFormDialog({ app, spaceId, callerId, existingCategories, onCl
       };
 
       if (isEditing && app && app.id) {
-        await api.updateApp(app.id, name.trim(), callerId, options);
+        await api.updateApp(app.id, name.trim(), options);
       } else {
-        await api.addApp(spaceId, name.trim(), callerId, options);
+        await api.addApp(spaceId, name.trim(), options);
       }
       onSubmit();
     } catch (e) {

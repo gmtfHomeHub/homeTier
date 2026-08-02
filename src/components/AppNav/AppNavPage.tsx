@@ -14,10 +14,9 @@ import { toastError } from "../../utils/toast";
 interface AppNavPageProps {
   space: Space;
   isOwner: boolean;
-  callerId: string;
 }
 
-export function AppNavPage({ space, isOwner, callerId }: AppNavPageProps) {
+export function AppNavPage({ space, isOwner }: AppNavPageProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [apps, setApps] = useState<SpaceApp[]>([]);
@@ -55,14 +54,9 @@ export function AppNavPage({ space, isOwner, callerId }: AppNavPageProps) {
   };
 
   const handleDelete = async (appId: string) => {
-    const effectiveCallerId = callerId || space.owner_id || "";
-    if (!effectiveCallerId) {
-      toastError(t("common.permissionError"));
-      return;
-    }
     if (!confirm(t("common.confirmDeleteApp"))) return;
     try {
-      await api.deleteApp(appId, effectiveCallerId);
+      await api.deleteApp(appId);
       loadApps();
     } catch (e) {
       toastError(String(e));
@@ -205,7 +199,6 @@ export function AppNavPage({ space, isOwner, callerId }: AppNavPageProps) {
         <AppFormDialog
           app={editApp}
           spaceId={space.id}
-          callerId={callerId}
           existingCategories={existingCategories}
           onClose={() => setShowForm(false)}
           onSubmit={handleFormSubmit}

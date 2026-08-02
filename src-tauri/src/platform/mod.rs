@@ -9,6 +9,8 @@ pub mod macos;
 #[cfg(target_os = "windows")]
 pub mod windows;
 
+pub mod machine_id;
+
 use std::path::PathBuf;
 
 /// 平台适配器 trait

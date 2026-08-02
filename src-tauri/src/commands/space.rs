@@ -25,12 +25,11 @@ pub async fn update_space_config(
 pub async fn create_space(
     name: String,
     network_secret: String,
-    owner_id: String,
     description: Option<String>,
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<Space, String> {
-    crate::log_info!(format!("命令: create_space name={}, owner_id={}", name, owner_id));
-    space_manager.create(name, network_secret, owner_id, description).await
+    crate::log_info!(format!("命令: create_space name={}", name));
+    space_manager.create(name, network_secret, description).await
 }
 
 #[tauri::command]
@@ -57,12 +56,11 @@ pub async fn leave_space(
 #[tauri::command]
 pub async fn delete_space(
     space_id: String,
-    caller_id: String,
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<(), String> {
     let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
-    crate::log_info!(format!("删除空间: {}, caller={}", space_id, caller_id));
-    space_manager.delete(&id, &caller_id).await
+    crate::log_info!(format!("删除空间: {}", space_id));
+    space_manager.delete(&id).await
 }
 
 #[tauri::command]
@@ -133,17 +131,4 @@ pub async fn patch_space_config(
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<(), String> {
     space_manager.patch_config(&space_id, patch).await
-}
-
-#[tauri::command]
-pub async fn update_local_config(
-    space_id: String,
-    config_json: String,
-    space_manager: State<'_, Arc<SpaceManager>>,
-) -> Result<(), String> {
-    let config: crate::easytier::config::NetworkConfig = serde_json::from_str(&config_json)
-        .map_err(|e| format!("解析配置失败: {}", e))?;
-    let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
-    crate::log_info!(format!("更新本地配置: {}", space_id));
-    space_manager.update_local_config(&id, config).await
 }

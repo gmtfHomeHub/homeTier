@@ -31,14 +31,13 @@ export function SpaceDetail() {
 
   const space = spaces.find((s) => s.id === id);
   const isOwner = !!space?.owner_id;
-  const callerId = space?.owner_id || "";
   const isRunning = space?.status === SpaceStatus.CED;
 
   const handleDelete = async () => {
     if (!id || !space) return;
     setDeleting(true);
     try {
-      await deleteSpace(id, callerId);
+      await deleteSpace(id);
       await loadSpaces();
       navigate("/");
     } catch (e) {
@@ -141,7 +140,7 @@ export function SpaceDetail() {
         <NetworkStatsPanel spaceId={id} connected={isRunning} />
       </div>
 
-      <AppNavPage space={space} isOwner={isOwner} callerId={callerId} />
+      <AppNavPage space={space} isOwner={isOwner} />
 
       <ConfirmDialog
         open={showDeleteConfirm}

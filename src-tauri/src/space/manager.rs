@@ -34,8 +34,6 @@ pub struct SpaceManager {
     file_servers: Arc<RwLock<HashMap<Uuid, FileServer>>>,
     /// 文件存储根目录
     storage_dir: Arc<RwLock<PathBuf>>,
-    /// 本地配置映射: space_id -> NetworkConfig
-    local_configs: Arc<RwLock<HashMap<Uuid, NetworkConfig>>>,
     /// 取消令牌映射: space_id -> CancellationToken（用于取消 discover_and_connect_peers）
     cancel_tokens: Arc<RwLock<HashMap<Uuid, CancellationToken>>>,
     /// 连接任务句柄映射: space_id -> JoinHandle
@@ -55,7 +53,6 @@ impl Clone for SpaceManager {
             screen_servers: self.screen_servers.clone(),
             file_servers: self.file_servers.clone(),
             storage_dir: self.storage_dir.clone(),
-            local_configs: self.local_configs.clone(),
             cancel_tokens: self.cancel_tokens.clone(),
             connect_handles: self.connect_handles.clone(),
         }
@@ -86,23 +83,22 @@ Self {
             screen_servers: Arc::new(RwLock::new(HashMap::new())),
             file_servers: Arc::new(RwLock::new(HashMap::new())),
             storage_dir: Arc::new(RwLock::new(storage_dir)),
-            local_configs: Arc::new(RwLock::new(HashMap::new())),
             cancel_tokens: Arc::new(RwLock::new(HashMap::new())),
             connect_handles: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     /// 创建空间（创建者自动成为 owner）
-    pub async fn create(&self, name: String, network_secret: String, owner_id: String, description: Option<String>) -> Result<Space, String> {
+    pub async fn create(&self, name: String, network_secret: String, description: Option<String>) -> Result<Space, String> {
         let space_id = Uuid::new_v4();
-        let owner_uuid = uuid::Uuid::parse_str(&owner_id).unwrap_or(space_id);
+        let owner_uuid = self.db.get_user_id().unwrap_or_else(|| "local-user".to_string());
         let network_name = name.clone();
 
         let space = Space {
             id: space_id,
             name,
             description,
-            owner_id: Some(owner_uuid.to_string()),
+            owner_id: Some(owner_uuid.clone()),
             network_name: network_name.clone(),
             network_secret: network_secret.clone(),
             created_at: chrono::Local::now(),
@@ -124,11 +120,10 @@ Self {
             created_at: space.created_at.to_rfc3339(),
             last_connected_at: None,
             is_auto_connect: false,
-            config_json: None,
-            local_config_json: None,
+                config_json: None,
         };
         self.db.insert_space(&row)?;
-        self.db.add_member(&space_id.to_string(), &owner_uuid.to_string(), &space.name, true)?;
+        self.db.add_member(&space_id.to_string(), &owner_uuid, &space.name, true)?;
         self.spaces.write().await.push(space.clone());
 
         crate::log_info!(format!("创建空间: {} (id={}, owner={})", space.name, space.id, owner_uuid), &space.id.to_string());
@@ -167,8 +162,7 @@ Self {
             created_at: space.created_at.to_rfc3339(),
             last_connected_at: None,
             is_auto_connect: false,
-            config_json: None,
-            local_config_json: None,
+                config_json: None,
         };
         self.db.insert_space(&row)?;
 
@@ -198,11 +192,12 @@ Self {
     }
 
     /// 删除空间
-    pub async fn delete(&self, space_id: &Uuid, caller_id: &str) -> Result<(), String> {
+    pub async fn delete(&self, space_id: &Uuid) -> Result<(), String> {
+        let caller_id = self.db.get_user_id().unwrap_or_default();
         let spaces = self.spaces.read().await;
         let space = spaces.iter().find(|s| &s.id == space_id)
             .ok_or_else(|| "Space not found".to_string())?;
-        if space.owner_id.as_deref() != Some(caller_id) {
+        if space.owner_id.as_deref() != Some(&caller_id) {
             return Err("只有空间所有者才能删除空间".to_string());
         }
         drop(spaces);
@@ -460,10 +455,7 @@ Self {
         // 4. 清理 chat 客户端
         self.chat_clients.write().await.remove(space_id);
 
-        // 5. 清理本地缓存
-        self.local_configs.write().await.remove(space_id);
-
-        // 6. 通过 IPC 通知 daemon 断开网络
+        // 5. 通过 IPC 通知 daemon 断开网络
         match self.ipc_client.disconnect_space(&space_id.to_string()).await {
             Ok(crate::daemon::ipc::IpcResponse::Ok { .. }) => {
                 crate::log_info!(format!("断开空间完成: {}", space_id), &space_id.to_string());
@@ -730,154 +722,7 @@ Self {
 
         let mut config = base_config;
 
-        // 获取本地配置（优先使用内存缓存，未命中则从 DB 加载）
-        let local_config = {
-            let local_configs = self.local_configs.read().await;
-            local_configs.get(space_id).cloned()
-        };
-
-        let local_config = match local_config {
-            Some(cfg) => Some(cfg),
-            None => {
-                // 从 DB 加载并缓存
-                let db_config = self.db.get_local_config_json(&space_id.to_string())
-                    .ok()
-                    .flatten()
-                    .and_then(|json| serde_json::from_str::<NetworkConfig>(&json).ok());
-                if let Some(ref cfg) = db_config {
-                    let mut local_configs = self.local_configs.write().await;
-                    local_configs.insert(*space_id, cfg.clone());
-                    crate::log_info!("get_effective_config: 从 DB 恢复本地配置", &space_id.to_string());
-                }
-                db_config
-            }
-        };
-
-        if let Some(local_config) = local_config.as_ref() {
-            // 合并本地配置到组配置
-            // 网络标识
-            if !local_config.network_name.is_empty() {
-                config.network_name = local_config.network_name.clone();
-            }
-            if !local_config.network_secret.is_empty() {
-                config.network_secret = local_config.network_secret.clone();
-            }
-
-            // 实例名
-            if let Some(ref name) = local_config.instance_name {
-                if !name.is_empty() {
-                    config.instance_name = Some(name.clone());
-                }
-            }
-
-            // 主机名
-            if let Some(ref hostname) = local_config.hostname {
-                if !hostname.is_empty() {
-                    config.hostname = Some(hostname.clone());
-                }
-            }
-
-            // DHCP / 静态 IP
-            config.dhcp = local_config.dhcp;
-
-            // virtual_ipv4 (组配置)
-            if !local_config.virtual_ipv4.is_empty() {
-                config.virtual_ipv4 = local_config.virtual_ipv4.clone();
-            }
-
-            // IPv4
-            if let Some(ref ipv4) = local_config.ipv4 {
-                if !ipv4.is_empty() {
-                    config.ipv4 = Some(ipv4.clone());
-                }
-            }
-
-            // IPv6
-            if let Some(ref ipv6) = local_config.ipv6 {
-                if !ipv6.is_empty() {
-                    config.ipv6 = Some(ipv6.clone());
-                }
-            }
-
-            // IPv6 公共地址
-            if let Some(v) = local_config.ipv6_public_addr_provider {
-                config.ipv6_public_addr_provider = Some(v);
-            }
-            if let Some(v) = local_config.ipv6_public_addr_auto {
-                config.ipv6_public_addr_auto = Some(v);
-            }
-            if let Some(ref prefix) = local_config.ipv6_public_addr_prefix {
-                if !prefix.is_empty() {
-                    config.ipv6_public_addr_prefix = Some(prefix.clone());
-                }
-            }
-
-            // 节点列表
-            if !local_config.peers.is_empty() {
-                config.peers = local_config.peers.clone();
-            }
-
-            // 监听地址
-            if !local_config.listeners.is_empty() {
-                config.listeners = local_config.listeners.clone();
-            }
-
-            // 监听地址 (新字段)
-            if !local_config.listener_urls.is_empty() {
-                config.listener_urls = local_config.listener_urls.clone();
-            }
-
-            // 子网代理
-            if !local_config.proxy_networks.is_empty() {
-                config.proxy_networks = local_config.proxy_networks.clone();
-            }
-
-            // 路由
-            if !local_config.routes.is_empty() {
-                config.routes = local_config.routes.clone();
-            }
-
-            // 出口节点
-            if !local_config.exit_nodes.is_empty() {
-                config.exit_nodes = local_config.exit_nodes.clone();
-            }
-
-            // 标志位
-            if !local_config.flags.is_empty() {
-                config.flags = local_config.flags.clone();
-            }
-
-            // 联网方式
-            if local_config.networking_method != config.networking_method {
-                config.networking_method = local_config.networking_method;
-            }
-            if !local_config.public_server_url.is_empty() {
-                config.public_server_url = local_config.public_server_url.clone();
-            }
-            if !local_config.peer_urls.is_empty() {
-                config.peer_urls = local_config.peer_urls.clone();
-            }
-
-            // 日志配置
-            if let Some(ref logger) = local_config.file_logger {
-                config.file_logger = Some(logger.clone());
-            }
-            if let Some(ref logger) = local_config.console_logger {
-                config.console_logger = Some(logger.clone());
-            }
-        }
-
         Ok(config)
-    }
-
-    /// 更新本地配置（同时持久化到 DB）
-    pub async fn update_local_config(&self, space_id: &Uuid, config: NetworkConfig) -> Result<(), String> {
-        let config_json = serde_json::to_string(&config).map_err(|e| format!("序列化本地配置失败: {}", e))?;
-        self.db.update_local_config_json(&space_id.to_string(), &config_json)?;
-        let mut local_configs = self.local_configs.write().await;
-        local_configs.insert(*space_id, config);
-        crate::log_info!("本地配置已保存到 DB", &space_id.to_string());
-        Ok(())
     }
 
     /// 获取用于文件传输的 peer (IP, port) 列表
@@ -901,11 +746,12 @@ Self {
     }
 
     /// 校验是否为空间创建者
-    pub async fn check_owner(&self, space_id: &str, caller_id: &str) -> Result<(), String> {
+    pub async fn check_owner(&self, space_id: &str) -> Result<(), String> {
+        let caller_id = self.db.get_user_id().unwrap_or_default();
         let spaces = self.spaces.read().await;
         let space = spaces.iter().find(|s| s.id.to_string() == *space_id)
             .ok_or_else(|| "空间不存在".to_string())?;
-        if space.owner_id.as_deref() != Some(caller_id) {
+        if space.owner_id.as_deref() != Some(&caller_id) {
             return Err("无权限：仅空间创建者可执行此操作".to_string());
         }
         Ok(())
@@ -941,16 +787,16 @@ impl SpaceManager {
     }
 
     /// 创建空间（Mobile: 库方式）
-    pub async fn create(&self, name: String, network_secret: String, owner_id: String, description: Option<String>) -> Result<Space, String> {
+    pub async fn create(&self, name: String, network_secret: String, description: Option<String>) -> Result<Space, String> {
         let space_id = Uuid::new_v4();
-        let owner_uuid = uuid::Uuid::parse_str(&owner_id).unwrap_or_else(|_| space_id);
+        let owner_uuid = self.db.get_user_id().unwrap_or_else(|| "local-user".to_string());
         let network_name = name.clone();
 
         let space = Space {
             id: space_id,
             name,
             description,
-            owner_id: Some(owner_uuid.to_string()),
+            owner_id: Some(owner_uuid.clone()),
             network_name: network_name.clone(),
             network_secret: network_secret.clone(),
             created_at: chrono::Local::now(),
@@ -972,11 +818,10 @@ impl SpaceManager {
             created_at: space.created_at.to_rfc3339(),
             last_connected_at: None,
             is_auto_connect: false,
-            config_json: None,
-            local_config_json: None,
+                config_json: None,
         };
         self.db.insert_space(&row)?;
-        self.db.add_member(&space_id.to_string(), &owner_uuid.to_string(), &space.name, true)?;
+        self.db.add_member(&space_id.to_string(), &owner_uuid, &space.name, true)?;
         self.spaces.write().await.push(space.clone());
         crate::log_info!(format!("创建空间: {} (id={}, owner={})", space.name, space.id, owner_uuid), &space.id.to_string());
         Ok(space)
@@ -1014,8 +859,7 @@ impl SpaceManager {
             created_at: space.created_at.to_rfc3339(),
             last_connected_at: None,
             is_auto_connect: false,
-            config_json: None,
-            local_config_json: None,
+                config_json: None,
         };
         self.db.insert_space(&row)?;
 
@@ -1047,11 +891,12 @@ impl SpaceManager {
     }
 
     /// 删除空间
-    pub async fn delete(&self, space_id: &Uuid, caller_id: &str) -> Result<(), String> {
+    pub async fn delete(&self, space_id: &Uuid) -> Result<(), String> {
+        let caller_id = self.db.get_user_id().unwrap_or_default();
         let spaces = self.spaces.read().await;
         let space = spaces.iter().find(|s| &s.id == space_id)
             .ok_or_else(|| "Space not found".to_string())?;
-        if space.owner_id.as_deref() != Some(caller_id) {
+        if space.owner_id.as_deref() != Some(&caller_id) {
             return Err("只有空间所有者才能删除空间".to_string());
         }
         drop(spaces);
@@ -1151,11 +996,12 @@ impl SpaceManager {
     }
 
     /// 校验是否为空间创建者
-    pub async fn check_owner(&self, space_id: &str, caller_id: &str) -> Result<(), String> {
+    pub async fn check_owner(&self, space_id: &str) -> Result<(), String> {
+        let caller_id = self.db.get_user_id().unwrap_or_default();
         let spaces = self.spaces.read().await;
         let space = spaces.iter().find(|s| s.id.to_string() == *space_id)
             .ok_or_else(|| "空间不存在".to_string())?;
-        if space.owner_id.as_deref() != Some(caller_id) {
+        if space.owner_id.as_deref() != Some(&caller_id) {
             return Err("无权限：仅空间创建者可执行此操作".to_string());
         }
         Ok(())

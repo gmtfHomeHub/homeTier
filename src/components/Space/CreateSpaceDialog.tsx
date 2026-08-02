@@ -25,8 +25,7 @@ export function CreateSpaceDialog({ onClose }: CreateSpaceDialogProps) {
     setLoading(true);
     setError(null);
     try {
-      const ownerId = crypto.randomUUID();
-      await createSpace(name.trim(), networkSecret.trim(), ownerId, description.trim() || undefined);
+      await createSpace(name.trim(), networkSecret.trim(), description.trim() || undefined);
       onClose();
     } catch (e) {
       setError(String(e));
