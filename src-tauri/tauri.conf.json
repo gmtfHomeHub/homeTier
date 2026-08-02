@@ -15,7 +15,8 @@
     ],
     "createUpdaterArtifacts": false,
     "resources": [
-      "../homeTier.conf.example"
+      "../homeTier.conf.example",
+      "resources/bin/*"
     ],
     "macOS": {
       "infoPlist": "Info.plist"

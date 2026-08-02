@@ -36,14 +36,14 @@ pub struct Daemon {
 }
 
 impl Daemon {
-    pub fn new(config_dir: PathBuf, data_dir: PathBuf, gui_pid: Option<u32>) -> Result<Self, String> {
+    pub fn new(config_dir: PathBuf, data_dir: PathBuf, gui_pid: Option<u32>, resource_dir: Option<PathBuf>) -> Result<Self, String> {
         // daemon 启动时清空历史日志
         crate::log::clear();
         let easytier_dir = config_dir.join("easytier");
         std::fs::create_dir_all(&easytier_dir)
             .map_err(|e| format!("创建 EasyTier 配置目录失败: {}", e))?;
 
-        let easytier = Arc::new(EasyTierManager::new(easytier_dir, data_dir.clone()));
+        let easytier = Arc::new(EasyTierManager::new(easytier_dir, data_dir.clone(), resource_dir.as_deref()));
         let easytier_process = Arc::new(tokio::sync::Mutex::new(None));
         let (shutdown_tx, _) = broadcast::channel(1);
 
@@ -564,7 +564,7 @@ impl Daemon {
 }
 
 /// daemon 入口点（路径由 GUI 通过 CLI 传入）
-pub async fn run_daemon_async(config_dir: PathBuf, data_dir: PathBuf, gui_pid: Option<u32>) -> Result<(), String> {
-    let daemon = Daemon::new(config_dir, data_dir, gui_pid)?;
+pub async fn run_daemon_async(config_dir: PathBuf, data_dir: PathBuf, gui_pid: Option<u32>, resource_dir: Option<PathBuf>) -> Result<(), String> {
+    let daemon = Daemon::new(config_dir, data_dir, gui_pid, resource_dir)?;
     daemon.run().await
 }

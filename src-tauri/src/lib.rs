@@ -131,9 +131,6 @@ pub fn run() -> std::process::ExitCode {
             // 首次生成配置文件时，继承 DB 中已有的业务设置（之后以配置文件为准）
             if config_created {
                 if let Some(cfg) = crate::config::global() {
-                    if let Ok(Some(v)) = db.get_setting("RELAY_NETWORK_PREFIX") {
-                        let _ = cfg.set(crate::config::KEY_RELAY_NETWORK_PREFIX, &v);
-                    }
                     if let Ok(Some(v)) = db.get_setting("LOG_ENABLED") {
                         let _ = cfg.set(crate::config::KEY_LOG_ENABLED, &v);
                     }
@@ -169,7 +166,7 @@ pub fn run() -> std::process::ExitCode {
             crate::cleanup::cleanup_all(&app_data, &easytier_config_dir);
             crate::log_info!("[GUI] 清理完成");
             let _ = std::fs::create_dir_all(&easytier_config_dir);
-            let instance_manager = Arc::new(easytier::EasyTierManager::new(easytier_config_dir, app_data.clone()));
+            let instance_manager = Arc::new(easytier::EasyTierManager::new(easytier_config_dir, app_data.clone(), resource_dir.as_deref()));
             app.manage(instance_manager.clone());
             crate::log_info!("[GUI] EasyTier 管理器已初始化");
 
@@ -185,7 +182,7 @@ pub fn run() -> std::process::ExitCode {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
                 crate::log_info!("[GUI] 启动 daemon 子进程...");
-                match spawn_daemon(&app_data) {
+                match spawn_daemon(&app_data, resource_dir.as_deref()) {
                     Ok(mut daemon_handle) => {
                         crate::log_info!(format!("[GUI] daemon 已启动, pid={:?}", daemon_handle.pid()));
                         let handle_arc = Arc::new(std::sync::Mutex::new(Some(daemon_handle)));
@@ -468,8 +465,6 @@ pub fn run() -> std::process::ExitCode {
             commands::util::get_app_version,
             commands::util::get_system_config,
             commands::util::set_system_config,
-            commands::util::get_relay_prefix,
-            commands::util::set_relay_prefix,
             commands::util::get_log_enabled,
             commands::util::set_log_enabled,
             // 日志
@@ -503,7 +498,6 @@ pub fn run() -> std::process::ExitCode {
             commands::easytier::check_easytier_update,
             commands::easytier::upgrade_easytier,
             commands::easytier::upgrade_easytier_with_progress,
-            commands::easytier::build_easytier_from_source,
             // ACL 规则
             commands::network_acls::get_acl_rules,
             commands::network_acls::create_acl_rule,
@@ -711,13 +705,14 @@ pub fn run_daemon(
     config_dir: std::path::PathBuf,
     data_dir: std::path::PathBuf,
     gui_pid: Option<u32>,
+    resource_dir: Option<std::path::PathBuf>,
 ) -> std::process::ExitCode {
-    // daemon 进程也读取同一份应用配置（端口等）。无 AppHandle，resource_dir 传 None
-    crate::config::init(data_dir.join("homeTier.conf"), None);
+    // daemon 进程也读取同一份应用配置（端口等）。
+    crate::config::init(data_dir.join("homeTier.conf"), resource_dir.as_deref());
     let rt = tokio::runtime::Runtime::new()
         .expect("创建 tokio 运行时失败");
 
-    let result = rt.block_on(daemon::run_daemon_async(config_dir, data_dir, gui_pid));
+    let result = rt.block_on(daemon::run_daemon_async(config_dir, data_dir, gui_pid, resource_dir));
 
     match result {
         Ok(()) => {
@@ -736,7 +731,7 @@ pub fn run_daemon(
 /// 使 daemon 获得 root 权限，从而可以终止同样以 root 运行的 easytier-core；
 /// 其余场景：直接作为子进程启动。
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn spawn_daemon(data_dir: &std::path::Path) -> Result<DaemonHandle, String> {
+fn spawn_daemon(data_dir: &std::path::Path, resource_dir: Option<&std::path::Path>) -> Result<DaemonHandle, String> {
     use std::io::BufRead;
     use std::process::{Command, Stdio};
 
@@ -753,9 +748,12 @@ fn spawn_daemon(data_dir: &std::path::Path) -> Result<DaemonHandle, String> {
             let log_file = data_dir.join("daemon.log");
             let script_path = std::path::PathBuf::from("/tmp/homeTier-daemon-launch.sh");
             let gui_pid_str = std::process::id().to_string();
+            let resource_dir_arg = resource_dir
+                .map(|d| format!(" --daemon-resource-dir \"{}\"", d.display()))
+                .unwrap_or_default();
             let script_content = format!(
                 r#"#!/bin/sh
-"{}" --daemon --daemon-config "{}" --daemon-data "{}" --gui-pid "{}" < /dev/null > "{}" 2>&1 &
+"{}" --daemon --daemon-config "{}" --daemon-data "{}" --gui-pid "{}"{} < /dev/null > "{}" 2>&1 &
 DAEMON_PID=$!
 echo "homeTier daemon pid=$DAEMON_PID"
 echo "$DAEMON_PID" > "{}/daemon.pid"
@@ -773,6 +771,7 @@ exit 1
                 data_dir.display(),
                 data_dir.display(),
                 gui_pid_str,
+                resource_dir_arg,
                 log_file.display(),
                 data_dir.display(),
                 data_dir.join("daemon_ready.signal").display(),
@@ -840,8 +839,11 @@ exit 1
        .arg("--daemon-data")
        .arg(data_dir)
        .arg("--gui-pid")
-       .arg(std::process::id().to_string())
-       .stdout(Stdio::null())
+       .arg(std::process::id().to_string());
+    if let Some(rd) = resource_dir {
+        cmd.arg("--daemon-resource-dir").arg(rd);
+    }
+    cmd.stdout(Stdio::null())
        .stderr(Stdio::piped());
 
     #[cfg(target_os = "windows")]

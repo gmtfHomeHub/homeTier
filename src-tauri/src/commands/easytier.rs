@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use crate::daemon::{client::IpcClient, ipc::IpcResponse};
 use crate::easytier::{EasyTierManager, EasyTierDownloader, BinarySource};
 use tauri::{State, Emitter};
@@ -155,20 +154,4 @@ pub async fn upgrade_easytier_with_progress(
     }
 
     Err(format!("下载失败 (重试 {} 次, {} 个源): {}", MAX_RETRIES, urls.len(), last_err))
-}
-
-/// 从源码编译 EasyTier 核心
-#[tauri::command]
-pub async fn build_easytier_from_source(
-    manager: State<'_, std::sync::Arc<EasyTierManager>>,
-) -> Result<String, String> {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let source_dir = manifest_dir.join("..").join("third_libs").join("easytier");
-    if !source_dir.exists() {
-        return Err(format!(
-            "EasyTier 源代码未找到: {}。请确保 third_libs/easytier/ 目录存在。",
-            source_dir.display()
-        ));
-    }
-    manager.downloader.build_from_source(&source_dir).await
 }

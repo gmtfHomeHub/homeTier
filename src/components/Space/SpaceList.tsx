@@ -9,7 +9,7 @@ import { ConfirmDialog } from "../Common/ConfirmDialog";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { MemberCount } from "../Common/MemberCount";
 import { Button, Flex, Grid, Badge, DropdownMenu } from "@radix-ui/themes";
-import { getSystemConfig, updateSpaceConfig, getRelayPrefix } from "../../utils/api";
+import { getSystemConfig, updateSpaceConfig } from "../../utils/api";
 import type { NetworkConfig } from "../../types/network";
 import { DEFAULT_NETWORK_CONFIG } from "../../types/network";
 import { getSpaceIp, handleStopProp } from "../../utils";
@@ -43,7 +43,6 @@ export function SpaceList() {
 
       Promise.all([
         getSystemConfig(),
-        getRelayPrefix(),
       ]).then(([sysJson]) => {
         let merged: Partial<NetworkConfig> = {};
 

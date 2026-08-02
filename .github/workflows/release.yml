@@ -1,0 +1,289 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+# 控制 EasyTier core 版本（requirements: 用单个环境变量统一管理）
+env:
+  EASYTIER_CORE_VERSION: v2.6.4
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------
+  # 1. 下载各平台 easytier-core 归档到 resources/bin/（供打包时内嵌）
+  #    归档命名与 downloader::detect_platform() 保持一致，仅下载存在的资产。
+  # ---------------------------------------------------------------
+  fetch-easytier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download easytier-core archives
+        run: |
+          set -e
+          mkdir -p src-tauri/resources/bin
+          for p in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64 windows-x86_64; do
+            url="https://github.com/EasyTier/EasyTier/releases/download/${EASYTIER_CORE_VERSION}/easytier-${p}-${EASYTIER_CORE_VERSION}.zip"
+            echo "downloading ${p} from ${url}"
+            curl -fL --retry 3 -o "src-tauri/resources/bin/easytier-${p}-${EASYTIER_CORE_VERSION}.zip" "${url}"
+          done
+          ls -la src-tauri/resources/bin/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: easytier-bin
+          path: src-tauri/resources/bin/
+          retention-days: 1
+
+  # ---------------------------------------------------------------
+  # 2. 桌面端打包矩阵
+  # ---------------------------------------------------------------
+  build-desktop:
+    needs: fetch-easytier
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            bundle: dmg
+            artifact: homeTier-aarch64.dmg
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            bundle: dmg
+            artifact: homeTier-x86_64.dmg
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundle: msi
+            artifact: homeTier-x86_64.msi
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            bundle: deb
+            artifact: homeTier-x86_64.deb
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            bundle: deb
+            artifact: homeTier-aarch64.deb
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: easytier-bin
+          path: src-tauri/resources/bin/
+
+      - name: Install Linux deps
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libssl-dev libxdo-dev libayatana-appindicator3-dev
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        run: pnpm build
+
+      - name: Build Tauri bundle
+        run: |
+          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+
+      - name: Locate artifacts
+        id: locate
+        shell: bash
+        run: |
+          find src-tauri/target -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.deb' -o -name '*.AppImage' \) | head -20
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/${{ matrix.bundle }}/*
+            src-tauri/target/release/bundle/${{ matrix.bundle }}/*
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------
+  # 3. Linux AppImage
+  # ---------------------------------------------------------------
+  build-appimage:
+    needs: fetch-easytier
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v4
+        with:
+          name: easytier-bin
+          path: src-tauri/resources/bin/
+      - name: Install Linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libxdo-dev libayatana-appindicator3-dev
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm tauri build --bundles appimage
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: homeTier.AppImage
+          path: src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------
+  # 4. Android APK
+  # ---------------------------------------------------------------
+  build-android:
+    needs: fetch-easytier
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: actions/download-artifact@v4
+        with:
+          name: easytier-bin
+          path: src-tauri/resources/bin/
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+      - name: Init Android project
+        run: pnpm tauri android init
+      - name: Build APK
+        run: pnpm tauri android build --apk
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: homeTier-android.apk
+          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------
+  # 5. iOS (无签名构建，需 macOS runner)
+  # ---------------------------------------------------------------
+  build-ios:
+    needs: fetch-easytier
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+      - uses: actions/download-artifact@v4
+        with:
+          name: easytier-bin
+          path: src-tauri/resources/bin/
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+      - name: Init iOS project
+        run: pnpm tauri ios init
+      - name: Build iOS (no sign)
+        run: pnpm tauri ios build --no-sign
+      - name: Upload iOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: homeTier-ios
+          path: src-tauri/gen/apple/build/**/*.app
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------
+  # 6. Docker 镜像
+  # ---------------------------------------------------------------
+  build-docker:
+    needs: fetch-easytier
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: easytier-bin
+          path: src-tauri/resources/bin/
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+          build-args: |
+            EASYTIER_CORE_VERSION=${{ env.EASYTIER_CORE_VERSION }}
+
+  # ---------------------------------------------------------------
+  # 7. 汇总发布到 GitHub Release
+  # ---------------------------------------------------------------
+  release:
+    needs: [build-desktop, build-appimage, build-android, build-ios]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: artifacts/**

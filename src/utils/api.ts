@@ -191,14 +191,6 @@ export async function setSystemConfig(config: string): Promise<void> {
   return invoke("set_system_config", { config });
 }
 
-export async function getRelayPrefix(): Promise<string> {
-  return invoke("get_relay_prefix");
-}
-
-export async function setRelayPrefix(prefix: string): Promise<void> {
-  return invoke("set_relay_prefix", { prefix });
-}
-
 // === App Config (配置文件) ===
 
 export async function getAppConfig(): Promise<Record<string, string>> {
@@ -324,10 +316,6 @@ export async function upgradeEasyTierWithProgress(
   } finally {
     unlisten();
   }
-}
-
-export async function buildEasyTierFromSource(): Promise<string> {
-  return invoke("build_easytier_from_source");
 }
 
 // === ACL Rules ===

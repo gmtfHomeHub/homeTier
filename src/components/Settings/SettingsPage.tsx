@@ -3,8 +3,8 @@ import { LogViewer } from "../Log/LogViewer";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { EasyTierVersionManager } from "./EasyTierVersionManager";
 import { AppConfigEditor } from "./AppConfigEditor";
-import { Terminal, Network, Palette, Languages, HelpCircle, Keyboard, FileCog } from "lucide-react";
-import { getSystemConfig, setSystemConfig, getRelayPrefix, setRelayPrefix, getLogEnabled, setLogEnabled as setLogEnabledApi } from "../../utils/api";
+import { Terminal, Palette, Languages, HelpCircle, Keyboard, FileCog, Network } from "lucide-react";
+import { getSystemConfig, setSystemConfig, getLogEnabled, setLogEnabled as setLogEnabledApi } from "../../utils/api";
 import { applyGlobalShortcuts } from "../../services/shortcuts";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { NetworkConfig } from "../../types/network";
@@ -18,7 +18,6 @@ export function SettingsPage() {
     language,
     setTheme,
     setLanguage,
-    relayPrefix: defRelayPrefix,
     settingsTab: activeTab,
     setSettingsTab,
     logEnabled,
@@ -31,7 +30,6 @@ export function SettingsPage() {
   // const [activeTab, setActiveTab] = useState<SettingTabEnum>(SettingTabEnum.BASIC);
   const [easytierConfig, setEasytierConfig] = useState<Partial<NetworkConfig>>({});
   const [saving, setSaving] = useState(false);
-  const [relayPrefix, setRelayPrefixState] = useState<string | undefined>(defRelayPrefix);
   const [micShortcut, setMicShortcutState] = useState<string>(defMicShortcut);
   const [speakerShortcut, setSpeakerShortcutState] = useState<string>(defSpeakerShortcut);
   const { t, i18n } = useTranslation();
@@ -52,12 +50,6 @@ export function SettingsPage() {
   }, [logEnabled, activeTab]);
 
   useEffect(() => {
-    if (activeTab === SettingTabEnum.BASIC) {
-      getRelayPrefix().then((val) => {
-        setRelayPrefixState(val);
-      });
-    }
-
     if (activeTab === SettingTabEnum.ET) {
       getSystemConfig().then((json) => {
         if (json) {
@@ -126,7 +118,7 @@ export function SettingsPage() {
 
           {/* 内容区 */}
           <Tabs.Content value="basic" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 overflow-y-auto">
-            <div className="max-w-2xl mx-auto p-4 space-y-4">
+            <div className="max-w-4xl mx-auto p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* 主题 */}
               <Card size="3">
                 <Flex align="center" justify="between" gap="3">
@@ -180,41 +172,6 @@ export function SettingsPage() {
                       </Button>
                     ))}
                   </Flex>
-                </Flex>
-              </Card>
-
-              {/* 中继网络前缀 */}
-              <Card size="3">
-                <Flex direction="column" gap="3">
-                  <Flex align="center" gap="3">
-                    <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
-                      <Network size={18} />
-                    </span>
-                    <Flex direction="column" className="flex-1">
-                      <Flex align="center" gap="2">
-                        <Text size="3" weight="medium">{t("settings.relayPrefix")}</Text>
-                        <Tooltip content={t("settings.relayPrefixHelp")}>
-                          <span className="inline-flex items-center cursor-pointer text-[var(--color-text-secondary)]">
-                            <HelpCircle size={14} />
-                          </span>
-                        </Tooltip>
-                      </Flex>
-                      <Text size="1" color="gray">{t("settings.relayPrefixDesc")}</Text>
-                    </Flex>
-                  </Flex>
-                  <TextField.Root
-                    value={relayPrefix}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\s+/g, '-');
-                      setRelayPrefixState(val);
-                    }}
-                    onBlur={() => {
-                      const final = relayPrefix?.trim() || '';
-                      setRelayPrefixState(final);
-                      setRelayPrefix(final).catch((e) => alert(String(e)));
-                    }}
-                    placeholder="homeTier_"
-                  />
                 </Flex>
               </Card>
 

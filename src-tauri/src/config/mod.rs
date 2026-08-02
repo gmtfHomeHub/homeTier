@@ -33,7 +33,6 @@ pub const KEY_FILE_SERVER_PORT_BASE: &str = "FILE_SERVER_PORT_BASE";
 pub const KEY_DEFAULT_SPACE_IP: &str = "DEFAULT_SPACE_IP";
 pub const KEY_GITHUB_API: &str = "GITHUB_API";
 pub const KEY_GITHUB_MIRROR: &str = "GITHUB_MIRROR";
-pub const KEY_RELAY_NETWORK_PREFIX: &str = "RELAY_NETWORK_PREFIX";
 pub const KEY_LOG_ENABLED: &str = "LOG_ENABLED";
 
 /// 默认值
@@ -41,7 +40,6 @@ pub const DEFAULT_FILE_SERVER_PORT_BASE: u16 = 19000;
 pub const DEFAULT_SPACE_IP: &str = "10.144.144.10";
 pub const DEFAULT_GITHUB_API: &str = "https://api.github.com/repos/EasyTier/EasyTier/releases";
 pub const DEFAULT_GITHUB_MIRROR: &str = "https://ghproxy.top";
-pub const DEFAULT_RELAY_NETWORK_PREFIX: &str = "homeTier_";
 pub const DEFAULT_LOG_ENABLED: bool = true;
 
 impl AppConfig {
@@ -318,7 +316,7 @@ fn build_template(map: &HashMap<String, String>) -> String {
     push_key(&mut lines, map, KEY_GITHUB_MIRROR, "下载镜像前缀（留空则直连 GitHub）", "https://ghproxy.top", "URL，可为空");
     lines.push("".to_string());
     lines.push("# ===== 业务配置 =====（立即生效）".to_string());
-    push_key(&mut lines, map, KEY_RELAY_NETWORK_PREFIX, "中继网络前缀（配合 EasyTier 转发白名单）", "homeTier_", "字符串");
+    push_key(&mut lines, map, "RELAY_NETWORK_PREFIX", "中继网络前缀（配合 EasyTier 转发白名单）", "homeTier_", "字符串");
     push_key(&mut lines, map, KEY_LOG_ENABLED, "日志开关", "1", "枚举：1=开启，0=关闭");
     lines.push("".to_string());
     lines.join("\n")

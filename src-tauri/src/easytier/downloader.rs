@@ -13,14 +13,16 @@ pub struct EasyTierDownloader {
     bin_dir: PathBuf,
     current_version_file: PathBuf,
     platform: String,
+    /// Tauri 打包资源目录（用于内置二进制兜底）
+    resource_dir: Option<PathBuf>,
 }
 
 impl EasyTierDownloader {
-    pub fn new(app_data_dir: &Path) -> Self {
+    pub fn new(app_data_dir: &Path, resource_dir: Option<&Path>) -> Self {
         let bin_dir = app_data_dir.join("bin");
         let current_version_file = bin_dir.join("current_version.json");
         let platform = Self::detect_platform();
-        Self { bin_dir, current_version_file, platform }
+        Self { bin_dir, current_version_file, platform, resource_dir: resource_dir.map(|p| p.to_path_buf()) }
     }
 
     /// 检测当前平台
@@ -65,8 +67,58 @@ impl EasyTierDownloader {
             crate::log_info!(format!("[EasyTierDownloader] 找到已安装二进制: {}", path.display()));
             return Ok(path);
         }
-        crate::log_warn!("[EasyTierDownloader] 未找到已安装二进制");
+        crate::log_warn!("[EasyTierDownloader] 未找到已安装二进制，尝试从打包资源解压内置二进制");
+        if let Ok(path) = self.extract_bundled_binary().await {
+            crate::log_info!(format!("[EasyTierDownloader] 已从打包资源安装内置二进制: {}", path.display()));
+            return Ok(path);
+        }
         Err("EasyTier 二进制未安装，请在设置中下载".into())
+    }
+
+    /// 从 Tauri 打包资源（resources/bin/）查找当前平台的 easytier-core 归档并安装
+    async fn extract_bundled_binary(&self) -> Result<PathBuf, String> {
+        let Some(resource_dir) = &self.resource_dir else {
+            crate::log_debug!("[EasyTierDownloader] 无打包资源目录，跳过内置二进制解压");
+            return Err("无打包资源目录".into());
+        };
+
+        let zip_name = format!("easytier-{}-v", self.platform);
+        // 打包资源路径：resource_dir/resources/bin/、resource_dir/bin/ 或 resource_dir/（Tauri 可能按文件名扁平化）
+        let mut candidates = vec![
+            resource_dir.join("resources").join("bin"),
+            resource_dir.join("bin"),
+            resource_dir.clone(),
+        ];
+
+        for dir in candidates.drain(..) {
+            crate::log_debug!(format!("[EasyTierDownloader] 扫描内置二进制目录: {}", dir.display()));
+            let entries = match std::fs::read_dir(&dir) {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !name.starts_with(&zip_name) || !name.ends_with(".zip") {
+                    continue;
+                }
+                let version = name
+                    .trim_start_matches(zip_name.as_str())
+                    .trim_end_matches(".zip")
+                    .trim_start_matches('v');
+                if version.is_empty() {
+                    continue;
+                }
+                crate::log_info!(format!(
+                    "[EasyTierDownloader] 找到内置二进制归档: version={}, path={}",
+                    version,
+                    path.display()
+                ));
+                return self.install(version, BinarySource::LocalArchive(path)).await;
+            }
+        }
+
+        Err(format!("打包资源中未找到 {} 平台的内置 easytier-core", self.platform))
     }
 
     /// 检查是否有新版本可用

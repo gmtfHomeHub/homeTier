@@ -73,7 +73,12 @@ fn main() -> std::process::ExitCode {
             .position(|a| a == "--gui-pid")
             .and_then(|i| args.get(i + 1))
             .and_then(|s| s.parse::<u32>().ok());
-        home_tier_lib::run_daemon(config_dir, data_dir, gui_pid)
+        let resource_dir = args
+            .iter()
+            .position(|a| a == "--daemon-resource-dir")
+            .and_then(|i| args.get(i + 1))
+            .map(std::path::PathBuf::from);
+        home_tier_lib::run_daemon(config_dir, data_dir, gui_pid, resource_dir)
     } else {
         #[cfg(debug_assertions)]
         return home_tier_lib::run_with_args(false);

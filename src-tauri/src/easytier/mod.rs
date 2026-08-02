@@ -32,8 +32,8 @@ pub struct EasyTierManager {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl EasyTierManager {
-    pub fn new(config_dir: PathBuf, app_data_dir: PathBuf) -> Self {
-        let downloader = EasyTierDownloader::new(&app_data_dir);
+    pub fn new(config_dir: PathBuf, app_data_dir: PathBuf, resource_dir: Option<&std::path::Path>) -> Self {
+        let downloader = EasyTierDownloader::new(&app_data_dir, resource_dir);
 
         Self { processes: DashMap::new(), downloader, config_dir }
     }
@@ -889,8 +889,8 @@ impl EasyTierManager {
 #[cfg(any(target_os = "android", target_os = "ios"))]
 impl EasyTierManager {
 
-    pub fn new(config_dir: PathBuf, app_data_dir: PathBuf) -> Self {
-        let downloader = EasyTierDownloader::new(&app_data_dir);
+    pub fn new(config_dir: PathBuf, app_data_dir: PathBuf, resource_dir: Option<&std::path::Path>) -> Self {
+        let downloader = EasyTierDownloader::new(&app_data_dir, resource_dir);
 
         Self { instances: DashMap::new(), downloader, config_dir }
     }

@@ -6,7 +6,6 @@ interface SettingsStore {
   theme: ThemeEnum;
   language: LanguageEnum;
   settingsTab: SettingTabEnum;
-  relayPrefix: string;
   useProxy: boolean;
   logEnabled: boolean;
   micShortcut: string;
@@ -25,7 +24,6 @@ export const useSettingsStore = create<SettingsStore>()(
     (set) => ({
       theme: ThemeEnum.SYS,
       language: LanguageEnum.ZH,
-      relayPrefix: "homeTier_",
       useProxy: true,
       logEnabled: true,
       micShortcut: "Ctrl+M",
