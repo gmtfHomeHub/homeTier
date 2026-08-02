@@ -1,5 +1,6 @@
 import { registerSignalHandler, sendSignal, preloadMembers, resolveMember, getSelfVirtualIp } from "./signal";
 import { useScreenStore, type ScreenQuality } from "../stores/screenStore";
+import { toastError } from "../utils/toast";
 
 /**
  * 屏幕共享服务（前端 WebRTC）
@@ -70,14 +71,14 @@ class ScreenService {
         audio: false,
       });
     } catch (e) {
-      useScreenStore.getState().setError("屏幕采集被取消或失败");
+      toastError("屏幕采集被取消或失败");
       throw e;
     }
 
     const track = stream.getVideoTracks()[0];
     if (!track) {
       stream.getTracks().forEach((t) => t.stop());
-      useScreenStore.getState().setError("未获取到屏幕视频轨道");
+      toastError("未获取到屏幕视频轨道");
       throw new Error("未获取到屏幕视频轨道");
     }
     // 用户通过系统 UI 停止共享时自动清理
@@ -96,7 +97,6 @@ class ScreenService {
     store.setSourceName(track.label || "screen");
     store.setQuality(quality);
     store.setViewerCount(0);
-    store.setError(null);
 
     try {
       await preloadMembers(spaceId);
@@ -203,7 +203,6 @@ class ScreenService {
     store.setWatching(true);
     store.setRemoteStream(null);
     store.setShareEnded(false);
-    store.setError(null);
 
     try {
       await preloadMembers(spaceId);

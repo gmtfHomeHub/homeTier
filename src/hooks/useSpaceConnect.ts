@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useSpaceStore } from "../stores/spaceStore";
+import { toastError } from "../utils/toast";
 
 export function useSpaceConnect() {
   const { connectSpace, disconnectSpace } = useSpaceStore();
@@ -11,7 +12,7 @@ export function useSpaceConnect() {
     try {
       await connectSpace(spaceId);
     } catch (e) {
-      alert(String(e));
+      toastError(String(e));
       throw e;
     } finally {
       setConnectingId(null);
@@ -23,7 +24,7 @@ export function useSpaceConnect() {
     try {
       await disconnectSpace(spaceId);
     } catch (e) {
-      alert(String(e));
+      toastError(String(e));
       throw e;
     } finally {
       setDisconnectingId(null);

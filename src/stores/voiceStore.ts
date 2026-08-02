@@ -13,7 +13,6 @@ export interface VoicePeer {
 interface VoiceState {
   joined: boolean;
   joining: boolean;
-  error: string | null;
   micMuted: boolean;
   speakerMuted: boolean;
   localVolume: number;
@@ -22,7 +21,6 @@ interface VoiceState {
 
   setJoined: (joined: boolean) => void;
   setJoining: (joining: boolean) => void;
-  setError: (error: string | null) => void;
   setMicMuted: (muted: boolean) => void;
   setSpeakerMuted: (muted: boolean) => void;
   setLocalVolume: (v: number) => void;
@@ -40,7 +38,6 @@ interface VoiceState {
 export const useVoiceStore = create<VoiceState>((set) => ({
   joined: false,
   joining: false,
-  error: null,
   micMuted: false,
   speakerMuted: false,
   localVolume: 0,
@@ -49,7 +46,6 @@ export const useVoiceStore = create<VoiceState>((set) => ({
 
   setJoined: (joined) => set({ joined }),
   setJoining: (joining) => set({ joining }),
-  setError: (error) => set({ error }),
   setMicMuted: (micMuted) => set({ micMuted }),
   setSpeakerMuted: (speakerMuted) => set({ speakerMuted }),
   setLocalVolume: (localVolume) => set({ localVolume }),
@@ -110,7 +106,6 @@ export const useVoiceStore = create<VoiceState>((set) => ({
     set({
       joined: false,
       joining: false,
-      error: null,
       micMuted: false,
       speakerMuted: false,
       localVolume: 0,

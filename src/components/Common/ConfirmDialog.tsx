@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { X, AlertTriangle } from "lucide-react";
 import { Dialog, Button, Flex } from "@radix-ui/themes";
+import { toastError } from "../../utils/toast";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -30,7 +31,7 @@ export function ConfirmDialog({
     try {
       await onConfirm();
     } catch (e) {
-      alert(String(e));
+      toastError(String(e));
     } finally {
       setLoading(false);
     }

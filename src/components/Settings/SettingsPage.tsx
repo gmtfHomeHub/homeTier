@@ -11,6 +11,7 @@ import type { NetworkConfig } from "../../types/network";
 import { useTranslation } from "react-i18next";
 import { Tabs, Tooltip, Button, TextField, Flex, Text, Switch, Card, Select } from "@radix-ui/themes";
 import { SettingTabEnum, LanguageEnum, ThemeEnum } from "../../enum";
+import { toastSuccess, toastError } from "../../utils/toast";
 
 export function SettingsPage() {
   const {
@@ -65,9 +66,9 @@ export function SettingsPage() {
     setSaving(true);
     try {
       await setSystemConfig(JSON.stringify(easytierConfig));
-      alert(t("settings.save_success"));
+      toastSuccess(t("settings.save_success"));
     } catch (e) {
-      alert(String(e));
+      toastError(String(e));
     } finally {
       setSaving(false);
     }
@@ -80,9 +81,9 @@ export function SettingsPage() {
 
   const tabs: { key: SettingTabEnum; label: string; icon: React.ReactNode }[] = [
     { key: SettingTabEnum.BASIC, label: t("settings.basic"), icon: <Palette size={16} /> },
-    ...(logEnabled ? [{ key: SettingTabEnum.LOG, label: t("settings.logs"), icon: <Terminal size={16} /> }] : []),
     { key: SettingTabEnum.ET, label: t("settings.easytier"), icon: <Network size={16} /> },
     { key: SettingTabEnum.CONFIG, label: t("settings.config"), icon: <FileCog size={16} /> },
+    ...(logEnabled ? [{ key: SettingTabEnum.LOG, label: t("settings.logs"), icon: <Terminal size={16} /> }] : []),
   ];
 
   const themeOptions = [
@@ -118,7 +119,9 @@ export function SettingsPage() {
 
           {/* 内容区 */}
           <Tabs.Content value="basic" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 overflow-y-auto">
-            <div className="grid max-w-4xl grid-cols-1 gap-4 p-4 mx-auto md:grid-cols-2">
+            <div className="flex flex-col max-w-4xl gap-4 p-4 mx-auto md:flex-row md:items-start">
+              {/* 左列 */}
+              <div className="flex flex-col flex-1 min-w-0 gap-4">
               {/* 主题 */}
               <Card size="3">
                 <Flex align="center" justify="between" gap="3">
@@ -171,7 +174,10 @@ export function SettingsPage() {
               <Card size="3">
                 <EasyTierVersionManager />
               </Card>
+              </div>
 
+              {/* 右列 */}
+              <div className="flex flex-col flex-1 min-w-0 gap-4">
               {/* 显示日志开关 */}
               <Card size="3">
                 <Flex align="center" justify="between" gap="3">
@@ -195,7 +201,7 @@ export function SettingsPage() {
                     checked={logEnabled}
                     onCheckedChange={(val) => {
                       setStoreLogEnabled(val);
-                      setLogEnabledApi(val).catch((e) => alert(String(e)));
+                      setLogEnabledApi(val).catch((e) => toastError(String(e)));
                     }}
                   />
                 </Flex>
@@ -268,6 +274,7 @@ export function SettingsPage() {
                   </Flex>
                 </Flex>
               </Card>
+              </div>
             </div>
           </Tabs.Content>
 

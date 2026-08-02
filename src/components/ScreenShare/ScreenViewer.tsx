@@ -28,7 +28,6 @@ export function ScreenViewer() {
   const sourceName = useScreenStore((s) => s.sourceName);
   const quality = useScreenStore((s) => s.quality);
   const viewerCount = useScreenStore((s) => s.viewerCount);
-  const error = useScreenStore((s) => s.error);
 
   const watching = useScreenStore((s) => s.watching);
   const sharerName = useScreenStore((s) => s.sharerName);
@@ -146,13 +145,6 @@ export function ScreenViewer() {
           </Badge>
         )}
       </div>
-
-      {/* 错误提示 */}
-      {error && (
-        <div className="absolute top-3 left-3 bg-red-900/80 backdrop-blur rounded-full px-3 py-1.5 text-white text-xs">
-          {error}
-        </div>
-      )}
 
       {/* 右上角操作区 */}
       <div className="absolute top-3 right-3 flex items-center gap-2">

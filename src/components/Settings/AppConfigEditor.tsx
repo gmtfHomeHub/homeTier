@@ -9,6 +9,7 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { Button, TextField, Text, Flex, Callout } from "@radix-ui/themes";
 import { FileCog, RefreshCw, AlertTriangle } from "lucide-react";
+import { toastError } from "../../utils/toast";
 
 interface KeyMeta {
   description: string;
@@ -69,7 +70,7 @@ export function AppConfigEditor() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
-      alert(String(e));
+      toastError(String(e));
     } finally {
       setSaving(false);
     }

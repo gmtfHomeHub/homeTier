@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { NetworkConfig, PortForwardConfig } from "../../types/network";
 import { DEFAULT_NETWORK_CONFIG, addRow, removeRow } from "../../types/network";
-import { Button, TextField, Checkbox, Text, Select } from "@radix-ui/themes";
+import { Button, TextField, Checkbox, Text, Select, Flex } from "@radix-ui/themes";
 import { CollapsibleSection } from "../Common/CollapsibleSection";
 import {
   Network, Eye, EyeOff, Trash2, Globe, Shield, Settings,
@@ -165,8 +165,8 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
       </div>
 
       {/* Panel 2: Advanced Settings (collapsible) */}
-      <CollapsibleSection title={t("network.advancedSettings")} defaultOpen={false}>
-        <div className="space-y-3">
+      <CollapsibleSection title={t("network.advancedSettings")} defaultOpen>
+        <div className="px-8 space-y-3">
 
           {/* Listeners */}
           <div className={FIELD_CLASS}>
@@ -186,10 +186,12 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                 }}>×</Button>
               </div>
             ))}
-            <Button variant="ghost" color="blue" size="1"
-              onClick={() => set({ listener_urls: [...(value.listener_urls ?? []), ""] })}>
-              {t("network.addListener")}
-            </Button>
+            <Flex justify="center" className="mt-2">
+              <Button variant="ghost" color="blue" size="1"
+                onClick={() => set({ listener_urls: [...(value.listener_urls ?? []), ""] })}>
+                {t("network.addListener")}
+              </Button>
+            </Flex>
           </div>
 
           {/* Mapped Listeners */}
@@ -209,10 +211,12 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                 }}>×</Button>
               </div>
             ))}
-            <Button variant="ghost" color="blue" size="1"
-              onClick={() => set({ mapped_listeners: [...(value.mapped_listeners ?? []), ""] })}>
-              {t("network.addMappedListener")}
-            </Button>
+            <Flex justify="center" className="mt-2">
+              <Button variant="ghost" color="blue" size="1"
+                onClick={() => set({ mapped_listeners: [...(value.mapped_listeners ?? []), ""] })}>
+                {t("network.addMappedListener")}
+              </Button>
+            </Flex>
           </div>
 
           {/* Proxy CIDRs */}
@@ -233,10 +237,13 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                 }}>×</Button>
               </div>
             ))}
-            <Button variant="ghost" color="blue" size="1"
-              onClick={() => set({ proxy_cidrs: [...(value.proxy_cidrs ?? []), ""] })}>
-              {t("network.addSubnetProxy")}
-            </Button>
+
+            <Flex justify="center" className="mt-2">
+              <Button variant="ghost" color="blue" size="1"
+                onClick={() => set({ proxy_cidrs: [...(value.proxy_cidrs ?? []), ""] })}>
+                {t("network.addSubnetProxy")}
+              </Button>
+            </Flex>
           </div>
 
           {/* Routes & Exit Nodes */}
@@ -323,7 +330,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
       </CollapsibleSection>
 
       {/* Panel 3: Port Forwards (collapsible) */}
-      <CollapsibleSection title={t("network.portForwards")} defaultOpen={false}>
+      <CollapsibleSection title={t("network.portForwards")} defaultOpen>
         <div className="space-y-2">
           {port_forwards.map((pf, i) => (
             <div key={i} className="flex items-center gap-2 p-2 border border-[var(--color-border)] rounded">
@@ -380,22 +387,25 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
               </Button>
             </div>
           ))}
-          <Button variant="ghost" color="blue" size="1"
-            onClick={() => {
-              addRow(port_forwards);
-              setPortForwards([...port_forwards]);
-            }}>
-            {t("network.portForwardsAddBtn")}
-          </Button>
+
+          <Flex justify="center" className="mt-2">
+            <Button variant="ghost" color="blue" size="1"
+              onClick={() => {
+                addRow(port_forwards);
+                setPortForwards([...port_forwards]);
+              }}>
+              {t("network.portForwardsAddBtn")}
+            </Button>
+          </Flex>
         </div>
       </CollapsibleSection>
 
       {/* Panel 4: ACL (collapsible) */}
-      <CollapsibleSection title={t("network.acl")} defaultOpen={false}>
+      {/* <CollapsibleSection title={t("network.acl")} defaultOpen={false}>
         <div className="text-sm text-[var(--color-text-secondary)]">
           {t("network.aclConfigureInTab")}
         </div>
-      </CollapsibleSection>
+      </CollapsibleSection> */}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { Button, TextField, Select, Flex, Text, Dialog } from "@radix-ui/themes"
 import { Icon } from "@iconify/react";
 import * as api from "../../utils/api";
 import type { SpaceApp } from "../../types";
+import { toastError } from "../../utils/toast";
 
 interface AppFormDialogProps {
   app: SpaceApp | null;
@@ -67,7 +68,7 @@ export function AppFormDialog({ app, spaceId, callerId, existingCategories, onCl
       }
       onSubmit();
     } catch (e) {
-      alert(String(e));
+      toastError(String(e));
     } finally {
       setSaving(false);
     }

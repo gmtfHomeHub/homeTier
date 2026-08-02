@@ -1,24 +1,32 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { getEasyTierVersion, checkEasyTierUpdate, upgradeEasyTierWithProgress } from "../../utils/api";
+import { getEasyTierVersion, checkEasyTierUpdate, upgradeEasyTierWithProgress, getAppConfig } from "../../utils/api";
 import { Button, Text, Flex, Select, Switch, Progress } from "@radix-ui/themes";
 import { Cpu, RefreshCw, ArrowUpCircle } from "lucide-react";
 import { useSettingsStore } from "../../stores/settingsStore";
+import { toastSuccess, toastError } from "../../utils/toast";
 
 export function EasyTierVersionManager() {
   const { t } = useTranslation();
   const useProxy = useSettingsStore((s) => s.useProxy);
   const setUseProxy = useSettingsStore((s) => s.setUseProxy);
+  const [githubMirror, setGithubMirror] = useState<string>("");
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
   const [availableVersions, setAvailableVersions] = useState<string[]>([]);
   const [checking, setChecking] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
-  const [lastResult, setLastResult] = useState<{ success: boolean; message: string } | null>(null);
 
   useEffect(() => {
     loadVersion();
+  }, []);
+
+  // 读取 GITHUB_MIRROR 配置：非空才展示代理下载开关
+  useEffect(() => {
+    getAppConfig()
+      .then((cfg) => setGithubMirror((cfg["GITHUB_MIRROR"] ?? "").trim()))
+      .catch(() => setGithubMirror(""));
   }, []);
 
   const loadVersion = async () => {
@@ -38,10 +46,10 @@ export function EasyTierVersionManager() {
       const filtered = currentVersion
         ? versions.filter((v) => compareVersions(v, currentVersion) >= 0)
         : versions;
+      setSelectedVersion(currentVersion || null);
       setAvailableVersions(filtered);
-      setLastResult(null);
     } catch (e) {
-      setLastResult({ success: false, message: String(e) });
+      toastError(String(e));
     } finally {
       setChecking(false);
     }
@@ -63,54 +71,34 @@ export function EasyTierVersionManager() {
 
   const handleUpgrade = async (version: string) => {
     setUpgrading(true);
-    setLastResult(null);
     setDownloadProgress(0);
     try {
       await upgradeEasyTierWithProgress(version, useProxy, (pct) => {
         setDownloadProgress(pct);
       });
       setDownloadProgress(null);
-      setLastResult({ success: true, message: t("settings.upgradedTo", { version }) });
+      toastSuccess(t("settings.upgradedTo", { version }));
       await loadVersion();
     } catch (e) {
       setDownloadProgress(null);
-      setLastResult({ success: false, message: String(e) });
+      toastError(String(e));
     } finally {
       setUpgrading(false);
     }
   };
 
   return (
-    <section className="border border-[var(--color-border)] rounded-lg py-4 space-y-3">
+    <section className="border border-[var(--color-border)] rounded-lg space-y-3">
       <Flex align="center" gap="2">
         <Cpu size={16} className="text-[var(--color-primary)]" />
         <Text size="2" weight="bold">{t("settings.easytierEngine")}</Text>
       </Flex>
 
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <Text className="text-[var(--color-text-secondary)]">{t("settings.currentVersion")}</Text>
-        <Text>{currentVersion ?? t("settings.notInstalled")}</Text>
-      </div>
-
-      <Flex align="center" gap="2">
-        <Switch
-          checked={useProxy}
-          onCheckedChange={setUseProxy}
-          size="1"
-        />
-        <Text size="1" className="text-[var(--color-text-secondary)]">
-          {t("settings.useProxyDownload")}
-        </Text>
-      </Flex>
-
-      {downloadProgress !== null && (
-        <div className="space-y-1">
-          <Progress value={Math.round(downloadProgress)} size="1" />
-          <Text size="1" className="text-[var(--color-text-secondary)]">
-            {t("settings.downloadProgress", { pct: Math.round(downloadProgress) })}
-          </Text>
+      <Flex align="center" justify="between">
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <Text className="text-[var(--color-text-secondary)]">{t("settings.currentVersion")}</Text>
+          <Text>{currentVersion ?? t("settings.notInstalled")}</Text>
         </div>
-      )}
 
       <Flex gap="2" wrap="wrap">
         <Button
@@ -124,6 +112,30 @@ export function EasyTierVersionManager() {
           {t("settings.checkUpdate")}
         </Button>
       </Flex>
+      </Flex>
+
+      {githubMirror && (
+        <Flex align="center" gap="2">
+          <Switch
+            checked={useProxy}
+            onCheckedChange={setUseProxy}
+            size="1"
+          />
+          <Text size="1" className="text-[var(--color-text-secondary)]">
+            {t("settings.useProxyDownload", { mirror: githubMirror })}
+          </Text>
+        </Flex>
+      )}
+
+      {downloadProgress !== null && (
+        <div className="space-y-1">
+          <Progress value={Math.round(downloadProgress)} size="1" />
+          <Text size="1" className="text-[var(--color-text-secondary)]">
+            {t("settings.downloadProgress", { pct: Math.round(downloadProgress) })}
+          </Text>
+        </div>
+      )}
+
 
       {availableVersions.length > 0 && (
         <div className="space-y-2">
@@ -168,12 +180,6 @@ export function EasyTierVersionManager() {
             </Button>
           </Flex>
         </div>
-      )}
-
-      {lastResult && (
-        <Text size="1" className={lastResult.success ? "text-green-500" : "text-red-500"}>
-          {lastResult.message}
-        </Text>
       )}
     </section>
   );

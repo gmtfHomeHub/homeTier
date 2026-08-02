@@ -8,42 +8,38 @@ import {
   PhoneOff,
   ArrowLeft,
   Loader2,
-  AlertCircle,
 } from "lucide-react";
 import { Button } from "@radix-ui/themes";
 import { useVoiceStore } from "../../stores/voiceStore";
 import { voiceService } from "../../services/voice";
-import { useState } from "react";
+import { toastError } from "../../utils/toast";
 
 export function VoicePanel() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation();
 
-  const { joined, joining, error, micMuted, speakerMuted, localVolume, localSpeaking, peers } =
+  const { joined, joining, micMuted, speakerMuted, localVolume, localSpeaking, peers } =
     useVoiceStore();
-  const [opError, setOpError] = useState<string | null>(null);
 
   const members = Object.values(peers);
   const hasMembers = members.length > 0;
 
   const handleJoin = async () => {
     if (!id) return;
-    setOpError(null);
     try {
       await voiceService.join(id);
     } catch (e) {
-      setOpError(String(e));
+      toastError(String(e));
     }
   };
 
   const handleLeave = async () => {
     if (!id) return;
-    setOpError(null);
     try {
       await voiceService.leave();
     } catch (e) {
-      setOpError(String(e));
+      toastError(String(e));
     }
   };
 
@@ -51,7 +47,7 @@ export function VoicePanel() {
     try {
       await voiceService.toggleMic();
     } catch (e) {
-      setOpError(String(e));
+      toastError(String(e));
     }
   };
 
@@ -59,7 +55,7 @@ export function VoicePanel() {
     try {
       await voiceService.toggleSpeaker();
     } catch (e) {
-      setOpError(String(e));
+      toastError(String(e));
     }
   };
 
@@ -76,19 +72,6 @@ export function VoicePanel() {
         <p className="text-sm text-[var(--color-text-secondary)] mb-4">
           {joined ? t("voice.joined") : t("voice.notJoined")}
         </p>
-
-        {error && (
-          <div className="flex items-center gap-2 text-xs text-red-500 bg-red-500/10 rounded-lg px-3 py-2 mb-3">
-            <AlertCircle size={14} />
-            {error}
-          </div>
-        )}
-        {opError && (
-          <div className="flex items-center gap-2 text-xs text-red-500 bg-red-500/10 rounded-lg px-3 py-2 mb-3">
-            <AlertCircle size={14} />
-            {opError}
-          </div>
-        )}
 
         {/* 成员列表（含自己） */}
         <div className="space-y-2 mb-5">

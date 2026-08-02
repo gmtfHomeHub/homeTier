@@ -7,7 +7,6 @@ interface ScreenState {
   sourceName: string;
   quality: ScreenQuality;
   viewerCount: number;
-  error: string | null;
 
   watching: boolean;
   sharerIp: string | null;
@@ -20,7 +19,6 @@ interface ScreenState {
   setSourceName: (name: string) => void;
   setQuality: (q: ScreenQuality) => void;
   setViewerCount: (n: number) => void;
-  setError: (e: string | null) => void;
   setWatching: (v: boolean) => void;
   setSharer: (ip: string | null, name: string | null) => void;
   setRemoteStream: (s: MediaStream | null) => void;
@@ -34,7 +32,6 @@ export const useScreenStore = create<ScreenState>((set) => ({
   sourceName: "",
   quality: "standard",
   viewerCount: 0,
-  error: null,
 
   watching: false,
   sharerIp: null,
@@ -47,7 +44,6 @@ export const useScreenStore = create<ScreenState>((set) => ({
   setSourceName: (sourceName) => set({ sourceName }),
   setQuality: (quality) => set({ quality }),
   setViewerCount: (viewerCount) => set({ viewerCount }),
-  setError: (error) => set({ error }),
   setWatching: (watching) => set({ watching }),
   setSharer: (sharerIp, sharerName) => set({ sharerIp, sharerName }),
   setRemoteStream: (remoteStream) => set({ remoteStream }),
@@ -59,7 +55,6 @@ export const useScreenStore = create<ScreenState>((set) => ({
       sourceName: "",
       quality: "standard",
       viewerCount: 0,
-      error: null,
       watching: false,
       sharerIp: null,
       sharerName: null,

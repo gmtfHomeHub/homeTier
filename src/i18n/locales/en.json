@@ -36,6 +36,10 @@
     "switchToDesktop": "Switch to desktop mode",
     "switchToMobile": "Switch to mobile mode"
   },
+  "tray": {
+    "show": "Show / Hide",
+    "quit": "Quit"
+  },
   "settings": {
     "title": "Settings",
     "theme": "Theme",
@@ -76,7 +80,7 @@
     "configSaved": "Configuration saved",
     "configSaveError": "Configuration save failed",
     "downloadProgress": "Downloading… {{pct}}%",
-    "useProxyDownload": "Use proxy download (ghproxy.top)",
+    "useProxyDownload": "Use proxy download ({{mirror}})",
     "easytierEngine": "EasyTier Engine",
     "systemConfig": "System-level EasyTier Configuration",
     "logs": "Logs",

@@ -36,6 +36,10 @@
     "switchToDesktop": "切换到电脑模式",
     "switchToMobile": "切换到手机模式"
   },
+  "tray": {
+    "show": "显示/隐藏",
+    "quit": "退出"
+  },
   "settings": {
     "title": "设置",
     "theme": "主题",
@@ -76,7 +80,7 @@
     "configSaved": "配置已保存",
     "configSaveError": "配置保存失败",
     "downloadProgress": "下载中… {{pct}}%",
-    "useProxyDownload": "使用代理下载（ghproxy.top）",
+    "useProxyDownload": "使用代理下载（{{mirror}}）",
     "easytierEngine": "EasyTier 引擎",
     "systemConfig": "系统级 EasyTier 配置",
     "logs": "日志",

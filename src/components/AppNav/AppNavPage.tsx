@@ -9,6 +9,7 @@ import { useAppTabsStore } from "../../stores/appTabsStore";
 import type { SpaceApp, Space } from "../../types";
 import { SpaceStatus } from '../../enum';
 import { AppFormDialog } from "./AppFormDialog";
+import { toastError } from "../../utils/toast";
 
 interface AppNavPageProps {
   space: Space;
@@ -56,7 +57,7 @@ export function AppNavPage({ space, isOwner, callerId }: AppNavPageProps) {
   const handleDelete = async (appId: string) => {
     const effectiveCallerId = callerId || space.owner_id || "";
     if (!effectiveCallerId) {
-      alert(t("common.permissionError"));
+      toastError(t("common.permissionError"));
       return;
     }
     if (!confirm(t("common.confirmDeleteApp"))) return;
@@ -64,7 +65,7 @@ export function AppNavPage({ space, isOwner, callerId }: AppNavPageProps) {
       await api.deleteApp(appId, effectiveCallerId);
       loadApps();
     } catch (e) {
-      alert(String(e));
+      toastError(String(e));
     }
   };
 

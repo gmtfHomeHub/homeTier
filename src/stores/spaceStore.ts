@@ -3,6 +3,7 @@ import * as api from "../utils/api";
 import { useAppTabsStore } from "./appTabsStore";
 import type { Space } from "../types";
 import { SpaceStatus } from "../enum";
+import i18n from "../i18n";
 
 interface SpaceStore {
   spaces: Space[];
@@ -21,9 +22,17 @@ interface SpaceStore {
 }
 
 function syncTrayMenu(spaces: Space[]) {
-  api.syncTrayMenu(spaces.map((s) => ({ id: s.id, name: s.name }))).catch(() => {
+  api.syncTrayMenu(
+    spaces.map((s) => ({ id: s.id, name: s.name })),
+    { show: i18n.t("tray.show"), quit: i18n.t("tray.quit") }
+  ).catch(() => {
     // 静默失败，托盘菜单同步失败不影响主流程
   });
+}
+
+/** 语言变化等场景下，用当前 spaces 重新同步托盘菜单文案 */
+export function resyncTrayMenu() {
+  syncTrayMenu(useSpaceStore.getState().spaces);
 }
 
 export const useSpaceStore = create<SpaceStore>((set, get) => ({

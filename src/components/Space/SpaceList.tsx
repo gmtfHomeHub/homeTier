@@ -10,6 +10,7 @@ import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { MemberCount } from "../Common/MemberCount";
 import { Button, Flex, Grid, Badge, DropdownMenu } from "@radix-ui/themes";
 import { getSystemConfig, updateSpaceConfig } from "../../utils/api";
+import { toastError } from "../../utils/toast";
 import type { NetworkConfig } from "../../types/network";
 import { DEFAULT_NETWORK_CONFIG } from "../../types/network";
 import { getSpaceIp, handleStopProp } from "../../utils";
@@ -74,7 +75,7 @@ export function SpaceList() {
       await loadSpaces();
       setConfigTarget(null);
     } catch (e) {
-      alert(String(e));
+      toastError(String(e));
     } finally {
       setSavingConfig(false);
     }
@@ -88,7 +89,7 @@ export function SpaceList() {
       await loadSpacesOnce();
       setDeleteTarget(null);
     } catch (e) {
-      alert(String(e));
+      toastError(String(e));
     }
   };
 

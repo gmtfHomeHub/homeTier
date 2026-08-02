@@ -1,4 +1,5 @@
 import { type as osType } from "@tauri-apps/plugin-os";
+import { useEffect, useState } from "react";
 
 export type DeviceMode = "desktop" | "mobile";
 
@@ -18,4 +19,25 @@ export function detectDeviceMode(): DeviceMode {
     // 非 Tauri 环境（如浏览器 dev），回退到 UA 判断
     return MOBILE_UA.test(navigator.userAgent) ? "mobile" : "desktop";
   }
+}
+
+const MOBILE_MQ = "(max-width: 768px)";
+
+/** 判断当前视口是否为移动端宽度（同步查询） */
+export function isMobile(): boolean {
+  return window.matchMedia(MOBILE_MQ).matches;
+}
+
+/** 响应式移动端检测 hook：视口跨断点时实时更新 */
+export function useIsMobile(): boolean {
+  const [mobile, setMobile] = useState<boolean>(() => isMobile());
+
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_MQ);
+    const handler = (e: MediaQueryListEvent) => setMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  return mobile;
 }

@@ -342,6 +342,9 @@ pub fn run() -> std::process::ExitCode {
                         }
                         if event.id().as_ref().starts_with("space-") {
                             let space_id = event.id().as_ref().trim_start_matches("space-").to_string();
+                            // macOS：切换空间前先将应用激活到前台，确保窗口弹出到最上层
+                            #[cfg(target_os = "macos")]
+                            activate_main_window(&app_handle);
                             let _ = app.emit("tray-navigate", space_id);
                         }
                     })
@@ -353,7 +356,17 @@ pub fn run() -> std::process::ExitCode {
                         } = event
                         {
                             let app = tray.app_handle();
-                            toggle_window_visibility(app);
+                            #[cfg(target_os = "macos")]
+                            {
+                                // macOS：单击托盘图标始终唤起窗口到最上层并聚焦（不隐藏）
+                                use tauri::ActivationPolicy;
+                                let _ = app.set_activation_policy(ActivationPolicy::Regular);
+                                activate_main_window(app);
+                            }
+                            #[cfg(not(target_os = "macos"))]
+                            {
+                                toggle_window_visibility(app);
+                            }
                         }
                     })
                     .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/gray/template.png"))
@@ -512,6 +525,12 @@ pub fn run() -> std::process::ExitCode {
         .on_window_event(|_win, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let _ = _win.hide();
+                // macOS：关闭按钮 → Accessory 后台模式（隐藏 Dock 图标与 Cmd+Tab 切换列表）
+                #[cfg(target_os = "macos")]
+                {
+                    use tauri::ActivationPolicy;
+                    let _ = _win.app_handle().set_activation_policy(ActivationPolicy::Accessory);
+                }
                 api.prevent_close();
             }
         });

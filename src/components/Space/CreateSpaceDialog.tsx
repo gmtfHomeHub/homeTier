@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { X, Eye, EyeOff } from "lucide-react";
 import { Button, TextField, TextArea, Flex } from "@radix-ui/themes";
+import { toastError } from "../../utils/toast";
 
 interface CreateSpaceDialogProps {
   onClose: () => void;
@@ -29,6 +30,7 @@ export function CreateSpaceDialog({ onClose }: CreateSpaceDialogProps) {
       onClose();
     } catch (e) {
       setError(String(e));
+      toastError(String(e));
     } finally {
       setLoading(false);
     }

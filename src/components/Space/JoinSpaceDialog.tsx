@@ -6,6 +6,7 @@ import { detectDeviceMode } from "../../utils/device";
 import type { ShareInfo } from "../../types";
 import { X, QrCode } from "lucide-react";
 import { Button, TextField, Flex } from "@radix-ui/themes";
+import { toastError } from "../../utils/toast";
 
 interface JoinSpaceDialogProps {
   onClose: () => void;
@@ -20,6 +21,8 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  // InstanceType<typeof import("html5-qrcode").Html5Qrcode>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const scannerRef = useRef<any>(null);
   const joinSpace = useSpaceStore((s) => s.joinSpace);
 
@@ -54,6 +57,7 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
       onClose();
     } catch (e) {
       setError(String(e));
+      toastError(String(e));
     } finally {
       setLoading(false);
     }
@@ -68,6 +72,7 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
       onClose();
     } catch (e) {
       setError(String(e));
+      toastError(String(e));
     } finally {
       setLoading(false);
     }
@@ -82,6 +87,7 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
       setPendingShare(info);
     } catch (e) {
       setError(String(e));
+      toastError(String(e));
     }
   };
 
@@ -107,10 +113,11 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
             applyShareInfo(info);
           } catch (err) {
             setError(String(err));
+            toastError(String(err));
           }
         },
         () => {},
-      ).catch((err: any) => {
+      ).catch((err) => {
         setScanning(false);
         setScanError(String(err));
       });
@@ -124,7 +131,9 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
     if (scannerRef.current) {
       try {
         await scannerRef.current.stop();
-      } catch (_) {}
+      } catch (_) {
+        console.log(_);
+      }
       scannerRef.current = null;
     }
     setScanning(false);

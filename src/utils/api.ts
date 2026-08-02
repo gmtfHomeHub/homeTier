@@ -64,8 +64,13 @@ export interface TraySpace {
   name: string;
 }
 
-export async function syncTrayMenu(spaces: TraySpace[]): Promise<void> {
-  return invoke("update_tray_menu", { spaces });
+export interface TrayLabels {
+  show: string;
+  quit: string;
+}
+
+export async function syncTrayMenu(spaces: TraySpace[], labels: TrayLabels): Promise<void> {
+  return invoke("update_tray_menu", { spaces, labels });
 }
 
 // === Network Commands ===

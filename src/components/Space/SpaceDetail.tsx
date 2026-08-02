@@ -16,6 +16,7 @@ import { ConfirmDialog } from "../Common/ConfirmDialog";
 import { AppNavPage } from "../AppNav/AppNavPage";
 import { NetworkStatsPanel } from "../Common/NetworkStatsPanel";
 import { SpaceStatus } from "../../enum";
+import { toastError } from "../../utils/toast";
 import { View } from "../Common/PageView";
 
 export function SpaceDetail() {
@@ -41,7 +42,7 @@ export function SpaceDetail() {
       await loadSpaces();
       navigate("/");
     } catch (e) {
-      alert(String(e));
+      toastError(String(e));
     } finally {
       setDeleting(false);
       setShowDeleteConfirm(false);

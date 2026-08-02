@@ -8,11 +8,17 @@ pub struct TraySpace {
     pub name: String,
 }
 
+#[derive(Deserialize)]
+pub struct TrayLabels {
+    pub show: String,
+    pub quit: String,
+}
+
 #[tauri::command]
-pub fn update_tray_menu(app: AppHandle, spaces: Vec<TraySpace>) -> Result<(), String> {
+pub fn update_tray_menu(app: AppHandle, spaces: Vec<TraySpace>, labels: TrayLabels) -> Result<(), String> {
     let menu = Menu::new(&app).map_err(|e| e.to_string())?;
 
-    let show = MenuItem::with_id(&app, "show", "显示/隐藏", true, None::<&str>)
+    let show = MenuItem::with_id(&app, "show", &labels.show, true, None::<&str>)
         .map_err(|e| e.to_string())?;
     menu.append(&show).map_err(|e| e.to_string())?;
     let sep1 = PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
@@ -28,7 +34,7 @@ pub fn update_tray_menu(app: AppHandle, spaces: Vec<TraySpace>) -> Result<(), St
         let sep2 = PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
         menu.append(&sep2).map_err(|e| e.to_string())?;
     }
-    let quit = MenuItem::with_id(&app, "quit", "退出", true, None::<&str>)
+    let quit = MenuItem::with_id(&app, "quit", &labels.quit, true, None::<&str>)
         .map_err(|e| e.to_string())?;
     menu.append(&quit).map_err(|e| e.to_string())?;
 
