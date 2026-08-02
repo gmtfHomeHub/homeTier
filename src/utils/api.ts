@@ -48,10 +48,6 @@ export async function disconnectSpace(spaceId: string): Promise<void> {
   return invoke("disconnect_space", { spaceId });
 }
 
-export async function removeMember(spaceId: string, targetMemberId: string, callerId: string): Promise<void> {
-  return invoke("remove_member", { spaceId, targetMemberId, callerId });
-}
-
 export async function listMembers(spaceId: string): Promise<Member[]> {
   return invoke("list_members", { spaceId });
 }

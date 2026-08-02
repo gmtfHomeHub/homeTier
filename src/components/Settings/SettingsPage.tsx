@@ -9,7 +9,7 @@ import { applyGlobalShortcuts } from "../../services/shortcuts";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { NetworkConfig } from "../../types/network";
 import { useTranslation } from "react-i18next";
-import { Tabs, Tooltip, Button, TextField, Flex, Text, Switch } from "@radix-ui/themes";
+import { Tabs, Tooltip, Button, TextField, Flex, Text, Switch, Card } from "@radix-ui/themes";
 import { SettingTabEnum, LanguageEnum, ThemeEnum } from "../../enum";
 
 export function SettingsPage() {
@@ -126,93 +126,121 @@ export function SettingsPage() {
 
           {/* 内容区 */}
           <Tabs.Content value="basic" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 overflow-y-auto">
-            <div className="max-w-lg p-4 space-y-5">
+            <div className="max-w-2xl mx-auto p-4 space-y-4">
               {/* 主题 */}
-              <section>
-                <Flex align="center" gap="2" mb="3">
-                  <Palette size={16} />
-                  <Text size="2" weight="bold">{t("settings.theme")}</Text>
+              <Card size="3">
+                <Flex align="center" justify="between" gap="3">
+                  <Flex align="center" gap="3">
+                    <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
+                      <Palette size={18} />
+                    </span>
+                    <Flex direction="column">
+                      <Text size="3" weight="medium">{t("settings.theme")}</Text>
+                      <Text size="1" color="gray">{t("settings.themeDesc")}</Text>
+                    </Flex>
+                  </Flex>
+                  <Flex gap="2">
+                    {themeOptions.map((opt) => (
+                      <Button
+                        key={opt.value}
+                        onClick={() => setTheme(opt.value)}
+                        variant={theme === opt.value ? "solid" : "outline"}
+                        color={theme === opt.value ? "blue" : "gray"}
+                        size="2"
+                      >
+                        {opt.label}
+                      </Button>
+                    ))}
+                  </Flex>
                 </Flex>
-                <Flex gap="2">
-                  {themeOptions.map((opt) => (
-                    <Button
-                      key={opt.value}
-                      onClick={() => setTheme(opt.value)}
-                      variant={theme === opt.value ? "solid" : "outline"}
-                      color={theme === opt.value ? "blue" : "gray"}
-                      size="2"
-                      className="flex-1"
-                    >
-                      {opt.label}
-                    </Button>
-                  ))}
-                </Flex>
-              </section>
+              </Card>
 
               {/* 语言 */}
-              <section>
-                <Flex align="center" gap="2" mb="3">
-                  <Languages size={16} />
-                  <Text size="2" weight="bold">{t("settings.language")}</Text>
+              <Card size="3">
+                <Flex align="center" justify="between" gap="3">
+                  <Flex align="center" gap="3">
+                    <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
+                      <Languages size={18} />
+                    </span>
+                    <Flex direction="column">
+                      <Text size="3" weight="medium">{t("settings.language")}</Text>
+                      <Text size="1" color="gray">{t("settings.languageDesc")}</Text>
+                    </Flex>
+                  </Flex>
+                  <Flex gap="2">
+                    {langOptions.map((opt) => (
+                      <Button
+                        key={opt.value}
+                        onClick={() => handleLanguageChange(opt.value)}
+                        variant={language === opt.value ? "solid" : "outline"}
+                        color={language === opt.value ? "blue" : "gray"}
+                        size="2"
+                      >
+                        {opt.label}
+                      </Button>
+                    ))}
+                  </Flex>
                 </Flex>
-                <Flex gap="2">
-                  {langOptions.map((opt) => (
-                    <Button
-                      key={opt.value}
-                      onClick={() => handleLanguageChange(opt.value)}
-                      variant={language === opt.value ? "solid" : "outline"}
-                      color={language === opt.value ? "blue" : "gray"}
-                      size="2"
-                      className="flex-1"
-                    >
-                      {opt.label}
-                    </Button>
-                  ))}
-                </Flex>
-              </section>
+              </Card>
 
               {/* 中继网络前缀 */}
-              <section>
-                <Flex align="center" gap="2" mb="3">
-                  <Network size={16} />
-                  <Text size="2" weight="bold">{t("settings.relayPrefix")}</Text>
-                  <Tooltip content={t("settings.relayPrefixHelp")}>
-                    <span className="inline-flex items-center cursor-pointer text-[var(--color-text-secondary)]">
-                      <HelpCircle size={14} />
+              <Card size="3">
+                <Flex direction="column" gap="3">
+                  <Flex align="center" gap="3">
+                    <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
+                      <Network size={18} />
                     </span>
-                  </Tooltip>
+                    <Flex direction="column" className="flex-1">
+                      <Flex align="center" gap="2">
+                        <Text size="3" weight="medium">{t("settings.relayPrefix")}</Text>
+                        <Tooltip content={t("settings.relayPrefixHelp")}>
+                          <span className="inline-flex items-center cursor-pointer text-[var(--color-text-secondary)]">
+                            <HelpCircle size={14} />
+                          </span>
+                        </Tooltip>
+                      </Flex>
+                      <Text size="1" color="gray">{t("settings.relayPrefixDesc")}</Text>
+                    </Flex>
+                  </Flex>
+                  <TextField.Root
+                    value={relayPrefix}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\s+/g, '-');
+                      setRelayPrefixState(val);
+                    }}
+                    onBlur={() => {
+                      const final = relayPrefix?.trim() || '';
+                      setRelayPrefixState(final);
+                      setRelayPrefix(final).catch((e) => alert(String(e)));
+                    }}
+                    placeholder="homeTier_"
+                  />
                 </Flex>
-                <TextField.Root
-                  value={relayPrefix}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\s+/g, '-');
-                    setRelayPrefixState(val);
-                  }}
-                  onBlur={() => {
-                    const final = relayPrefix?.trim() || '';
-                    setRelayPrefixState(final);
-                    setRelayPrefix(final).catch((e) => alert(String(e)));
-                  }}
-                  placeholder="homeTier_"
-                />
-              </section>
+              </Card>
 
               {/* EasyTier 引擎版本 */}
-              <section>
+              <Card size="3">
                 <EasyTierVersionManager />
-              </section>
+              </Card>
 
               {/* 显示日志开关 */}
-              <section>
-                <Flex align="center" justify="between" gap="2">
-                  <Flex align="center" gap="2">
-                    <Terminal size={16} />
-                    <Text size="2" weight="bold">{t("settings.showLogs")}</Text>
-                    <Tooltip content={t("settings.showLogsHelp")}>
-                      <span className="inline-flex items-center cursor-pointer text-[var(--color-text-secondary)]">
-                        <HelpCircle size={14} />
-                      </span>
-                    </Tooltip>
+              <Card size="3">
+                <Flex align="center" justify="between" gap="3">
+                  <Flex align="center" gap="3">
+                    <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
+                      <Terminal size={18} />
+                    </span>
+                    <Flex direction="column">
+                      <Flex align="center" gap="2">
+                        <Text size="3" weight="medium">{t("settings.showLogs")}</Text>
+                        <Tooltip content={t("settings.showLogsHelp")}>
+                          <span className="inline-flex items-center cursor-pointer text-[var(--color-text-secondary)]">
+                            <HelpCircle size={14} />
+                          </span>
+                        </Tooltip>
+                      </Flex>
+                      <Text size="1" color="gray">{t("settings.showLogsDesc")}</Text>
+                    </Flex>
                   </Flex>
                   <Switch
                     checked={logEnabled}
@@ -222,66 +250,75 @@ export function SettingsPage() {
                     }}
                   />
                 </Flex>
-              </section>
+              </Card>
 
               {/* 全局快捷键 */}
-              <section>
-                <Flex align="center" gap="2" mb="3">
-                  <Keyboard size={16} />
-                  <Text size="2" weight="bold">{t("settings.shortcuts")}</Text>
-                  <Tooltip content={t("settings.shortcutsHelp")}>
-                    <span className="inline-flex items-center cursor-pointer text-[var(--color-text-secondary)]">
-                      <HelpCircle size={14} />
+              <Card size="3">
+                <Flex direction="column" gap="3">
+                  <Flex align="center" gap="3">
+                    <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
+                      <Keyboard size={18} />
                     </span>
-                  </Tooltip>
+                    <Flex direction="column" className="flex-1">
+                      <Flex align="center" gap="2">
+                        <Text size="3" weight="medium">{t("settings.shortcuts")}</Text>
+                        <Tooltip content={t("settings.shortcutsHelp")}>
+                          <span className="inline-flex items-center cursor-pointer text-[var(--color-text-secondary)]">
+                            <HelpCircle size={14} />
+                          </span>
+                        </Tooltip>
+                      </Flex>
+                      <Text size="1" color="gray">{t("settings.shortcutsDesc")}</Text>
+                    </Flex>
+                  </Flex>
+                  <Flex direction="column" gap="2" className="pl-12">
+                    <Flex align="center" justify="between" gap="2">
+                      <Text size="2">{t("settings.micShortcut")}</Text>
+                      <TextField.Root
+                        value={micShortcut}
+                        onChange={(e) => setMicShortcutState(e.target.value)}
+                        style={{ width: 200 }}
+                      />
+                    </Flex>
+                    <Flex align="center" justify="between" gap="2">
+                      <Text size="2">{t("settings.speakerShortcut")}</Text>
+                      <TextField.Root
+                        value={speakerShortcut}
+                        onChange={(e) => setSpeakerShortcutState(e.target.value)}
+                        style={{ width: 200 }}
+                      />
+                    </Flex>
+                    <Flex justify="end" gap="2" mt="1">
+                      <Button
+                        variant="outline"
+                        size="2"
+                        onClick={() => {
+                          setMicShortcutState(defMicShortcut);
+                          setSpeakerShortcutState(defSpeakerShortcut);
+                        }}
+                      >
+                        {t("common.reset")}
+                      </Button>
+                      <Button
+                        variant="solid"
+                        color="blue"
+                        size="2"
+                        onClick={() => {
+                          const finalMic = micShortcut.trim() || defMicShortcut;
+                          const finalSpk = speakerShortcut.trim() || defSpeakerShortcut;
+                          setMicShortcutState(finalMic);
+                          setSpeakerShortcutState(finalSpk);
+                          storeSetMicShortcut(finalMic);
+                          storeSetSpeakerShortcut(finalSpk);
+                          applyGlobalShortcuts().catch((e) => console.error(e));
+                        }}
+                      >
+                        {t("common.save")}
+                      </Button>
+                    </Flex>
+                  </Flex>
                 </Flex>
-                <Flex direction="column" gap="2">
-                  <Flex align="center" justify="between" gap="2">
-                    <Text size="2">{t("settings.micShortcut")}</Text>
-                    <TextField.Root
-                      value={micShortcut}
-                      onChange={(e) => setMicShortcutState(e.target.value)}
-                      style={{ width: 200 }}
-                    />
-                  </Flex>
-                  <Flex align="center" justify="between" gap="2">
-                    <Text size="2">{t("settings.speakerShortcut")}</Text>
-                    <TextField.Root
-                      value={speakerShortcut}
-                      onChange={(e) => setSpeakerShortcutState(e.target.value)}
-                      style={{ width: 200 }}
-                    />
-                  </Flex>
-                  <Flex justify="end" gap="2" mt="1">
-                    <Button
-                      variant="outline"
-                      size="2"
-                      onClick={() => {
-                        setMicShortcutState(defMicShortcut);
-                        setSpeakerShortcutState(defSpeakerShortcut);
-                      }}
-                    >
-                      {t("common.reset")}
-                    </Button>
-                    <Button
-                      variant="solid"
-                      color="blue"
-                      size="2"
-                      onClick={() => {
-                        const finalMic = micShortcut.trim() || defMicShortcut;
-                        const finalSpk = speakerShortcut.trim() || defSpeakerShortcut;
-                        setMicShortcutState(finalMic);
-                        setSpeakerShortcutState(finalSpk);
-                        storeSetMicShortcut(finalMic);
-                        storeSetSpeakerShortcut(finalSpk);
-                        applyGlobalShortcuts().catch((e) => console.error(e));
-                      }}
-                    >
-                      {t("common.save")}
-                    </Button>
-                  </Flex>
-                </Flex>
-              </section>
+              </Card>
             </div>
           </Tabs.Content>
 

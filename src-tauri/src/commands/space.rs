@@ -72,18 +72,6 @@ pub async fn list_spaces(
 }
 
 #[tauri::command]
-pub async fn remove_member(
-    space_id: String,
-    target_member_id: String,
-    caller_id: String,
-    space_manager: State<'_, Arc<SpaceManager>>,
-) -> Result<(), String> {
-    let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
-    crate::log_info!(format!("移除成员: target={}, space={}, caller={}", target_member_id, space_id, caller_id));
-    space_manager.remove_member(&id, &target_member_id, &caller_id).await
-}
-
-#[tauri::command]
 pub async fn list_members(
     space_id: String,
     space_manager: State<'_, Arc<SpaceManager>>,

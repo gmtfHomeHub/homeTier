@@ -196,25 +196,6 @@ Self {
         Ok(())
     }
 
-    /// 移除空间成员
-    pub async fn remove_member(&self, space_id: &Uuid, target_member_id: &str, caller_id: &str) -> Result<(), String> {
-        let spaces = self.spaces.read().await;
-        let space = spaces.iter().find(|s| &s.id == space_id)
-            .ok_or_else(|| "Space not found".to_string())?;
-        if space.owner_id.as_deref() != Some(caller_id) {
-            return Err("只有空间所有者才能移除成员".to_string());
-        }
-        drop(spaces);
-
-        if caller_id == target_member_id {
-            return Err("不能移除自己".to_string());
-        }
-
-        self.db.remove_member(&space_id.to_string(), target_member_id)?;
-        crate::log_info!(format!("成员已移除: member={} from space={}", target_member_id, space_id), &space_id.to_string());
-        Ok(())
-    }
-
     /// 获取空间列表
     pub async fn list(&self) -> Result<Vec<Space>, String> {
         let rows = self.db.list_spaces()?;
@@ -1036,25 +1017,6 @@ impl SpaceManager {
         self.db.delete_space(&space_id.to_string())?;
         self.spaces.write().await.retain(|s| s.id != *space_id);
         crate::log_info!(format!("空间已删除: {}", space_id), &space_id.to_string());
-        Ok(())
-    }
-
-    /// 移除空间成员
-    pub async fn remove_member(&self, space_id: &Uuid, target_member_id: &str, caller_id: &str) -> Result<(), String> {
-        let spaces = self.spaces.read().await;
-        let space = spaces.iter().find(|s| &s.id == space_id)
-            .ok_or_else(|| "Space not found".to_string())?;
-        if space.owner_id.as_deref() != Some(caller_id) {
-            return Err("只有空间所有者才能移除成员".to_string());
-        }
-        drop(spaces);
-
-        if caller_id == target_member_id {
-            return Err("不能移除自己".to_string());
-        }
-
-        self.db.remove_member(&space_id.to_string(), target_member_id)?;
-        crate::log_info!(format!("成员已移除: member={} from space={}", target_member_id, space_id), &space_id.to_string());
         Ok(())
     }
 

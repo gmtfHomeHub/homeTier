@@ -428,7 +428,6 @@ pub fn run() -> std::process::ExitCode {
             commands::space::leave_space,
             commands::space::delete_space,
             commands::space::list_spaces,
-            commands::space::remove_member,
             commands::space::list_members,
             commands::space::get_space_config,
             commands::space::update_space_config,

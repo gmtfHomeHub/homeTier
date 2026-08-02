@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-  Users,
   ArrowLeft,
   MessageSquare,
   MoreHorizontal,
@@ -13,9 +12,7 @@ import { Button, Flex, DropdownMenu } from "@radix-ui/themes";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useSpaceConnect } from "../../hooks/useSpaceConnect";
-import { MemberManager } from "./MemberManager";
 import { ConfirmDialog } from "../Common/ConfirmDialog";
-import { ScreenShareView } from "../ScreenShare/ScreenShareView";
 import { AppNavPage } from "../AppNav/AppNavPage";
 import { NetworkStatsPanel } from "../Common/NetworkStatsPanel";
 import { SpaceStatus } from "../../enum";
@@ -30,7 +27,6 @@ export function SpaceDetail() {
   const { disconnectingId, connect, disconnect } = useSpaceConnect();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [showMemberManager, setShowMemberManager] = useState(false);
 
   const space = spaces.find((s) => s.id === id);
   const isOwner = !!space?.owner_id;
@@ -126,12 +122,6 @@ export function SpaceDetail() {
                   </DropdownMenu.Item>
                 )}
                 {isOwner && (
-                  <DropdownMenu.Item onClick={() => setShowMemberManager(true)}>
-                    <Users size={16} />
-                    {t("space.memberManager")}
-                  </DropdownMenu.Item>
-                )}
-                {isOwner && (
                   <DropdownMenu.Item
                     color="red"
                     onClick={() => setShowDeleteConfirm(true)}
@@ -150,21 +140,7 @@ export function SpaceDetail() {
         <NetworkStatsPanel spaceId={id} connected={isRunning} />
       </div>
 
-      {isRunning && (
-        <div className="px-4 py-2">
-          <ScreenShareView />
-        </div>
-      )}
-
       <AppNavPage space={space} isOwner={isOwner} callerId={callerId} />
-
-      {showMemberManager && (
-        <MemberManager
-          spaceId={id}
-          callerId={callerId}
-          onClose={() => setShowMemberManager(false)}
-        />
-      )}
 
       <ConfirmDialog
         open={showDeleteConfirm}

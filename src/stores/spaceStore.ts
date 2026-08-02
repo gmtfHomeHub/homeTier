@@ -14,7 +14,6 @@ interface SpaceStore {
   joinSpace: (networkName: string, networkSecret: string) => Promise<Space>;
   leaveSpace: (spaceId: string) => Promise<void>;
   deleteSpace: (spaceId: string, callerId?: string) => Promise<void>;
-  removeMember: (spaceId: string, targetMemberId: string, callerId: string) => Promise<void>;
   setCurrentSpace: (id: string | null) => void;
   connectSpace: (spaceId: string) => Promise<void>;
   disconnectSpace: (spaceId: string) => Promise<void>;
@@ -82,16 +81,6 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
       currentSpaceId: state.currentSpaceId === spaceId ? null : state.currentSpaceId,
     }));
     syncTrayMenu(get().spaces);
-  },
-
-  removeMember: async (spaceId, targetMemberId, callerId) => {
-    await api.removeMember(spaceId, targetMemberId, callerId);
-    const updated = await api.listMembers(spaceId);
-    set((state) => ({
-      spaces: state.spaces.map((s) =>
-        s.id === spaceId ? { ...s, member_count: updated.length } : s
-      ),
-    }));
   },
 
   setCurrentSpace: (id) => set({ currentSpaceId: id }),

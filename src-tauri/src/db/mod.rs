@@ -213,15 +213,6 @@ impl Database {
         Ok(())
     }
 
-    pub fn remove_member(&self, space_id: &str, member_id: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        conn.execute(
-            "DELETE FROM members WHERE id=?1 AND space_id=?2",
-            params![member_id, space_id],
-        ).map_err(|e| format!("Remove member error: {}", e))?;
-        Ok(())
-    }
-
     pub fn list_members(&self, space_id: &str) -> Result<Vec<models::MemberRow>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn.prepare(
