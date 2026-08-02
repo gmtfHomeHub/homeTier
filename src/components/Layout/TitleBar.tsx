@@ -29,12 +29,12 @@ export function TitleBar() {
         <div />
         <div>
           <Flex
-            gap="4"
+            gap="3"
             className="flex items-center justify-end"
             // data-tauri-drag-region
           >
-            <Button onClick={() => navigate("/")} variant="ghost" size="2">
-              <Flex align="center" gap="2">
+            <Button onClick={() => navigate("/")} variant="ghost" size="1">
+              <Flex align="center" gap="1">
                 <House size={16} />
                 <span className="hidden sm:inline">{t("space.spaces")}</span>
               </Flex>
@@ -43,9 +43,9 @@ export function TitleBar() {
             <Button
               onClick={() => navigate("/settings")}
               variant="ghost"
-              size="2"
+              size="1"
             >
-              <Flex align="center" gap="2" justify="center">
+              <Flex align="center" gap="1" justify="center">
                 <Settings size={16} />
                 <span className="hidden sm:inline">{t("settings.title")}</span>
               </Flex>

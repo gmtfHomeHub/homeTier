@@ -144,7 +144,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
           <Filter size={14} />
           <span>级别：</span>
         </div>
-        <Select.Root value={levelFilter} onValueChange={(v) => setLevelFilter(v)}>
+        <Select.Root size="1" value={levelFilter} onValueChange={(v) => setLevelFilter(v)}>
           <Select.Trigger className="text-xs" />
           <Select.Content>
             <Select.Item value="all">全部级别</Select.Item>
@@ -159,7 +159,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
           <Filter size={14} />
           <span>来源：</span>
         </div>
-        <Select.Root value={sourceFilter} onValueChange={(v) => setSourceFilter(v)}>
+        <Select.Root size="1" value={sourceFilter} onValueChange={(v) => setSourceFilter(v)}>
           <Select.Trigger className="text-xs" />
           <Select.Content>
             <Select.Item value="all">全部</Select.Item>

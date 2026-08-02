@@ -28,8 +28,12 @@ function Root() {
         position={isMobile ? "top-center" : "top-right"}
         toastOptions={{
           style: {
-            paddingTop: "env(safe-area-inset-top)",
-            ...(isMobile ? { width: "calc(100vw - 2rem)" } : {}),
+            ...(isMobile
+              ? {
+                  width: "calc(100vw - 2rem)",
+                  paddingTop: "env(safe-area-inset-top)",
+                }
+              : {}),
           },
         }}
       />

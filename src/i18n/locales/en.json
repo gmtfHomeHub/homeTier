@@ -313,6 +313,7 @@
     "exitNodes": "Exit Nodes",
     "advancedFlags": "Advanced Flags",
     "flagMtu": "MTU",
+    "instanceRecvBpsLimit":"Instance Receive Limit",
     "flagLatencyFirst": "Low Latency Priority",
     "flagEnableKcp": "Enable KCP",
     "flagEnableQuic": "Enable QUIC",

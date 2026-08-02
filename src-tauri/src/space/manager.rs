@@ -91,7 +91,7 @@ Self {
     /// 创建空间（创建者自动成为 owner）
     pub async fn create(&self, name: String, network_secret: String, description: Option<String>) -> Result<Space, String> {
         let space_id = Uuid::new_v4();
-        let owner_uuid = self.db.get_user_id().unwrap_or_else(|| "local-user".to_string());
+        let owner_uuid = self.db.get_user_id()?.unwrap_or_else(|| "local-user".to_string());
         let network_name = name.clone();
 
         let space = Space {
@@ -193,11 +193,11 @@ Self {
 
     /// 删除空间
     pub async fn delete(&self, space_id: &Uuid) -> Result<(), String> {
-        let caller_id = self.db.get_user_id().unwrap_or_default();
+        let caller_id = self.db.get_user_id()?.unwrap_or_default();
         let spaces = self.spaces.read().await;
         let space = spaces.iter().find(|s| &s.id == space_id)
             .ok_or_else(|| "Space not found".to_string())?;
-        if space.owner_id.as_deref() != Some(&caller_id) {
+        if space.owner_id.as_deref() != Some(caller_id.as_str()) {
             return Err("只有空间所有者才能删除空间".to_string());
         }
         drop(spaces);
@@ -747,11 +747,11 @@ Self {
 
     /// 校验是否为空间创建者
     pub async fn check_owner(&self, space_id: &str) -> Result<(), String> {
-        let caller_id = self.db.get_user_id().unwrap_or_default();
+        let caller_id = self.db.get_user_id()?.unwrap_or_default();
         let spaces = self.spaces.read().await;
         let space = spaces.iter().find(|s| s.id.to_string() == *space_id)
             .ok_or_else(|| "空间不存在".to_string())?;
-        if space.owner_id.as_deref() != Some(&caller_id) {
+        if space.owner_id.as_deref() != Some(caller_id.as_str()) {
             return Err("无权限：仅空间创建者可执行此操作".to_string());
         }
         Ok(())
@@ -789,7 +789,7 @@ impl SpaceManager {
     /// 创建空间（Mobile: 库方式）
     pub async fn create(&self, name: String, network_secret: String, description: Option<String>) -> Result<Space, String> {
         let space_id = Uuid::new_v4();
-        let owner_uuid = self.db.get_user_id().unwrap_or_else(|| "local-user".to_string());
+        let owner_uuid = self.db.get_user_id()?.unwrap_or_else(|| "local-user".to_string());
         let network_name = name.clone();
 
         let space = Space {
@@ -892,11 +892,11 @@ impl SpaceManager {
 
     /// 删除空间
     pub async fn delete(&self, space_id: &Uuid) -> Result<(), String> {
-        let caller_id = self.db.get_user_id().unwrap_or_default();
+        let caller_id = self.db.get_user_id()?.unwrap_or_default();
         let spaces = self.spaces.read().await;
         let space = spaces.iter().find(|s| &s.id == space_id)
             .ok_or_else(|| "Space not found".to_string())?;
-        if space.owner_id.as_deref() != Some(&caller_id) {
+        if space.owner_id.as_deref() != Some(caller_id.as_str()) {
             return Err("只有空间所有者才能删除空间".to_string());
         }
         drop(spaces);
@@ -997,11 +997,11 @@ impl SpaceManager {
 
     /// 校验是否为空间创建者
     pub async fn check_owner(&self, space_id: &str) -> Result<(), String> {
-        let caller_id = self.db.get_user_id().unwrap_or_default();
+        let caller_id = self.db.get_user_id()?.unwrap_or_default();
         let spaces = self.spaces.read().await;
         let space = spaces.iter().find(|s| s.id.to_string() == *space_id)
             .ok_or_else(|| "空间不存在".to_string())?;
-        if space.owner_id.as_deref() != Some(&caller_id) {
+        if space.owner_id.as_deref() != Some(caller_id.as_str()) {
             return Err("无权限：仅空间创建者可执行此操作".to_string());
         }
         Ok(())

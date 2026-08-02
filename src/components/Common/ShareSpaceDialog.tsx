@@ -1,9 +1,9 @@
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, TextField } from "@radix-ui/themes";
-import { X, Copy, Check } from "lucide-react";
-import { toastError } from "../../utils/toast";
+import { Button, TextField, Flex, Tooltip } from "@radix-ui/themes";
+import { X, Copy, Check, HelpCircle } from "lucide-react";
+import { toastSuccess, toastError } from "../../utils/toast";
 import { generateShareLink } from "../../utils/api";
 
 interface ShareSpaceDialogProps {
@@ -35,6 +35,7 @@ export function ShareSpaceDialog({ spaceId, onClose }: ShareSpaceDialogProps) {
     try {
       await navigator.clipboard.writeText(link);
       setCopied(true);
+      toastSuccess(t("space.copiedToClipboard"));
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.log(err);
@@ -51,32 +52,33 @@ export function ShareSpaceDialog({ spaceId, onClose }: ShareSpaceDialogProps) {
           </Button>
         </div>
 
-        <div className="space-y-4">
-          <div>
-            <label className="block mb-1 text-sm font-medium">
+        <div className="space-y-2">
+          <Flex align="center">
+            <label className="block text-sm font-medium">
               {t("space.setReceiverIp")}
             </label>
+            <Tooltip
+              content={
+                <>
+                  <p className="mt-1 text-xs">
+                    {t("space.joinWithShareConfig")}
+                  </p>
+                  <p className="mt-1 text-xs">
+                    {t("space.dhcpHint")}
+                  </p>
+                </>
+              }
+            >
+              <span className="inline-flex items-center cursor-pointer text-[var(--color-text-secondary)]">
+                <HelpCircle size={14} />
+              </span>
+            </Tooltip>
+          </Flex>
             <TextField.Root
               value={ip}
               onChange={(e) => setIp(e.target.value)}
               placeholder={t("space.receiverIpPlaceholder")}
             />
-            <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
-              {t("space.joinWithShareConfig")}
-            </p>
-            <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
-              {t("space.dhcpHint")}
-            </p>
-          </div>
-
-          <Button
-            onClick={handleCreate}
-            disabled={generating}
-            className="w-full"
-            size="2"
-          >
-            {generating ? t("common.loading") : t("space.createShare")}
-          </Button>
 
           {link && (
             <>
@@ -86,25 +88,28 @@ export function ShareSpaceDialog({ spaceId, onClose }: ShareSpaceDialogProps) {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <Flex align="center" gap="3">
                 <TextField.Root
                   value={link}
                   readOnly
                   className="flex-1 font-mono text-xs"
                 />
-                <Button
-                  onClick={handleCopy}
-                  variant="ghost"
-                  size="2"
-                >
+                <Button onClick={handleCopy} variant="ghost" size="2">
                   {copied ? <Check size={18} /> : <Copy size={18} />}
                 </Button>
-              </div>
-              {copied && (
-                <p className="text-xs text-[var(--color-success)] text-center">{t("space.copiedToClipboard")}</p>
-              )}
+              </Flex>
             </>
           )}
+          <Flex className={`pt-${link ? '0' : '2'}`}>
+            <Button
+              onClick={handleCreate}
+              disabled={generating}
+              className="w-full mt-2"
+              size="2"
+            >
+              {generating ? t("common.loading") : t("space.createShare")}
+            </Button>
+          </Flex>
         </div>
       </div>
     </div>

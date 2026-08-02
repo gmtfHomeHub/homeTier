@@ -313,6 +313,7 @@
     "exitNodes": "出口節點",
     "advancedFlags": "進階旗標",
     "flagMtu": "MTU",
+    "instanceRecvBpsLimit":"實例接收限速",
     "flagLatencyFirst": "低延遲優先",
     "flagEnableKcp": "啟用 KCP",
     "flagEnableQuic": "啟用 QUIC",

@@ -134,7 +134,7 @@ export function SettingsPage() {
                       <Text size="1" color="gray">{t("settings.themeDesc")}</Text>
                     </Flex>
                   </Flex>
-                    <Select.Root size="2" value={theme} onValueChange={setTheme}>
+                    <Select.Root size="1" value={theme} onValueChange={setTheme}>
                       <Select.Trigger />
                       <Select.Content>
                         {themeOptions.map((opt) => (
@@ -158,7 +158,7 @@ export function SettingsPage() {
                       <Text size="1" color="gray">{t("settings.languageDesc")}</Text>
                     </Flex>
                   </Flex>
-                    <Select.Root size="2" value={language} onValueChange={handleLanguageChange}>
+                    <Select.Root size="1" value={language} onValueChange={handleLanguageChange}>
                       <Select.Trigger />
                       <Select.Content>
                         {langOptions.map((opt) => (
@@ -198,6 +198,7 @@ export function SettingsPage() {
                     </Flex>
                   </Flex>
                   <Switch
+                    size="1"
                     checked={logEnabled}
                     onCheckedChange={(val) => {
                       setStoreLogEnabled(val);
@@ -246,7 +247,7 @@ export function SettingsPage() {
                     <Flex justify="end" gap="2" mt="1">
                       <Button
                         variant="outline"
-                        size="2"
+                        size="1"
                         onClick={() => {
                           setMicShortcutState(defMicShortcut);
                           setSpeakerShortcutState(defSpeakerShortcut);
@@ -257,7 +258,7 @@ export function SettingsPage() {
                       <Button
                         variant="solid"
                         color="blue"
-                        size="2"
+                        size="1"
                         onClick={() => {
                           const finalMic = micShortcut.trim() || defMicShortcut;
                           const finalSpk = speakerShortcut.trim() || defSpeakerShortcut;
@@ -296,7 +297,7 @@ export function SettingsPage() {
                     setSystemConfig(JSON.stringify({}));
                   }}
                   variant="outline"
-                  size="2"
+                  size="1"
                 >
                   {t("common.reset")}
                 </Button>
@@ -305,7 +306,7 @@ export function SettingsPage() {
                   disabled={saving}
                   variant="solid"
                   color="blue"
-                  size="2"
+                  size="1"
                   loading={saving}
                 >
                   {saving ? t("common.saving") : t("common.save")}

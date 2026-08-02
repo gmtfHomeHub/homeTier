@@ -105,7 +105,7 @@ export function EasyTierVersionManager() {
           onClick={handleCheckUpdate}
           disabled={checking}
           variant="outline"
-          size="2"
+          size="1"
           loading={checking}
         >
           <RefreshCw size={14} />

@@ -150,14 +150,14 @@ export function AppConfigEditor() {
       </div>
 
       <Flex justify="end" gap="2" pt="2">
-        <Button variant="outline" size="2" onClick={handleReset}>
+        <Button variant="outline" size="1" onClick={handleReset}>
           <RefreshCw size={14} />
           {t("common.reset")}
         </Button>
         <Button
           variant="solid"
           color="blue"
-          size="2"
+          size="1"
           onClick={handleSave}
           disabled={saving}
           loading={saving}

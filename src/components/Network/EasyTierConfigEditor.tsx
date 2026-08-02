@@ -89,7 +89,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           <Text size="2" weight="medium">{t("network.basicSettings")}</Text>
         </div>
         <div className="p-4 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("settings.networkName")}</label>
               <TextField.Root size="1" value={strVal("network_name")}
@@ -109,7 +109,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("network.virtualIpv4")}</label>
               <TextField.Root size="1" value={strVal("virtual_ipv4")}
@@ -148,10 +148,12 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                   }}>×</Button>
                 </div>
               ))}
+              <Flex justify="center" className="mt-2">
               <Button variant="ghost" color="blue" size="1"
                 onClick={() => set({ peer_urls: [...(value.peer_urls ?? []), ""] })}>
                 {t("network.addInitialNode")}
               </Button>
+              </Flex>
             </div>
           </div>
 
@@ -247,7 +249,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           </div>
 
           {/* Routes & Exit Nodes */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("network.routes")}</label>
               <TextField.Root size="1"
@@ -265,7 +267,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           </div>
 
           {/* Dev Name, MTU, Instance Recv Bps Limit */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("network.devName")}</label>
               <TextField.Root size="1" value={strVal("dev_name")}
@@ -273,14 +275,14 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                 placeholder={t("network.devNamePlaceholder")} />
             </div>
             <div className={FIELD_CLASS}>
-              <label className={LABEL_CLASS}>{t("settings.mtu")}</label>
+              <label className={LABEL_CLASS}>{t("network.flagMtu")}</label>
               <TextField.Root size="1" type="number"
                 value={value.mtu != null ? String(value.mtu) : ""}
                 onChange={e => set({ mtu: e.target.value ? parseInt(e.target.value) : null })}
                 placeholder="1380" />
             </div>
             <div className={FIELD_CLASS}>
-              <label className={LABEL_CLASS}>{t("settings.instanceRecvBpsLimit")}</label>
+              <label className={LABEL_CLASS}>{t("network.instanceRecvBpsLimit")}</label>
               <TextField.Root size="1" type="number"
                 value={value.instance_recv_bps_limit != null ? String(value.instance_recv_bps_limit) : ""}
                 onChange={e => set({ instance_recv_bps_limit: e.target.value ? parseInt(e.target.value) : null })}
@@ -298,7 +300,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           </div>
 
           {/* SOCKS5 */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className={FIELD_CLASS}>
               <Text as="label" size="1" className="flex items-center gap-2">
                 <Checkbox checked={boolVal("enable_socks5")}

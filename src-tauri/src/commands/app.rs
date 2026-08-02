@@ -18,7 +18,7 @@ pub async fn add_app(
     db: State<'_, Arc<Database>>,
 ) -> Result<AppRow, String> {
     // 校验权限：仅空间创建者可添加
-    let caller_id = db.get_user_id().unwrap_or_default();
+    let caller_id = db.get_user_id()?.unwrap_or_default();
     crate::log_info!(format!("add_app: space_id={}", space_id));
     space_manager.check_owner(&space_id).await?;
 
@@ -58,7 +58,7 @@ pub async fn update_app(
 
     // 校验权限：仅应用创建者可修改
     // 先查询应用所属 space
-    let caller_id = db.get_user_id().unwrap_or_default();
+    let caller_id = db.get_user_id()?.unwrap_or_default();
     let apps = db.list_apps_by_created(&app_id, &caller_id)?;
     if apps.is_empty() {
         return Err("无权限修改或应用不存在".to_string());
@@ -90,7 +90,7 @@ pub async fn delete_app(
     db: State<'_, Arc<Database>>,
 ) -> Result<(), String> {
     crate::log_info!(format!("delete_app: app_id={}", app_id));
-    let caller_id = db.get_user_id().unwrap_or_default();
+    let caller_id = db.get_user_id()?.unwrap_or_default();
     db.delete_app(&app_id, &caller_id)?;
     crate::log_info!("应用已删除");
     Ok(())
