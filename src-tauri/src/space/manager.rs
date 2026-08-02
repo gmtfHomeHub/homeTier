@@ -136,7 +136,11 @@ Self {
     }
 
     /// 加入空间
-    pub async fn join(&self, network_name: String, network_secret: String) -> Result<Space, String> {
+    /// config 为前端传入的 easytier 配置 json 反序列化结果，缺省字段已由 serde(default) 补全，
+    /// 完整配置序列化后写入 config_json 落库
+    pub async fn join(&self, config: NetworkConfig) -> Result<Space, String> {
+        let network_name = config.network_name.clone();
+        let network_secret = config.network_secret.clone();
         let space = Space {
             id: Uuid::new_v4(),
             name: network_name.clone(),
@@ -167,6 +171,20 @@ Self {
             local_config_json: None,
         };
         self.db.insert_space(&row)?;
+
+        // 完整配置 json 落库（默认值已由后端 serde(default) 补全）
+        let config_json = serde_json::to_string(&config)
+            .map_err(|e| format!("序列化配置失败: {}", e))?;
+        self.db.update_space_config(&space.id.to_string(), &config_json)?;
+        crate::log_info!(
+            format!("加入空间: 配置已写入 config json (dhcp={}, ip={}, peers={}, listeners={})",
+                config.dhcp,
+                config.virtual_ipv4,
+                config.peer_urls.len(),
+                config.listener_urls.len()),
+            &space.id.to_string()
+        );
+
         self.spaces.write().await.push(space.clone());
         crate::log_info!(format!("加入空间: {}", space.name), &space.id.to_string());
         Ok(space)
@@ -260,25 +278,30 @@ Self {
         Ok(spaces)
     }
 
-    /// 生成分享链接
-    pub fn generate_share_link(&self, space: &Space) -> String {
-        format!("homeTier://join?name={}&secret={}", space.network_name, space.network_secret)
-    }
+    /// 生成分享链接（v2 加密，携带为接收方设置的 IP 与分享者有效配置）
+    pub async fn generate_share_link(&self, space_id: &Uuid, ip: Option<String>) -> Result<String, String> {
+        let spaces = self.spaces.read().await;
+        let space = spaces.iter().find(|s| &s.id == space_id)
+            .ok_or_else(|| "Space not found".to_string())?;
+        let network_name = space.network_name.clone();
+        let network_secret = space.network_secret.clone();
+        drop(spaces);
 
-    /// 解析分享链接
-    pub fn parse_share_link(link: &str) -> Result<ShareInfo, String> {
-        let url = url::Url::parse(link).map_err(|_| "Invalid share link".to_string())?;
-        if url.scheme() != "homeTier" || url.host_str() != Some("join") {
-            return Err("Invalid share link format".to_string());
-        }
-        let pairs: std::collections::HashMap<_, _> = url.query_pairs().collect();
-        let network_name = pairs.get("name")
-            .ok_or_else(|| "Missing network name".to_string())?
-            .to_string();
-        let network_secret = pairs.get("secret")
-            .ok_or_else(|| "Missing network secret".to_string())?
-            .to_string();
-        Ok(ShareInfo { network_name, network_secret, host_hint: None })
+        let effective = self.get_effective_config(space_id).await?;
+        let virtual_ip = ip
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let info = ShareInfo {
+            network_name,
+            network_secret,
+            host_hint: None,
+            virtual_ip,
+            dhcp: Some(effective.dhcp),
+            peer_urls: effective.peer_urls.clone(),
+            listener_urls: effective.listener_urls.clone(),
+        };
+        crate::log_info!(format!("生成分享链接: {} (v2 加密)", info.network_name), &space_id.to_string());
+        crate::space::share::encrypt_share_payload(&info)
     }
 
     /// 等待 daemon 就绪（ping 轮询，最多 10s）
@@ -958,7 +981,11 @@ impl SpaceManager {
     }
 
     /// 加入空间
-    pub async fn join(&self, network_name: String, network_secret: String) -> Result<Space, String> {
+    /// config 为前端传入的 easytier 配置 json 反序列化结果，缺省字段已由 serde(default) 补全，
+    /// 完整配置序列化后写入 config_json 落库
+    pub async fn join(&self, config: NetworkConfig) -> Result<Space, String> {
+        let network_name = config.network_name.clone();
+        let network_secret = config.network_secret.clone();
         let space = Space {
             id: Uuid::new_v4(),
             name: network_name.clone(),
@@ -989,6 +1016,20 @@ impl SpaceManager {
             local_config_json: None,
         };
         self.db.insert_space(&row)?;
+
+        // 完整配置 json 落库（默认值已由后端 serde(default) 补全）
+        let config_json = serde_json::to_string(&config)
+            .map_err(|e| format!("序列化配置失败: {}", e))?;
+        self.db.update_space_config(&space.id.to_string(), &config_json)?;
+        crate::log_info!(
+            format!("加入空间: 配置已写入 config json (dhcp={}, ip={}, peers={}, listeners={})",
+                config.dhcp,
+                config.virtual_ipv4,
+                config.peer_urls.len(),
+                config.listener_urls.len()),
+            &space.id.to_string()
+        );
+
         self.spaces.write().await.push(space.clone());
         crate::log_info!(format!("加入空间: {}", space.name), &space.id.to_string());
         Ok(space)
@@ -1055,25 +1096,22 @@ impl SpaceManager {
         Ok(spaces)
     }
 
-    /// 生成分享链接
-    pub fn generate_share_link(&self, space: &Space) -> String {
-        format!("homeTier://join?name={}&secret={}", space.network_name, space.network_secret)
-    }
-
-    /// 解析分享链接
-    pub fn parse_share_link(link: &str) -> Result<ShareInfo, String> {
-        let url = url::Url::parse(link).map_err(|_| "Invalid share link".to_string())?;
-        if url.scheme() != "homeTier" || url.host_str() != Some("join") {
-            return Err("Invalid share link format".to_string());
-        }
-        let pairs: std::collections::HashMap<_, _> = url.query_pairs().collect();
-        let network_name = pairs.get("name")
-            .ok_or_else(|| "Missing network name".to_string())?
-            .to_string();
-        let network_secret = pairs.get("secret")
-            .ok_or_else(|| "Missing network secret".to_string())?
-            .to_string();
-        Ok(ShareInfo { network_name, network_secret, host_hint: None })
+    /// 生成分享链接（Mobile: 基于空间基础信息加密）
+    pub async fn generate_share_link(&self, space_id: &Uuid, ip: Option<String>) -> Result<String, String> {
+        let spaces = self.spaces.read().await;
+        let space = spaces.iter().find(|s| &s.id == space_id)
+            .ok_or_else(|| "Space not found".to_string())?;
+        let info = ShareInfo {
+            network_name: space.network_name.clone(),
+            network_secret: space.network_secret.clone(),
+            host_hint: None,
+            virtual_ip: ip.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+            dhcp: None,
+            peer_urls: Vec::new(),
+            listener_urls: Vec::new(),
+        };
+        crate::log_info!(format!("生成分享链接: {} (v2 加密)", info.network_name), &space_id.to_string());
+        crate::space::share::encrypt_share_payload(&info)
     }
 
     /// 连接空间（Mobile: 直接调用库）

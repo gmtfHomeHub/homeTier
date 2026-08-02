@@ -13,14 +13,20 @@ interface ShareSpaceDialogProps {
 export function ShareSpaceDialog({ spaceId, onClose }: ShareSpaceDialogProps) {
   const { t } = useTranslation();
   const [link, setLink] = useState<string>("");
+  const [ip, setIp] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    generateShareLink(spaceId)
-      .then(setLink)
-      .finally(() => setLoading(false));
-  }, [spaceId]);
+    setLoading(true);
+    const timer = setTimeout(() => {
+      generateShareLink(spaceId, ip.trim() || undefined)
+        .then(setLink)
+        .catch(() => setLink(""))
+        .finally(() => setLoading(false));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [spaceId, ip]);
 
   const handleCopy = async () => {
     try {
@@ -46,6 +52,20 @@ export function ShareSpaceDialog({ spaceId, onClose }: ShareSpaceDialogProps) {
           <div className="text-center py-8 text-[var(--color-text-secondary)]">{t("common.loading")}</div>
         ) : (
           <div className="space-y-4">
+            <div>
+              <label className="block mb-1 text-sm font-medium">
+                {t("space.setReceiverIp")}
+              </label>
+              <TextField.Root
+                value={ip}
+                onChange={(e) => setIp(e.target.value)}
+                placeholder={t("space.receiverIpPlaceholder")}
+              />
+              <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                {t("space.joinWithShareConfig")}
+              </p>
+            </div>
+
             <div className="flex justify-center">
               <div className="p-3 bg-white rounded-xl">
                 <QRCodeSVG value={link} size={180} />

@@ -11,6 +11,7 @@ import type {
   PeerInfo,
   AclRule,
   PortForwardRule,
+  ShareInfo,
 } from "../types";
 import type { NetworkConfig } from "../types/network";
 
@@ -20,8 +21,10 @@ export async function createSpace(name: string, networkSecret: string, ownerId: 
   return invoke("create_space", { name, networkSecret, ownerId, description });
 }
 
-export async function joinSpace(networkName: string, networkSecret: string): Promise<Space> {
-  return invoke("join_space", { networkName, networkSecret });
+/** 加入空间：configJson 为含 network_name/network_secret 等字段的部分 easytier 配置 json，
+ *  缺省字段由后端按默认值补全后落库 */
+export async function joinSpace(configJson: string): Promise<Space> {
+  return invoke("join_space", { configJson });
 }
 
 export async function leaveSpace(spaceId: string): Promise<void> {
@@ -36,8 +39,12 @@ export async function listSpaces(): Promise<Space[]> {
   return invoke("list_spaces");
 }
 
-export async function generateShareLink(spaceId: string): Promise<string> {
-  return invoke("generate_share_link", { spaceId });
+export async function generateShareLink(spaceId: string, ip?: string): Promise<string> {
+  return invoke("generate_share_link", { spaceId, ip });
+}
+
+export async function parseShareLink(link: string): Promise<ShareInfo> {
+  return invoke("parse_share_link", { link });
 }
 
 export async function connectSpace(spaceId: string): Promise<void> {

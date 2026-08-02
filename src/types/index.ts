@@ -15,6 +15,17 @@ export interface Space {
   config_json?: string;
 }
 
+/** 分享链接信息（后端解密后返回） */
+export interface ShareInfo {
+  network_name: string;
+  network_secret: string;
+  host_hint?: string;
+  virtual_ip?: string;
+  dhcp?: boolean;
+  peer_urls?: string[];
+  listener_urls?: string[];
+}
+
 export interface Member {
   id: string;
   space_id: string;

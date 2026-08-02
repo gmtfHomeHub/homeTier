@@ -192,6 +192,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Init Android project
         run: pnpm tauri android init
+      - name: Inject camera permissions
+        run: bash scripts/mobile-permissions.sh
       - name: Build APK
         run: pnpm tauri android build --apk
       - name: Upload APK
@@ -226,6 +228,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Init iOS project
         run: pnpm tauri ios init
+      - name: Inject camera permissions
+        run: bash scripts/mobile-permissions.sh
       - name: Build iOS (no sign)
         run: pnpm tauri ios build --no-sign
       - name: Upload iOS app

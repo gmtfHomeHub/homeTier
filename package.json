@@ -32,6 +32,7 @@
     "i18next": "^23",
     "lucide-react": "^0.400",
     "qrcode.react": "^4",
+        "html5-qrcode": "^2",
     "react": "^18.3",
     "react-dom": "^18.3",
     "react-i18next": "^14",

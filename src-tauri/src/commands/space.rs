@@ -35,12 +35,13 @@ pub async fn create_space(
 
 #[tauri::command]
 pub async fn join_space(
-    network_name: String,
-    network_secret: String,
+    config_json: String,
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<Space, String> {
-    crate::log_info!(format!("加入空间: name={}", network_name));
-    space_manager.join(network_name, network_secret).await
+    crate::log_info!("命令: join_space");
+    let config = serde_json::from_str::<crate::easytier::config::NetworkConfig>(&config_json)
+        .map_err(|e| format!("配置 json 解析失败: {}", e))?;
+    space_manager.join(config).await
 }
 
 #[tauri::command]
@@ -83,20 +84,18 @@ pub async fn list_members(
 #[tauri::command]
 pub async fn generate_share_link(
     space_id: String,
+    ip: Option<String>,
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<String, String> {
-    let spaces = space_manager.list().await?;
-    let space = spaces.iter()
-        .find(|s| s.id.to_string() == space_id)
-        .ok_or_else(|| "Space not found".to_string())?;
-    Ok(space_manager.generate_share_link(space))
+    let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
+    space_manager.generate_share_link(&id, ip).await
 }
 
 #[tauri::command]
 pub async fn parse_share_link(
     link: String,
 ) -> Result<ShareInfo, String> {
-    SpaceManager::parse_share_link(&link)
+    crate::space::share::decrypt_share_link(&link)
 }
 
 #[tauri::command]

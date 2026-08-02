@@ -133,6 +133,14 @@ pub struct ShareInfo {
     pub network_name: String,
     pub network_secret: String,
     pub host_hint: Option<String>,
+    /// 为接收方分配的虚拟 IP（可选，来自分享者设置）
+    pub virtual_ip: Option<String>,
+    /// 是否启用 DHCP（来自分享者配置）
+    pub dhcp: Option<bool>,
+    /// 对端地址列表（来自分享者配置）
+    pub peer_urls: Vec<String>,
+    /// 监听地址列表（来自分享者配置）
+    pub listener_urls: Vec<String>,
 }
 
 /// ACL 规则（与 db/models.rs AclRuleRow 对齐）
