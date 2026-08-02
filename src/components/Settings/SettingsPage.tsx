@@ -3,13 +3,13 @@ import { LogViewer } from "../Log/LogViewer";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { EasyTierVersionManager } from "./EasyTierVersionManager";
 import { AppConfigEditor } from "./AppConfigEditor";
-import { Terminal, Palette, Languages, HelpCircle, Keyboard, FileCog, Network } from "lucide-react";
+import { Terminal, Palette, Languages, HelpCircle, Keyboard, FileCog, Network, Car } from "lucide-react";
 import { getSystemConfig, setSystemConfig, getLogEnabled, setLogEnabled as setLogEnabledApi } from "../../utils/api";
 import { applyGlobalShortcuts } from "../../services/shortcuts";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { NetworkConfig } from "../../types/network";
 import { useTranslation } from "react-i18next";
-import { Tabs, Tooltip, Button, TextField, Flex, Text, Switch, Card } from "@radix-ui/themes";
+import { Tabs, Tooltip, Button, TextField, Flex, Text, Switch, Card, Select } from "@radix-ui/themes";
 import { SettingTabEnum, LanguageEnum, ThemeEnum } from "../../enum";
 
 export function SettingsPage() {
@@ -118,7 +118,7 @@ export function SettingsPage() {
 
           {/* 内容区 */}
           <Tabs.Content value="basic" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 overflow-y-auto">
-            <div className="max-w-4xl mx-auto p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid max-w-4xl grid-cols-1 gap-4 p-4 mx-auto md:grid-cols-2">
               {/* 主题 */}
               <Card size="3">
                 <Flex align="center" justify="between" gap="3">
@@ -131,19 +131,15 @@ export function SettingsPage() {
                       <Text size="1" color="gray">{t("settings.themeDesc")}</Text>
                     </Flex>
                   </Flex>
-                  <Flex gap="2">
-                    {themeOptions.map((opt) => (
-                      <Button
-                        key={opt.value}
-                        onClick={() => setTheme(opt.value)}
-                        variant={theme === opt.value ? "solid" : "outline"}
-                        color={theme === opt.value ? "blue" : "gray"}
-                        size="2"
-                      >
-                        {opt.label}
-                      </Button>
-                    ))}
-                  </Flex>
+                    <Select.Root size="2" value={theme} onValueChange={setTheme}>
+                      <Select.Trigger />
+                      <Select.Content>
+                        {themeOptions.map((opt) => (
+                          <Select.Item key={opt.value} value={opt.value} title={opt.label}>{opt.label}</Select.Item>
+
+                        ))}
+                      </Select.Content>
+                    </Select.Root>
                 </Flex>
               </Card>
 
@@ -159,19 +155,15 @@ export function SettingsPage() {
                       <Text size="1" color="gray">{t("settings.languageDesc")}</Text>
                     </Flex>
                   </Flex>
-                  <Flex gap="2">
-                    {langOptions.map((opt) => (
-                      <Button
-                        key={opt.value}
-                        onClick={() => handleLanguageChange(opt.value)}
-                        variant={language === opt.value ? "solid" : "outline"}
-                        color={language === opt.value ? "blue" : "gray"}
-                        size="2"
-                      >
-                        {opt.label}
-                      </Button>
-                    ))}
-                  </Flex>
+                    <Select.Root size="2" value={language} onValueChange={handleLanguageChange}>
+                      <Select.Trigger />
+                      <Select.Content>
+                        {langOptions.map((opt) => (
+                          <Select.Item key={opt.value} value={opt.value} title={opt.label}>{opt.label}</Select.Item>
+
+                        ))}
+                      </Select.Content>
+                    </Select.Root>
                 </Flex>
               </Card>
 
@@ -284,11 +276,11 @@ export function SettingsPage() {
           </Tabs.Content>
 
           <Tabs.Content value="easytier" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 overflow-y-auto">
-            <div className="p-4 space-y-4">
+            <Card size="3" className="grid max-w-3xl grid-cols-1 gap-4 p-4 mx-auto my-4">
               <EasyTierConfigEditor
                 value={easytierConfig}
                 onChange={setEasytierConfig}
-                title={t("settings.systemConfig")}
+                // title={t("settings.systemConfig")}
               />
               <Flex justify="end" gap="2" pt="2" pb="8">
                 <Button
@@ -312,11 +304,13 @@ export function SettingsPage() {
                   {saving ? t("common.saving") : t("common.save")}
                 </Button>
               </Flex>
-            </div>
+            </Card>
           </Tabs.Content>
 
           <Tabs.Content value="config" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 overflow-y-auto">
+            <Card size="3" className="grid max-w-3xl grid-cols-1 gap-4 p-4 mx-auto my-4">
             <AppConfigEditor />
+            </Card>
           </Tabs.Content>
         </Tabs.Root>
       </div>

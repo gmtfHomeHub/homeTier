@@ -148,7 +148,7 @@ export function AppConfigEditor() {
         })}
       </div>
 
-      <Flex justify="end" gap="2" pt="2" pb="8">
+      <Flex justify="end" gap="2" pt="2">
         <Button variant="outline" size="2" onClick={handleReset}>
           <RefreshCw size={14} />
           {t("common.reset")}
