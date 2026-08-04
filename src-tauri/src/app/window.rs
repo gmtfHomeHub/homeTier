@@ -1,6 +1,7 @@
 //! 窗口显隐、激活辅助函数。原 lib.rs 中的 activate_main_window / toggle_window_visibility / ELEVATED 迁移至此。
 
 
+use std::sync::atomic::AtomicBool;
 use tauri::Manager;
 
 /// UAC / macOS 提权标记，用于检测当前进程是否通过提权启动

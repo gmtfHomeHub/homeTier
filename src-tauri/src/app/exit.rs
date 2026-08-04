@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use tauri::Manager;
 
-use crate::log_info;
+use crate::{log_info, log_warn};
 use crate::app::daemon;
 use crate::cleanup;
 
