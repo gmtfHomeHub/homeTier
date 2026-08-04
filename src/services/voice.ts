@@ -38,8 +38,8 @@ class VoiceService {
   private localTrack: MediaStreamTrack | null = null;
   private audioCtx: AudioContext | null = null;
   private localAnalyser: AnalyserNode | null = null;
-  private localBuffer: Uint8Array<ArrayBuffer> | null = null;
-  private remoteBuffer: Uint8Array<ArrayBuffer> | null = null;
+  private localBuffer: Uint8Array | null = null;
+  private remoteBuffer: Uint8Array | null = null;
   private peers = new Map<string, RemotePeer>();
   private unregister: (() => void) | null = null;
   private vadTimer: ReturnType<typeof setInterval> | null = null;

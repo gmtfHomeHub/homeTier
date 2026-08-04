@@ -16,6 +16,7 @@ use crate::platform::machine_id;
 use crate::easytier::config::NetworkConfig;
 use crate::server::ws::{ws_handler, ws_events_handler};
 use crate::server::AppState;
+use crate::types::FileInfo;
 
 pub fn cmd_router(app_state: Arc<AppState>) -> Router {
     Router::new()
@@ -1122,9 +1123,6 @@ async fn send_file_handler(
         Ok(p) => p,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     };
-    if peers.is_empty() {
-        return (StatusCode::BAD_REQUEST, "没有可用的 peers").into_response();
-    }
 
     // 写入临时文件（storage_dir/{file_id}.tmp），供 P2P 发送读取
     let file_id = uuid::Uuid::new_v4();
@@ -1146,38 +1144,58 @@ async fn send_file_handler(
         return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
     }
 
-    // P2P 发送给所有在线成员（复用同一 file_id）
-    let mut last_file_info = None;
-    let mut shared_file_id: Option<uuid::Uuid> = Some(file_id);
-    for (target_ip, target_port) in &peers {
-        match state
-            .file_manager
-            .send_file(
-                space_uuid,
-                sender_id,
-                tmp_path.clone(),
-                password.clone(),
-                target_ip,
-                *target_port,
-                shared_file_id,
-            )
-            .await
-        {
-            Ok(fi) => {
-                shared_file_id = Some(fi.id);
-                last_file_info = Some(fi);
-            }
-            Err(e) => {
-                let _ = std::fs::remove_file(&tmp_path);
-                return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
+    // 离线场景：无在线 peer 时仅服务器存储，接收方上线后通过信令 + HTTP 下载
+    let file_info = if peers.is_empty() {
+        let fi = FileInfo {
+            id: file_id,
+            space_id: space_uuid,
+            sender_id,
+            file_name: file_name.clone(),
+            file_size: body.len() as u64,
+            file_hash: Some(crate::crypto::sha256_hex(&body)),
+            mime_type: None,
+            is_compressed: false,
+            is_password_protected: password.is_some(),
+            storage_path: None,
+            created_at: chrono::Local::now(),
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        let _ = std::fs::remove_file(&tmp_path);
+        fi
+    } else {
+        // P2P 发送给所有在线成员（复用同一 file_id）
+        let mut last_file_info = None;
+        let mut shared_file_id: Option<uuid::Uuid> = Some(file_id);
+        for (target_ip, target_port) in &peers {
+            match state
+                .file_manager
+                .send_file(
+                    space_uuid,
+                    sender_id,
+                    tmp_path.clone(),
+                    password.clone(),
+                    target_ip,
+                    *target_port,
+                    shared_file_id,
+                )
+                .await
+            {
+                Ok(fi) => {
+                    shared_file_id = Some(fi.id);
+                    last_file_info = Some(fi);
+                }
+                Err(e) => {
+                    let _ = std::fs::remove_file(&tmp_path);
+                    return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
+                }
             }
         }
-    }
-    let _ = std::fs::remove_file(&tmp_path);
+        let _ = std::fs::remove_file(&tmp_path);
 
-    let file_info = match last_file_info {
-        Some(fi) => fi,
-        None => return (StatusCode::INTERNAL_SERVER_ERROR, "文件发送失败").into_response(),
+        match last_file_info {
+            Some(fi) => fi,
+            None => return (StatusCode::INTERNAL_SERVER_ERROR, "文件发送失败").into_response(),
+        }
     };
 
     // 保存到数据库
