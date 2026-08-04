@@ -32,20 +32,28 @@ pub async fn ws_handler(
     Path(space_id): Path<String>,
     State(app_state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, space_id, app_state))
+    ws.on_upgrade(move |socket| handle_socket(socket, Some(space_id), app_state))
 }
 
-async fn handle_socket(socket: WebSocket, space_id: String, app_state: Arc<AppState>) {
+/// 全局事件流端点：订阅所有空间事件（不按空间过滤），web 模式实时链路使用。
+pub async fn ws_events_handler(
+    ws: WebSocketUpgrade,
+    State(app_state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_socket(socket, None, app_state))
+}
+
+async fn handle_socket(socket: WebSocket, space_id: Option<String>, app_state: Arc<AppState>) {
     let event_bus = app_state.event_bus.clone();
     
     let (sender, mut receiver) = socket.split();
     let sender = Arc::new(Mutex::new(sender));
     
-    // 发送连接确认
-    {
+    // 发送连接确认（按空间端点才发）
+    if let Some(sid) = space_id.as_deref() {
         let mut s = sender.lock().await;
         let _ = s.send(Message::Text(serde_json::to_string(&WsMessage::Connected {
-            space_id: space_id.clone(),
+            space_id: sid.to_string(),
         }).unwrap().into())).await;
     }
 
@@ -56,7 +64,7 @@ async fn handle_socket(socket: WebSocket, space_id: String, app_state: Arc<AppSt
     let send_sender = sender.clone();
     let sender_task = tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
-            if event.space_id.as_deref() == Some(&space_id) || event.space_id.is_none() {
+            if space_id.is_none() || event.space_id.as_deref() == space_id.as_deref() {
                 if let Ok(text) = serde_json::to_string(&WsMessage::Event { event }) {
                     let mut s = send_sender.lock().await;
                     if s.send(Message::Text(text.into())).await.is_err() {

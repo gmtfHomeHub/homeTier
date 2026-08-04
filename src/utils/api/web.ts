@@ -511,6 +511,13 @@ export async function listApps(spaceId: string): Promise<SpaceApp[]> {
   return request<SpaceApp[]>(`/space/${spaceId}/apps`);
 }
 
+export async function shareApp(appId: string, targetSpaceId: string): Promise<SpaceApp> {
+  return request<SpaceApp>(`/space/${targetSpaceId}/apps/share`, {
+    method: "POST",
+    body: JSON.stringify({ appId, target_space_id: targetSpaceId }),
+  });
+}
+
 // ---- EasyTier 版本 ----
 export async function getEasyTierVersion(): Promise<string> {
   const res = await request<{ version: string }>("/system/binary-check");
@@ -555,4 +562,55 @@ export async function getLogEnabled(): Promise<boolean> {
 
 export async function setLogEnabled(_enabled: boolean): Promise<void> {
   return Promise.resolve();
+}
+
+// ---- 配置存储（P2P 分布式配置同步）----
+
+export interface ConfigFileMeta {
+  name: string;
+  version: number;
+  timestamp: number;
+  checksum?: string | null;
+}
+
+export interface ConfigFile extends ConfigFileMeta {
+  content: number[];
+}
+
+export async function getConfigVersion(name: string): Promise<ConfigFileMeta | null> {
+  return request<ConfigFileMeta>(`/config-store/${encodeURIComponent(name)}/version`);
+}
+
+export async function downloadConfig(name: string): Promise<ConfigFile | null> {
+  return request<ConfigFile>(`/config-store/${encodeURIComponent(name)}/download`);
+}
+
+export async function uploadConfig(
+  name: string,
+  version: number,
+  content: string,
+  timestamp: number,
+): Promise<void> {
+  await request("/config-store/upload", {
+    method: "POST",
+    body: JSON.stringify({ name, version, content, timestamp }),
+  });
+}
+
+export async function getRemoteConfigVersion(
+  ip: string,
+  name: string,
+): Promise<ConfigFileMeta | null> {
+  return request<ConfigFileMeta>(
+    `/config-store/remote/version?ip=${encodeURIComponent(ip)}&name=${encodeURIComponent(name)}`,
+  );
+}
+
+export async function downloadRemoteConfig(
+  ip: string,
+  name: string,
+): Promise<ConfigFile | null> {
+  return request<ConfigFile>(
+    `/config-store/remote/download?ip=${encodeURIComponent(ip)}&name=${encodeURIComponent(name)}`,
+  );
 }

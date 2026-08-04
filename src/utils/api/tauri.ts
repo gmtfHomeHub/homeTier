@@ -237,6 +237,10 @@ export async function listApps(spaceId: string): Promise<SpaceApp[]> {
   return invoke("list_apps", { spaceId });
 }
 
+export async function shareApp(appId: string, targetSpaceId: string): Promise<SpaceApp> {
+  return invoke("share_app", { appId, targetSpaceId });
+}
+
 export async function isDaemonReady(): Promise<boolean> {
   return invoke("is_daemon_ready");
 }
@@ -351,4 +355,60 @@ export async function updatePortForwardRule(
 
 export async function deletePortForwardRule(spaceId: string, ruleId: string): Promise<void> {
   return invoke("delete_port_forward_rule", { spaceId, ruleId });
+}
+// ---- 配置存储（P2P 分布式配置同步）----
+
+export interface ConfigFileMeta {
+  name: string;
+  version: number;
+  timestamp: number;
+  checksum?: string | null;
+}
+
+export interface ConfigFile extends ConfigFileMeta {
+  content: number[];
+}
+
+export async function getConfigVersion(name: string): Promise<ConfigFileMeta | null> {
+  return invoke<ConfigFileMeta | null>("get_config_version", { name });
+}
+
+export async function downloadConfig(name: string): Promise<ConfigFile | null> {
+  return invoke<ConfigFile | null>("download_config", { name });
+}
+
+export async function uploadConfig(
+  name: string,
+  version: number,
+  content: string,
+  timestamp: number,
+): Promise<void> {
+  await invoke("upload_config", { name, version, content, timestamp });
+}
+
+export async function getRemoteConfigVersion(
+  ip: string,
+  name: string,
+): Promise<ConfigFileMeta | null> {
+  return invoke<ConfigFileMeta | null>("get_remote_config_version", { ip, name });
+}
+
+export async function downloadRemoteConfig(
+  ip: string,
+  name: string,
+): Promise<ConfigFile | null> {
+  return invoke<ConfigFile | null>("download_remote_config", { ip, name });
+}
+
+export async function uploadRemoteConfig(
+  ip: string,
+  name: string,
+  version: number,
+  content: string,
+  timestamp: number,
+): Promise<boolean> {
+  return invoke<boolean>("store_remote_config", {
+    ip,
+    file: { name, version, content, timestamp, checksum: null },
+  });
 }

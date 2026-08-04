@@ -99,6 +99,7 @@ export const addApp = impl.addApp;
 export const updateApp = impl.updateApp;
 export const deleteApp = impl.deleteApp;
 export const listApps = impl.listApps;
+export const shareApp = impl.shareApp;
 
 export const isDaemonReady = impl.isDaemonReady;
 export const getDaemonErrorReason = impl.getDaemonErrorReason;

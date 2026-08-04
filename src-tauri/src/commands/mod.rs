@@ -1,6 +1,7 @@
 pub mod app;
 pub mod chat;
 pub mod config;
+pub mod config_store;
 pub mod daemon;
 pub mod easytier;
 pub mod file;

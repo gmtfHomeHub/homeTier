@@ -14,7 +14,7 @@ use tower_http::services::ServeDir;
 use crate::chat::message::ChatMessage;
 use crate::platform::machine_id;
 use crate::easytier::config::NetworkConfig;
-use crate::server::ws::ws_handler;
+use crate::server::ws::{ws_handler, ws_events_handler};
 use crate::server::AppState;
 
 pub fn cmd_router(app_state: Arc<AppState>) -> Router {
@@ -43,6 +43,7 @@ pub fn cmd_router(app_state: Arc<AppState>) -> Router {
         .route("/space/:space_id/port-forwards/delete", post(delete_port_forward_rule_handler))
         // 应用管理
         .route("/space/:space_id/apps", get(list_apps_handler).post(add_app_handler))
+        .route("/space/:space_id/apps/share", post(share_app_handler))
         .route("/space/:space_id/apps/update", post(update_app_handler))
         .route("/space/:space_id/apps/delete", post(delete_app_handler))
         // 聊天
@@ -60,6 +61,12 @@ pub fn cmd_router(app_state: Arc<AppState>) -> Router {
         .route("/config/app", get(get_app_config_handler).post(set_app_config_handler))
         .route("/config/path", get(get_config_path_handler))
         .route("/config/template-path", get(get_config_template_path_handler))
+        // 配置存储（P2P 分布式配置同步）
+        .route("/config-store/:name/version", get(get_config_version_handler))
+        .route("/config-store/:name/download", get(download_config_handler))
+        .route("/config-store/upload", post(upload_config_handler))
+        .route("/config-store/remote/version", get(get_remote_config_version_handler))
+        .route("/config-store/remote/download", get(download_remote_config_handler))
         // 系统信息
         .route("/system/version", get(get_app_version_handler))
         .route("/system/binary-check", get(check_easytier_binary_handler))
@@ -80,6 +87,7 @@ pub fn cmd_router(app_state: Arc<AppState>) -> Router {
         .route("/file/progress", get(get_transfer_progress_handler))
         // WebSocket
         .route("/ws/signal/:space_id", get(ws_handler))
+        .route("/ws/events", get(ws_events_handler))
         .with_state(app_state)
 }
 
@@ -1030,6 +1038,64 @@ async fn list_apps_handler(
     }
 }
 
+async fn share_app_handler(
+    State(state): State<Arc<AppState>>,
+    Path(_space_id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let app_id = body["app_id"].as_str().unwrap_or("").to_string();
+    let target_space_id = body["target_space_id"].as_str().unwrap_or("").to_string();
+    if app_id.is_empty() || target_space_id.is_empty() {
+        return (StatusCode::BAD_REQUEST, "缺少 app_id/target_space_id").into_response();
+    }
+    let caller_id = state
+        .db
+        .get_user_id()
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "anonymous".to_string());
+    let apps = match state.db.list_apps_by_created(&app_id, &caller_id) {
+        Ok(a) => a,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    };
+    if apps.is_empty() {
+        return (StatusCode::FORBIDDEN, "无权限分享或应用不存在").into_response();
+    }
+    let source = &apps[0];
+    // 目标空间必须存在
+    let spaces = match state.space_manager.list().await {
+        Ok(s) => s,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    };
+    if !spaces.iter().any(|s| s.id.to_string() == target_space_id) {
+        return (StatusCode::NOT_FOUND, "目标空间不存在").into_response();
+    }
+    // 目标空间已存在同名应用则跳过
+    if let Ok(existing) = state.db.list_apps(&target_space_id) {
+        if existing.iter().any(|a| a.name == source.name) {
+            return (StatusCode::CONFLICT, "目标空间已存在同名应用").into_response();
+        }
+    }
+    let app = crate::db::models::AppRow {
+        id: uuid::Uuid::new_v4().to_string(),
+        space_id: target_space_id,
+        name: source.name.clone(),
+        category: source.category.clone(),
+        icon: source.icon.clone(),
+        protocol: source.protocol.clone(),
+        hostname: source.hostname.clone(),
+        port: source.port.clone(),
+        pathname: source.pathname.clone(),
+        sort_order: source.sort_order,
+        created_by: caller_id,
+        created_at: chrono::Local::now().to_rfc3339(),
+    };
+    match state.db.insert_app(&app) {
+        Ok(()) => Json(app).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    }
+}
+
 // ---- File Transfer (Web 模式：服务器中转) ----
 
 /// POST /file/send?space_id=..&file_name=..&password=..
@@ -1289,7 +1355,18 @@ async fn send_signal_handler(
     let sender_id = machine_id::get_machine_id()
         .map(|s| Uuid::parse_str(&s).unwrap_or(Uuid::nil()))
         .unwrap_or(Uuid::nil());
-    let msg = ChatMessage::text(id, sender_id, "server".to_string(), payload);
+    let sender_name = gethostname::gethostname().to_string_lossy().to_string();
+    let space = state.space_manager.spaces.read().await
+        .iter()
+        .find(|s| s.id == id)
+        .cloned()
+        .ok_or_else(|| "Space not found".to_string());
+    let space = match space {
+        Ok(s) => s,
+        Err(e) => return (StatusCode::NOT_FOUND, e).into_response(),
+    };
+    let mut msg = ChatMessage::signal(id, sender_id, sender_name, payload);
+    msg.sign(&space.network_secret);
     match state.space_manager.send_signal_to(&id, target.as_deref().unwrap_or(""), &msg).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
@@ -1328,10 +1405,94 @@ async fn get_config_path_handler() -> impl IntoResponse {
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
 }
-
 async fn get_config_template_path_handler() -> impl IntoResponse {
     match crate::commands::config::get_config_template_path() {
         Ok(path) => Json(serde_json::json!({ "path": path })).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    }
+}
+
+// ---- Config Store（P2P 分布式配置同步）----
+async fn get_config_version_handler(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    match state.config_store.store.get_meta(&name) {
+        Some(meta) => Json(meta).into_response(),
+        None => (StatusCode::NOT_FOUND, "配置不存在").into_response(),
+    }
+}
+
+async fn download_config_handler(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    match state.config_store.store.get_file(&name) {
+        Ok(Some(file)) => Json(file).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, "配置不存在").into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+async fn upload_config_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let name = body["name"].as_str().unwrap_or("").to_string();
+    let version = body["version"].as_u64().unwrap_or(0) as u32;
+    let timestamp = body["timestamp"].as_u64().unwrap_or(0);
+    let content = body["content"]
+        .as_str()
+        .map(|s| s.as_bytes().to_vec())
+        .unwrap_or_default();
+    if name.is_empty() {
+        return (StatusCode::BAD_REQUEST, "缺少 name").into_response();
+    }
+    let file = crate::config_store::ConfigFile {
+        name,
+        version,
+        content,
+        timestamp,
+        checksum: None,
+    };
+    state.config_store.store_local(file);
+    StatusCode::NO_CONTENT.into_response()
+}
+
+async fn get_remote_config_version_handler(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let ip = params.get("ip").cloned().unwrap_or_default();
+    let name = params.get("name").cloned().unwrap_or_default();
+    if ip.is_empty() || name.is_empty() {
+        return (StatusCode::BAD_REQUEST, "缺少 ip/name").into_response();
+    }
+    let remote = crate::config_store::client::RemoteStore::new(
+        &ip,
+        crate::config_store::DEFAULT_PORT,
+    );
+    match remote.query_version(&name).await {
+        Ok(Some(meta)) => Json(meta).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, "远端配置不存在").into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    }
+}
+
+async fn download_remote_config_handler(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let ip = params.get("ip").cloned().unwrap_or_default();
+    let name = params.get("name").cloned().unwrap_or_default();
+    if ip.is_empty() || name.is_empty() {
+        return (StatusCode::BAD_REQUEST, "缺少 ip/name").into_response();
+    }
+    let remote = crate::config_store::client::RemoteStore::new(
+        &ip,
+        crate::config_store::DEFAULT_PORT,
+    );
+    match remote.request_file(&name).await {
+        Ok(Some(file)) => Json(file).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, "远端配置不存在").into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
 }

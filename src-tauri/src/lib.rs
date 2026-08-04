@@ -3,6 +3,7 @@ pub mod commands;
 pub mod chat;
 pub mod cleanup;
 pub mod config;
+pub mod config_store;
 pub mod crypto;
 pub mod daemon;
 pub mod db;
@@ -84,7 +85,8 @@ pub fn run() -> std::process::ExitCode {
             commands::app::add_app,
             commands::app::update_app,
             commands::app::delete_app,
-            commands::app::list_apps,
+             commands::app::list_apps,
+             commands::app::share_app,
             commands::config::get_app_config,
             commands::config::set_app_config,
             commands::config::get_config_file_path,
@@ -109,7 +111,15 @@ pub fn run() -> std::process::ExitCode {
             commands::network_port_forwards::get_port_forward_rules,
             commands::network_port_forwards::create_port_forward_rule,
             commands::network_port_forwards::update_port_forward_rule,
-            commands::network_port_forwards::delete_port_forward_rule,
+             commands::network_port_forwards::delete_port_forward_rule,
+             commands::config_store::get_config_version,
+             commands::config_store::download_config,
+             commands::config_store::upload_config,
+             commands::config_store::list_config_versions,
+             commands::config_store::clear_config_store,
+             commands::config_store::get_remote_config_version,
+             commands::config_store::download_remote_config,
+             commands::config_store::store_remote_config,
         ])
         .on_window_event(|_win, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -283,6 +293,13 @@ pub fn run_server(
             ipc_client,
         ));
 
+        // 配置存储服务：本地队列 + TCP 监听（P2P 分布式配置同步）
+        let config_store_root = data_dir.join("config_store");
+        if let Err(e) = std::fs::create_dir_all(&config_store_root) {
+            log_error!("[config_store] 初始化存储目录失败: {}", e);
+        }
+        let config_store = crate::config_store::ConfigStoreService::new(config_store_root);
+
         let app_state = Arc::new(crate::server::AppState {
             db,
             space_manager,
@@ -293,6 +310,47 @@ pub fn run_server(
             proxy_server,
             file_manager,
             file_registry,
+            config_store: Arc::clone(&config_store),
+        });
+
+        // 消息监听任务：轮询各空间聊天服务器，将 EasyTier 网络收到的
+        // 远端消息（含 WebRTC 信令）签名校验后广播到 event_bus，供 WebSocket 客户端订阅。
+        let msg_space_manager = Arc::clone(&app_state.space_manager);
+        let msg_event_bus = Arc::clone(&app_state.event_bus);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
+            loop {
+                interval.tick().await;
+                let servers = msg_space_manager.chat_servers.read().await;
+                for (space_id, server) in servers.iter() {
+                    let messages = server.drain_messages().await;
+                    for msg in messages {
+                        let spaces = msg_space_manager.spaces.read().await;
+                        if let Some(space) = spaces.iter().find(|s| &s.id == space_id) {
+                            if msg.verify(&space.network_secret) {
+                                let event = crate::server::event::ServerEvent::new(
+                                    crate::server::event::EventType::MessageSent,
+                                    Some(space_id.to_string()),
+                                    serde_json::json!({ "message": msg }),
+                                );
+                                msg_event_bus.broadcast(event).await;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // 配置存储 TCP 服务（独立任务）
+        let serve_config_store = Arc::clone(&config_store);
+        let cs_app_state = Arc::clone(&app_state);
+        tokio::spawn(async move {
+            let port = cs_app_state
+                .config
+                .get_u16("CONFIG_STORE_PORT", crate::config_store::DEFAULT_PORT);
+            if let Err(e) = serve_config_store.serve(port).await {
+                log_error!(format!("[config_store] TCP 服务退出: {}", e));
+            }
         });
 
         crate::server::start_server(

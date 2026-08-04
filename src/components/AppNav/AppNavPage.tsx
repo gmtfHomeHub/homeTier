@@ -1,6 +1,6 @@
 import { useEffect, useState, Fragment } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Edit3, Trash2 } from "lucide-react";
+import { Plus, Edit3, Trash2, Share2 } from "lucide-react";
 import { Button, Flex, Card, Text, Box } from "@radix-ui/themes";
 import { Icon } from "@iconify/react";
 import { useNavigate } from "react-router-dom";
@@ -9,6 +9,7 @@ import { useAppTabsStore } from "../../stores/appTabsStore";
 import type { SpaceApp, Space } from "../../types";
 import { SpaceStatus } from '../../enum';
 import { AppFormDialog } from "./AppFormDialog";
+import { ShareAppDialog } from "./ShareAppDialog";
 import { toastError } from "../../utils/toast";
 
 interface AppNavPageProps {
@@ -24,6 +25,7 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
   const [editing, setEditing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editApp, setEditApp] = useState<SpaceApp | null>(null);
+  const [shareApp, setShareApp] = useState<SpaceApp | null>(null);
 
   const isRunning = space?.status === SpaceStatus.CED;
 
@@ -67,6 +69,10 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
     setShowForm(false);
     setEditApp(null);
     loadApps();
+  };
+
+  const handleShare = (app: SpaceApp) => () => {
+    setShareApp(app);
   };
 
   const openApp = (app: SpaceApp) => () => {
@@ -165,6 +171,9 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
                             <Button onClick={() => handleEdit(app)} variant="ghost" size="1">
                               <Edit3 size={12} />
                             </Button>
+                            <Button onClick={handleShare(app)} variant="ghost" size="1" title={t("common.shareApp")}>
+                              <Share2 size={12} />
+                            </Button>
                             <Button onClick={() => handleDelete(app.id)} variant="ghost" color="red" size="1">
                               <Trash2 size={12} />
                             </Button>
@@ -202,6 +211,15 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
           existingCategories={existingCategories}
           onClose={() => setShowForm(false)}
           onSubmit={handleFormSubmit}
+        />
+      )}
+
+      {shareApp && (
+        <ShareAppDialog
+          app={shareApp}
+          currentSpaceId={space.id}
+          onClose={() => setShareApp(null)}
+          onShared={loadApps}
         />
       )}
     </div>
