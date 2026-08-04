@@ -25,37 +25,37 @@ pub fn cmd_router(app_state: Arc<AppState>) -> Router {
         .route("/space/create", post(create_space_handler))
         .route("/space/join", post(join_space_handler))
         .route("/space/list", get(list_spaces_handler))
-        .route("/space/:space_id", get(get_space_handler).delete(delete_space_handler))
-        .route("/space/:space_id/leave", post(leave_space_handler))
-        .route("/space/:space_id/connect", post(connect_space_handler))
-        .route("/space/:space_id/disconnect", post(disconnect_space_handler))
-        .route("/space/:space_id/status", get(space_status_handler))
-        .route("/space/:space_id/members", get(list_members_handler))
-        .route("/space/:space_id/config", get(get_space_config_handler).post(update_space_config_handler))
-        .route("/space/:space_id/config/patch", post(patch_space_config_handler))
-        .route("/space/:space_id/share", post(generate_share_link_handler))
+        .route("/space/{space_id}", get(get_space_handler).delete(delete_space_handler))
+        .route("/space/{space_id}/leave", post(leave_space_handler))
+        .route("/space/{space_id}/connect", post(connect_space_handler))
+        .route("/space/{space_id}/disconnect", post(disconnect_space_handler))
+        .route("/space/{space_id}/status", get(space_status_handler))
+        .route("/space/{space_id}/members", get(list_members_handler))
+        .route("/space/{space_id}/config", get(get_space_config_handler).post(update_space_config_handler))
+        .route("/space/{space_id}/config/patch", post(patch_space_config_handler))
+        .route("/space/{space_id}/share", post(generate_share_link_handler))
         .route("/space/share/parse", post(parse_share_link_handler))
-        .route("/space/:space_id/signal", post(send_signal_handler))
-        .route("/space/:space_id/acl", get(get_acl_rules_handler).post(create_acl_rule_handler))
-        .route("/space/:space_id/acl/update", post(update_acl_rule_handler))
-        .route("/space/:space_id/acl/delete", post(delete_acl_rule_handler))
-        .route("/space/:space_id/port-forwards", get(get_port_forward_rules_handler).post(create_port_forward_rule_handler))
-        .route("/space/:space_id/port-forwards/update", post(update_port_forward_rule_handler))
-        .route("/space/:space_id/port-forwards/delete", post(delete_port_forward_rule_handler))
+        .route("/space/{space_id}/signal", post(send_signal_handler))
+        .route("/space/{space_id}/acl", get(get_acl_rules_handler).post(create_acl_rule_handler))
+        .route("/space/{space_id}/acl/update", post(update_acl_rule_handler))
+        .route("/space/{space_id}/acl/delete", post(delete_acl_rule_handler))
+        .route("/space/{space_id}/port-forwards", get(get_port_forward_rules_handler).post(create_port_forward_rule_handler))
+        .route("/space/{space_id}/port-forwards/update", post(update_port_forward_rule_handler))
+        .route("/space/{space_id}/port-forwards/delete", post(delete_port_forward_rule_handler))
         // 应用管理
-        .route("/space/:space_id/apps", get(list_apps_handler).post(add_app_handler))
-        .route("/space/:space_id/apps/share", post(share_app_handler))
-        .route("/space/:space_id/apps/update", post(update_app_handler))
-        .route("/space/:space_id/apps/delete", post(delete_app_handler))
+        .route("/space/{space_id}/apps", get(list_apps_handler).post(add_app_handler))
+        .route("/space/{space_id}/apps/share", post(share_app_handler))
+        .route("/space/{space_id}/apps/update", post(update_app_handler))
+        .route("/space/{space_id}/apps/delete", post(delete_app_handler))
         // 聊天
-        .route("/chat/:space_id/history", get(get_message_history_handler))
-        .route("/chat/:space_id/send", post(send_message_handler))
+        .route("/chat/{space_id}/history", get(get_message_history_handler))
+        .route("/chat/{space_id}/send", post(send_message_handler))
         // 网络
-        .route("/network/:space_id/stats", get(get_network_stats_handler))
-        .route("/network/:space_id/peers", get(get_space_peers_handler))
+        .route("/network/{space_id}/stats", get(get_network_stats_handler))
+        .route("/network/{space_id}/peers", get(get_space_peers_handler))
         // 日志
         .route("/log/list", get(get_logs_handler))
-        .route("/log/space/:space_id", get(get_space_logs_handler))
+        .route("/log/space/{space_id}", get(get_space_logs_handler))
         .route("/log/clear", post(clear_logs_handler))
         // 配置
         .route("/config/system", get(get_system_config_handler).post(set_system_config_handler))
@@ -63,8 +63,8 @@ pub fn cmd_router(app_state: Arc<AppState>) -> Router {
         .route("/config/path", get(get_config_path_handler))
         .route("/config/template-path", get(get_config_template_path_handler))
         // 配置存储（P2P 分布式配置同步）
-        .route("/config-store/:name/version", get(get_config_version_handler))
-        .route("/config-store/:name/download", get(download_config_handler))
+        .route("/config-store/{name}/version", get(get_config_version_handler))
+        .route("/config-store/{name}/download", get(download_config_handler))
         .route("/config-store/upload", post(upload_config_handler))
         .route("/config-store/remote/version", get(get_remote_config_version_handler))
         .route("/config-store/remote/download", get(download_remote_config_handler))
@@ -81,13 +81,13 @@ pub fn cmd_router(app_state: Arc<AppState>) -> Router {
         .route("/easytier/upgrade", post(upgrade_easytier_handler))
         // 文件传输
         .route("/file/send", post(send_file_handler))
-        .route("/file/:space_id/download/:file_id", get(receive_file_handler))
+        .route("/file/{space_id}/download/{file_id}", get(receive_file_handler))
         .route("/file/record", post(record_received_file_handler))
         .route("/file/delete", post(delete_file_handler))
-        .route("/space/:space_id/file/list", get(list_files_handler))
+        .route("/space/{space_id}/file/list", get(list_files_handler))
         .route("/file/progress", get(get_transfer_progress_handler))
         // WebSocket
-        .route("/ws/signal/:space_id", get(ws_handler))
+        .route("/ws/signal/{space_id}", get(ws_handler))
         .route("/ws/events", get(ws_events_handler))
         .with_state(app_state)
 }
@@ -1235,7 +1235,7 @@ async fn send_file_handler(
     .into_response()
 }
 
-/// GET /file/:space_id/download/:file_id
+/// GET /file/{space_id}/download/{file_id}
 /// 返回服务器本地保存的文件字节（Web 端浏览器直接下载）
 async fn receive_file_handler(
     State(state): State<Arc<AppState>>,
@@ -1516,5 +1516,15 @@ async fn download_remote_config_handler(
 }
 
 pub fn static_file_handler(static_dir: String) -> axum::Router {
-    Router::new().fallback_service(ServeDir::new(static_dir))
+    use axum::routing::any;
+
+    // 优先使用嵌入式 dist（编译时嵌入，无运行时依赖）；
+    // 若 dist/ 不存在于嵌入中，回退到 ServeDir 文件系统。
+    if std::path::Path::new(&static_dir).exists() {
+        Router::new().fallback_service(ServeDir::new(static_dir))
+    } else {
+        Router::new().fallback(any(|uri: axum::http::Uri| async move {
+            crate::server::assets::serve_embedded(uri)
+        }))
+    }
 }

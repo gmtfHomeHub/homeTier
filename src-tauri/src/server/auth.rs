@@ -113,6 +113,12 @@ pub fn is_static_resource(path: &str) -> bool {
             return true;
         }
     }
+    // SPA 前端路由（如 /space/:id、/settings）无文件扩展名，
+    // 放行给 static_file_handler 返回 index.html（客户端路由渲染）。
+    // 但 /api/ 与 /ws/ 路径必须校验 cookie。
+    if !path.contains('.') && !path.starts_with("/api/") && !path.starts_with("/ws/") {
+        return true;
+    }
     false
 }
 

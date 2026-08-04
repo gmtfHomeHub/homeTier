@@ -57,6 +57,8 @@ aes-gcm = "0.10"
 pbkdf2 = { version = "0.12", features = ["hmac"] }
 rand = "0.8"
 flate2 = "1"
+# 静态资源嵌入 (server mode) — include_dir compile-time macro 在编译时嵌入 dist/ 目录
+include_dir = "0.7"
 tar = "0.4"
 zip = "4"
 futures-util = "0.3"
@@ -120,8 +122,11 @@ security-framework-sys = "2.9"
 objc2-app-kit = "0.3.2"
 
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
-# Mobile-specific dependencies will be added as needed
+# 移动端桩代码：voice/screen 返回 None，Tauri 2 通过 cfg 条件编译。
+# 完整 Android build 需额外 tauri-android / tauri-ios crates（platform native linking），
+# 由 tauri-cli 在 build 时自动注入，无需在此声明。
 
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+# 无 feature 开关 — include_dir 始终可用，static_file_handler 自动检测 dist/ 存在与否

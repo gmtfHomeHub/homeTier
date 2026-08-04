@@ -26,6 +26,8 @@ pub mod event;
 pub mod routes;
 pub mod ws;
 
+pub mod assets;
+
 pub const SERVER_CONF_TEMPLATE: &str = r#"# homeTier 服务器模式配置
 # 初次启动自动生成；修改保存后热更新生效（自动检测 mtime）。
 
@@ -33,7 +35,7 @@ pub const SERVER_CONF_TEMPLATE: &str = r#"# homeTier 服务器模式配置
 SERVER_BIND=0.0.0.0
 SERVER_PORT=9339
 
-# 前端静态资源目录（相对于运行目录或绝对路径）
+# 前端静态资源目录（相对于运行目录或绝对路径；目录不存在时自动回退到编译时嵌入的 dist）
 SERVER_STATIC_DIR=./dist
 
 # TLS（cert/key 均为 PEM 格式文件路径，留空则纯 HTTP）
@@ -105,11 +107,12 @@ pub fn init_proxy_server() -> Arc<ProxyServer> {
 fn cors_layer(config: &AppConfig) -> CorsLayer {
     let origin = config.get_str("SERVER_CORS_ORIGIN", "*");
     if origin == "*" {
+        // tower-http: allow_origin(Any) 与 allow_credentials(true) 组合会 panic，
+        // 通配时只允许任意来源（浏览器同源请求不受影响，跨域场景需显式配置来源列表）
         CorsLayer::new()
             .allow_origin(Any)
             .allow_methods(Any)
             .allow_headers(Any)
-            .allow_credentials(true)
     } else {
         let origins: Vec<_> = origin
             .split(',')
