@@ -19,7 +19,7 @@ import { Theme } from "@radix-ui/themes";
 import { isDaemonReady, getDaemonErrorReason } from "./utils/api";
 import { listen } from "@tauri-apps/api/event";
 import { initRealtime } from "./services/realtime";
-import { applyGlobalShortcuts } from "./services/shortcuts";
+import { applyGlobalShortcuts, handleShortcutPress } from "./services/shortcuts";
 import { registerSignalHandler, resolveMember } from "./services/signal";
 import * as api from "./utils/api";
 import { useFileStore } from "./stores/fileStore";
@@ -139,6 +139,16 @@ export default function App() {
       console.error("[shortcuts] init failed:", e)
     );
 
+    // Web 模式无全局快捷键插件，降级为页面内 Ctrl+M / Ctrl+T
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      const key = e.key.toLowerCase();
+      if (key === "m") handleShortcutPress("Ctrl+M");
+      else if (key === "t") handleShortcutPress("Ctrl+T");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    const removeKeyDown = () => window.removeEventListener("keydown", onKeyDown);
+
     // 文件信令：收到 "sent" 时落库并刷新文件列表
     const unregisterFileSignal = registerSignalHandler("file", async (spaceId, env) => {
       if (env.type !== "sent") return;
@@ -174,6 +184,7 @@ export default function App() {
       cancelled = true;
       unregisterFileSignal();
       unlisten?.();
+      removeKeyDown();
     };
   }, [appReady]);
 

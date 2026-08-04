@@ -9,6 +9,7 @@ use uuid::Uuid;
 /// 提供文件上传（PUT）与下载（GET）。上传数据流式写入磁盘，下载流式返回，
 /// 支持任意大小文件。
 pub struct FileServer {
+    #[allow(dead_code)]
     space_id: Uuid,
     port: u16,
     running: Arc<RwLock<bool>>,
@@ -115,18 +116,16 @@ async fn handle_connection(mut stream: tokio::net::TcpStream, storage_dir: PathB
     use tokio::io::AsyncWriteExt;
 
     let mut header_buf = Vec::with_capacity(4096);
-    let mut header_end: Option<usize> = None;
 
     // 读取请求头直到 \r\n\r\n
-    loop {
+    let header_end = loop {
         let mut chunk = [0u8; 4096];
         match stream.read(&mut chunk).await {
             Ok(0) => return,
             Ok(n) => {
                 header_buf.extend_from_slice(&chunk[..n]);
                 if let Some(pos) = find_header_end(&header_buf) {
-                    header_end = Some(pos);
-                    break;
+                    break Some(pos);
                 }
                 if header_buf.len() > 64 * 1024 {
                     return;
@@ -134,7 +133,7 @@ async fn handle_connection(mut stream: tokio::net::TcpStream, storage_dir: PathB
             }
             Err(_) => return,
         }
-    }
+    };
 
     let header_end = match header_end {
         Some(pos) => pos,

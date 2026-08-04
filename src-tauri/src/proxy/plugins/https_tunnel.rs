@@ -6,7 +6,7 @@ use hyper::body::Bytes;
 use hyper::upgrade::OnUpgrade;
 use hyper_util::rt::TokioIo;
 
-use crate::proxy::plugin::{ProxyHandler, ProxyResponse, RequestContext};
+use crate::proxy::plugin::{ProxyHandler, ProxyResponse};
 
 /// HTTPS CONNECT tunnel plugin.
 pub struct HttpsTunnelPlugin;

@@ -1,7 +1,6 @@
-use std::sync::Arc;
 use tauri::State;
 use crate::daemon::{client::IpcClient, ipc::IpcResponse};
-use crate::DaemonReadyState;
+use crate::app::daemon::DaemonReadyState;
 
 #[tauri::command]
 pub fn is_daemon_ready(ready_state: State<'_, DaemonReadyState>) -> bool {

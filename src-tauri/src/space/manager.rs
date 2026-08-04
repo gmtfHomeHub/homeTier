@@ -343,7 +343,7 @@ Self {
             .ok_or_else(|| "Space not found".to_string())?;
 
         let existing_config = self.db.get_space_config(&space_id.to_string()).ok().flatten();
-        if let Some(ref cfg) = existing_config {
+        if let Some(_cfg) = existing_config {
             crate::log_info!("connect: 从 DB 加载历史配置", &space_id.to_string());
         } else {
             crate::log_info!("connect: 无历史配置，使用默认配置", &space_id.to_string());
@@ -553,7 +553,7 @@ Self {
         const RETRY_DELAYS: &[u64] = &[1, 2, 3, 5, 7, 10, 10];
         let max_retries = RETRY_DELAYS.len();
 
-        let virtual_ip = {
+        let _virtual_ip = {
             let mut retries = 0;
             loop {
                 if cancel_token.is_cancelled() {
@@ -606,7 +606,7 @@ Self {
             }
         };
 
-        let my_chat_port = 18000 + (space_id.as_u128() % 1000) as u16;
+        let _my_chat_port = 18000 + (space_id.as_u128() % 1000) as u16;
 
         // 获取 peer 列表（通过 RPC）
         let peer_list = self.get_peers(space_id).await?;
@@ -720,7 +720,7 @@ Self {
             Err(e) => return Err(format!("读取空间配置失败: {}", e)),
         };
 
-        let mut config = base_config;
+        let config = base_config;
 
         Ok(config)
     }

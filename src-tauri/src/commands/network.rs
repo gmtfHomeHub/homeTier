@@ -39,7 +39,7 @@ pub async fn get_network_stats(
 #[tauri::command]
 pub async fn update_group_config(
     space_id: String,
-    config: NetworkConfig,
+    _config: NetworkConfig,
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<(), String> {
     let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;

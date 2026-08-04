@@ -4,7 +4,6 @@ use tokio::sync::RwLock;
 use webrtc::api::APIBuilder;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
-use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::RTCPeerConnection;
@@ -39,6 +38,7 @@ pub struct VoiceEngine {
 
 #[derive(Clone)]
 struct WebRtcPeer {
+    #[allow(dead_code)]
     peer_id: String,
     pc: Option<Arc<RTCPeerConnection>>,
 }
@@ -84,7 +84,7 @@ impl VoiceEngine {
             };
 
             // 注册 ICE 候选回调
-            let pc_ice = peer_connection.clone();
+            let _pc_ice = peer_connection.clone();
             peer_connection.on_ice_candidate(Box::new(move |c: Option<RTCIceCandidate>| {
                 if let Some(candidate) = c {
                     let cand_json = candidate.to_json().unwrap_or_default();

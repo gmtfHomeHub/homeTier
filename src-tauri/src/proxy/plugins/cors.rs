@@ -3,7 +3,7 @@ use http_body_util::Full;
 use hyper::body::{Bytes, Incoming};
 use hyper::{Method, Request, Response, StatusCode};
 
-use crate::proxy::plugin::{ProxyPlugin, ProxyResponse, RequestContext, ResponseBody};
+use crate::proxy::plugin::{ProxyPlugin, ProxyResponse, RequestContext};
 
 pub struct CorsPlugin {
     allowed_origins: String,

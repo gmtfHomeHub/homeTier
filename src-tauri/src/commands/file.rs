@@ -134,7 +134,7 @@ pub async fn delete_file(
 pub async fn list_files(
     space_id: String,
     limit: Option<u32>,
-    db: State<'_, Arc<Database>>,
+    _db: State<'_, Arc<Database>>,
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<Vec<FileInfo>, String> {
     // 从数据库查询

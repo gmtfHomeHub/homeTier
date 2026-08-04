@@ -37,7 +37,9 @@ dashmap = "6"
 directories = "6"
 rusqlite = { version = "0.31", features = ["bundled"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+tracing-appender = "0.2"
+lazy_static = "1.4"
 base64 = "0.22"
 sha2 = "0.10"
 sha1 = "0.10"
@@ -69,9 +71,15 @@ regex = "1"
 encoding_rs = "0.8"
 async-trait = "0.1"
 
+# HTTP 服务器 (server mode)
+axum = { version = "0.8", features = ["macros", "ws"] }
+tower-http = { version = "0.6", features = ["fs", "limit", "cors", "compression-full", "trace"] }
+tower = "0.5"
+
 # WebSocket 代理上游 TLS 连接
 tokio-rustls = "0.26"
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
+rustls-pemfile = "2"
 rustls-pki-types = "1"
 webpki-roots = "0.26"
 

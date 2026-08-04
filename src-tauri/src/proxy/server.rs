@@ -1,17 +1,19 @@
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::sync::Arc;
+use std::collections::HashMap;
 
+use hex;
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::Request;
 use hyper_util::rt::TokioIo;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpStream;
 use tokio::sync::{oneshot, Mutex};
 
-use super::plugin::{PluginChain, ProxyHandler, ProxyPlugin, ProxyResponse, RequestContext};
+use super::plugin::{PluginChain, ProxyHandler, ProxyPlugin, RequestContext};
 use super::ws_proxy;
 
 pub struct ProxyServer {
@@ -19,6 +21,9 @@ pub struct ProxyServer {
     pub proxy_prefix: String,
     _runtime: tokio::runtime::Runtime,
     shutdown_tx: Option<oneshot::Sender<()>>,
+    shutdown_flag: Arc<Mutex<bool>>,
+    key_map: Arc<Mutex<HashMap<String, String>>>,
+    active_origin: Arc<Mutex<Option<String>>>,
 }
 
 /// 包装 TcpStream，将预先读取的字节「放回」读取流前面，
@@ -181,6 +186,9 @@ impl ProxyServer {
             proxy_prefix,
             _runtime: rt,
             shutdown_tx: Some(shutdown_tx),
+            shutdown_flag: Arc::new(Mutex::new(false)),
+            key_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            active_origin: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -196,16 +204,33 @@ impl ProxyServer {
         )
     }
 
-    pub fn shutdown(&mut self) {
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+
+    pub async fn is_running(&self) -> bool {
+        *self.shutdown_flag.lock().await == false
+    }
+
+    pub async fn register_proxy_key(&self, url: &str) -> Result<String, String> {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(url.as_bytes());
+        let hash = hasher.finalize();
+        let key = hex::encode(&hash[..6]);
+        self.key_map.lock().await.insert(key.clone(), url.to_string());
+        Ok(key)
+    }
+
+    pub async fn set_proxy_source(&self, url: String) {
+        *self.active_origin.lock().await = Some(url);
+    }
+
+    pub async fn shutdown(&mut self) {
         if let Some(tx) = self.shutdown_tx.take() {
             let _ = tx.send(());
         }
-    }
-}
-
-impl Drop for ProxyServer {
-    fn drop(&mut self) {
-        self.shutdown();
+        *self.shutdown_flag.lock().await = true;
     }
 }
 

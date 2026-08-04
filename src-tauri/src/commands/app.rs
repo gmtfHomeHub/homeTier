@@ -51,7 +51,7 @@ pub async fn update_app(
     hostname: Option<String>,
     port: Option<String>,
     pathname: Option<String>,
-    space_manager: State<'_, Arc<SpaceManager>>,
+    _space_manager: State<'_, Arc<SpaceManager>>,
     db: State<'_, Arc<Database>>,
 ) -> Result<(), String> {
     crate::log_info!(format!("update_app: app_id={}", app_id));

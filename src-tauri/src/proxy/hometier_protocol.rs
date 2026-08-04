@@ -159,21 +159,6 @@ fn rewrite_html_body(body: &[u8], origin_str: &str) -> Vec<u8> {
     }
 }
 
-/// 替换请求体中的 hometierproxy://{host}:{port} 为 http://{host}:{port}
-fn rewrite_request_body(body: Vec<u8>, host_origin: &str) -> Vec<u8> {
-    let old_prefix = format!("hometierproxy://{}", host_origin);
-    let new_prefix = format!("http://{}", host_origin);
-    if let Ok(text) = String::from_utf8(body.clone()) {
-        if text.contains(&old_prefix) {
-            text.replace(&old_prefix, &new_prefix).into_bytes()
-        } else {
-            body
-        }
-    } else {
-        body
-    }
-}
-
 /// 注入代理修复脚本：修复 location 属性 + 拦截 fetch/XHR 重写 URL
 fn inject_proxy_script(html_bytes: Vec<u8>, host_key: &str) -> (Vec<u8>, String) {
     let mut html = match String::from_utf8(html_bytes.clone()) {
@@ -321,7 +306,7 @@ impl PerHostCookieJar {
 // --- Request handling ---
 
 fn handle_request<R: Runtime>(
-    app_handle: &AppHandle<R>,
+    _app_handle: &AppHandle<R>,
     clients: &Arc<Mutex<HashMap<String, Client>>>,
     request: &http::Request<Vec<u8>>,
 ) -> Result<http::Response<Vec<u8>>, String> {

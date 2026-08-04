@@ -79,7 +79,7 @@ pub async fn ingest_ice(body: &str) {
     q.push_back(SignalMessage { path: SignalPath::Ice, body: body.to_string() });
 }
 
-pub async fn poll_signal<F>(pred: F, max_wait_ms: u64, space_id: &str) -> Option<SignalMessage>
+pub async fn poll_signal<F>(pred: F, max_wait_ms: u64, _space_id: &str) -> Option<SignalMessage>
 where
     F: Fn(&SignalMessage) -> bool,
 {

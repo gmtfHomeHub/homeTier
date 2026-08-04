@@ -265,7 +265,7 @@ impl HttpForwardPlugin {
         &self,
         req: Request<Incoming>,
         forward_url: &str,
-        source_url: &str,
+        _source_url: &str,
         proxy_key: &str,
         ctx: &RequestContext,
     ) -> Result<ProxyResponse, Box<dyn std::error::Error + Send + Sync>> {

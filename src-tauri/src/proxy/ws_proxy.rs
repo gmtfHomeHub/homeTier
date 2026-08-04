@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt::Write;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -6,9 +5,6 @@ use std::task::{Context, Poll};
 
 use crate::proxy::hometier_protocol;  // 用于共享 CookieJar
 
-use http_body_util::Full;
-use hyper::body::{Bytes, Incoming};
-use hyper::{Request, Response};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -392,7 +388,7 @@ Origin: {}://{}\r\n",
         std::str::from_utf8(resp_header_str).unwrap_or(""),
         "sec-websocket-accept",
     );
-    let up_leftover = resp_buf[resp_eoh + 4..resp_total].to_vec();
+    let _up_leftover = resp_buf[resp_eoh + 4..resp_total].to_vec();
 
     // 9. 发送 101 响应到客户端（全量透传上游原始响应头和数据）
     crate::log_info!(format!("WS 代理: 发往客户端 101 (accept={})", accept_val));
