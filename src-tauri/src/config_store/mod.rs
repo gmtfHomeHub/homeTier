@@ -13,6 +13,7 @@ pub use store::{ConfigFile, ConfigFileMeta, ConfigStore, StoreError};
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 
 /// 默认监听端口（设计文档约定 9877）
 pub const DEFAULT_PORT: u16 = 9877;
@@ -80,11 +81,16 @@ impl Message {
 }
 
 impl ConfigStoreService {
-    /// 初始化服务（创建存储目录、启动队列消费任务）
-    pub fn new(root: PathBuf) -> Arc<Self> {
+    /// 初始化服务（创建存储目录、组装队列，不含消费者任务）
+    pub fn new(root: PathBuf) -> (Arc<Self>, mpsc::UnboundedReceiver<ConfigFile>) {
         let store = Arc::new(ConfigStore::new(root));
-        let queue = queue::StoreQueue::new(Arc::clone(&store));
-        Arc::new(Self { store, queue })
+        let (queue, receiver) = queue::StoreQueue::new(Arc::clone(&store));
+        (Arc::new(Self { store, queue }), receiver)
+    }
+
+    /// 启动队列消费者（必须在 Tokio 上下文中调用）
+    pub fn start_consumer(self: &Arc<Self>, receiver: mpsc::UnboundedReceiver<ConfigFile>) {
+        self.queue.start(Arc::clone(&self.store), receiver);
     }
 
     /// 本地存储一个配置文件（走队列，去重 + 文件锁保证一致性）
@@ -105,7 +111,7 @@ mod tests {
     #[tokio::test]
     async fn queue_dedup() {
         let store = Arc::new(ConfigStore::new(PathBuf::from("/tmp/homeTier-cs-test")));
-        let queue = queue::StoreQueue::new(Arc::clone(&store));
+        let (queue, _receiver) = queue::StoreQueue::new(Arc::clone(&store));
         let f1 = ConfigFile {
             name: "space_settings".into(),
             version: 1,
@@ -154,7 +160,8 @@ mod tests {
     async fn tcp_roundtrip() {
         let root = PathBuf::from("/tmp/homeTier-cs-test3");
         let _ = std::fs::remove_dir_all(&root);
-        let service = ConfigStoreService::new(root.clone());
+        let (service, receiver) = ConfigStoreService::new(root.clone());
+        service.start_consumer(receiver);
 
         // 启动 TCP 服务
         let server = Arc::clone(&service);

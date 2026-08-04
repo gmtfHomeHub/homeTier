@@ -298,7 +298,8 @@ pub fn run_server(
         if let Err(e) = std::fs::create_dir_all(&config_store_root) {
             log_error!("[config_store] 初始化存储目录失败: {}", e);
         }
-        let config_store = crate::config_store::ConfigStoreService::new(config_store_root);
+        let (config_store, queue_receiver) = crate::config_store::ConfigStoreService::new(config_store_root);
+        config_store.start_consumer(queue_receiver);
 
         let app_state = Arc::new(crate::server::AppState {
             db,

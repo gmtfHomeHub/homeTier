@@ -210,9 +210,10 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     // 初始化配置存储服务（P2P 分布式配置同步：本地队列 + TCP 监听）
     let config_store_root = app_data.join("config_store");
-    let config_store = crate::config_store::ConfigStoreService::new(config_store_root);
+    let (config_store, queue_receiver) = crate::config_store::ConfigStoreService::new(config_store_root);
     app.manage(config_store.clone());
     tokio::spawn(async move {
+        config_store.start_consumer(queue_receiver);
         if let Err(e) = config_store.serve(crate::config_store::DEFAULT_PORT).await {
             log_error!(format!("[config_store] TCP 服务退出: {}", e));
         }

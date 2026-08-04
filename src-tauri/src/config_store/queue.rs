@@ -16,17 +16,22 @@ pub struct StoreQueue {
 }
 
 impl StoreQueue {
-    pub fn new(store: Arc<ConfigStore>) -> Arc<Self> {
-        let (sender, mut receiver) = mpsc::unbounded_channel();
+    /// 同步创建队列（不含消费者任务），可在任意上下文调用
+    pub fn new(store: Arc<ConfigStore>) -> (Arc<Self>, mpsc::UnboundedReceiver<ConfigFile>) {
+        let (sender, receiver) = mpsc::unbounded_channel();
         let queue = Arc::new(Self {
             pending: std::sync::Mutex::new(HashMap::new()),
             sender,
         });
-        let q = Arc::clone(&queue);
+        (queue, receiver)
+    }
+
+    /// 异步启动消费者任务（必须在 Tokio 上下文中调用）
+    pub fn start(self: &Arc<Self>, store: Arc<ConfigStore>, mut receiver: mpsc::UnboundedReceiver<ConfigFile>) {
+        let q = Arc::clone(self);
         tokio::spawn(async move {
             while let Some(task) = receiver.recv().await {
                 let name = task.name.clone();
-                // 处理时从 pending 中取出同名最新任务，跳过已被覆盖的旧任务
                 let actual = q.pending.lock().unwrap().remove(&name);
                 if let Some(actual) = actual {
                     if let Err(e) = store.store(actual) {
@@ -38,7 +43,6 @@ impl StoreQueue {
                 }
             }
         });
-        queue
     }
 
     /// 提交一个存储任务（同名旧任务被覆盖）
