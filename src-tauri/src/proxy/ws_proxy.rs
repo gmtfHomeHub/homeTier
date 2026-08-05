@@ -298,15 +298,12 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
     // 缺失时使用默认值。避免上游收到重复 Origin 头被拒绝（如 nginx 400）。
     let upstream_origin = match client_origin.as_deref() {
         Some(o) if o.starts_with("hometierproxy://") => {
-            if let Some(path_start) = o.find('/') {
-                let after_scheme = &o[path_start + 1..];
-                if let Some(slash_pos) = after_scheme.find('/') {
-                    format!("{}{}", upstream_base, &after_scheme[slash_pos..])
-                } else {
-                    upstream_base.clone()
-                }
-            } else {
-                upstream_base.clone()
+            // 精确去掉协议前缀，剩余 host[:port][/path]；find('/') 直接定位路径起始，
+            // 避免从第二个斜杠开始切导致 "http://host:port//host:port" 的损坏 Origin
+            let rest = &o["hometierproxy://".len()..];
+            match rest.find('/') {
+                Some(slash_pos) => format!("{}{}", upstream_base, &rest[slash_pos..]),
+                None => upstream_base.clone(),
             }
         }
         Some(o) => o.to_string(),
@@ -334,15 +331,10 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
         }
         // 重写 Referer 中的 hometierproxy:// 为 http://
         let rewritten = if key_lower == "referer" && value.starts_with("hometierproxy://") {
-            if let Some(path_start) = value.find('/') {
-                let after_scheme = &value[path_start + 1..];
-                if let Some(slash_pos) = after_scheme.find('/') {
-                    format!("{}: {}", key, format!("{}{}", upstream_base, &after_scheme[slash_pos..]))
-                } else {
-                    format!("{}: {}", key, upstream_base)
-                }
-            } else {
-                format!("{}: {}", key, value)
+            let rest = &value["hometierproxy://".len()..];
+            match rest.find('/') {
+                Some(slash_pos) => format!("{}: {}", key, format!("{}{}", upstream_base, &rest[slash_pos..])),
+                None => format!("{}: {}", key, upstream_base),
             }
         } else {
             format!("{}: {}", key, value)
@@ -401,11 +393,30 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
     }
 
     let resp_data = &resp_buf[..resp_total];
-    let resp_str = match std::str::from_utf8(resp_data) {
+
+    // 定位响应头结束位置（\r\n\r\n）。上游可能在 101 后立即推送 WebSocket 帧，
+    // 帧为二进制数据，必须与响应头分开处理，不能对整段缓冲做 UTF-8 校验。
+    let resp_eoh = match resp_data.windows(4).position(|w| w == b"\r\n\r\n") {
+        Some(p) => p,
+        None => {
+            let first = String::from_utf8_lossy(resp_data)
+                .lines()
+                .next()
+                .unwrap_or("(empty)")
+                .to_string();
+            crate::log_error!(format!("WS 代理: 上游响应缺少头部结束符 - {}", first));
+            send_error(&mut client, "502 Bad Gateway", "upstream response missing header terminator").await;
+            return;
+        }
+    };
+    let resp_header_str = &resp_data[..resp_eoh];
+
+    // 只对响应头（纯 ASCII/UTF-8）做 UTF-8 校验与 101 检查
+    let resp_str = match std::str::from_utf8(resp_header_str) {
         Ok(s) => s,
         Err(_) => {
-            crate::log_error!("WS 代理: 上游响应非 UTF-8");
-            send_error(&mut client, "502 Bad Gateway", "upstream response not utf-8").await;
+            crate::log_error!("WS 代理: 上游响应头非 UTF-8");
+            send_error(&mut client, "502 Bad Gateway", "upstream response header not utf-8").await;
             return;
         }
     };
@@ -421,16 +432,10 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
     let resp_preview: Vec<&str> = resp_str.lines().take(10).collect();
     crate::log_info!(format!("WS 代理: 上游 101 响应:\n{}", resp_preview.join("\n")));
 
-    // 8. 提取 accept 值、leftover data，并捕获 Set-Cookie
-    let resp_eoh = resp_data.windows(4).position(|w| w == b"\r\n\r\n").unwrap_or(0);
-    let resp_header_str = &resp_data[..resp_eoh];
-    let accept_val = extract_header(
-        std::str::from_utf8(resp_header_str).unwrap_or(""),
-        "sec-websocket-accept",
-    );
-    let _up_leftover = resp_buf[resp_eoh + 4..resp_total].to_vec();
+    // 8. 提取 accept 值
+    let accept_val = extract_header(resp_str, "sec-websocket-accept");
 
-    // 9. 发送 101 响应到客户端（全量透传上游原始响应头和数据）
+    // 9. 发送 101 响应到客户端（全量透传上游原始响应头；残留的 WebSocket 帧数据一并下发）
     crate::log_info!(format!("WS 代理: 发往客户端 101 (accept={})", accept_val));
     if let Err(e) = client.write_all(&resp_buf[..resp_total]).await {
         crate::log_error!(format!("WS 代理: 发送 101 响应到客户端失败 - {}", e));
