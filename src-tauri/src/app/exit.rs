@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use tauri::Manager;
 
-use crate::{log_info, log_warn};
+use crate::log_info;
 use crate::app::daemon;
 use crate::cleanup;
 
@@ -71,7 +71,7 @@ pub fn on_exit_cleanup(app_handle: &tauri::AppHandle) {
                         }
                         #[cfg(target_os = "macos")]
                         daemon::KillOutcome::NeedsOsascript(pid) => {
-                            log_warn!(
+                            crate::log_warn!(
                                 format!("[GUI] daemon 未在超时内退出, 尝试 osascript 提权终止 pid={}", pid)
                             );
                             let _ = std::process::Command::new("osascript")

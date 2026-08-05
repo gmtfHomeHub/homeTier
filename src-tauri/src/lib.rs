@@ -174,11 +174,11 @@ pub fn run() -> std::process::ExitCode {
 }
 
 /// 带参数的入口点，用于 Windows UAC / macOS 提权场景
-pub fn run_with_args(elevated: bool) -> std::process::ExitCode {
+pub fn run_with_args(_elevated: bool) -> std::process::ExitCode {
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     {
-        crate::app::window::set_elevated(elevated);
-        if elevated {
+        crate::app::window::set_elevated(_elevated);
+        if _elevated {
             crate::log_info!("提权进程已启动");
         }
     }

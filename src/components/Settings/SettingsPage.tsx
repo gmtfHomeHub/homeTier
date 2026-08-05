@@ -3,7 +3,7 @@ import { LogViewer } from "../Log/LogViewer";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { EasyTierVersionManager } from "./EasyTierVersionManager";
 import { AppConfigEditor } from "./AppConfigEditor";
-import { Terminal, Palette, Languages, HelpCircle, Keyboard, FileCog, Network, Car } from "lucide-react";
+import { Terminal, Palette, Languages, HelpCircle, Keyboard, FileCog, Network } from "lucide-react";
 import { getSystemConfig, setSystemConfig, getLogEnabled, setLogEnabled as setLogEnabledApi } from "../../utils/api";
 import { applyGlobalShortcuts } from "../../services/shortcuts";
 import { useSettingsStore } from "../../stores/settingsStore";

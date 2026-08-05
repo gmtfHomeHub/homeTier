@@ -3,9 +3,6 @@ import { useShortcutOsdStore } from "../stores/shortcutOsdStore";
 import { voiceService } from "./voice";
 import { isTauri } from "../utils/api";
 
-const DEFAULT_MIC_SHORTCUT = "Ctrl+M";
-const DEFAULT_SPEAKER_SHORTCUT = "Ctrl+T";
-
 function handlePressed(shortcut: string): void {
   const { micShortcut, speakerShortcut } = useSettingsStore.getState();
   if (!voiceService.joined) {
@@ -58,5 +55,4 @@ export async function applyGlobalShortcuts(): Promise<void> {
   }
 }
 
-export { DEFAULT_MIC_SHORTCUT, DEFAULT_SPEAKER_SHORTCUT };
 export { handlePressed as handleShortcutPress };

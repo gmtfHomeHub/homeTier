@@ -1,12 +1,11 @@
 //! 窗口显隐、激活辅助函数。原 lib.rs 中的 activate_main_window / toggle_window_visibility / ELEVATED 迁移至此。
 
 
-use std::sync::atomic::AtomicBool;
 use tauri::Manager;
 
 /// UAC / macOS 提权标记，用于检测当前进程是否通过提权启动
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-static ELEVATED: AtomicBool = AtomicBool::new(false);
+static ELEVATED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 pub fn set_elevated(val: bool) {

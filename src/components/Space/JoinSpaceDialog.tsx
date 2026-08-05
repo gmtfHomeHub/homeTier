@@ -12,6 +12,10 @@ interface JoinSpaceDialogProps {
   onClose: () => void;
 }
 
+interface Html5QrcodeScanner {
+  stop(): Promise<void>;
+}
+
 export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
   const { t } = useTranslation();
   const [networkName, setNetworkName] = useState("");
@@ -21,9 +25,7 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
-  // InstanceType<typeof import("html5-qrcode").Html5Qrcode>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const scannerRef = useRef<any>(null);
+  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
   const joinSpace = useSpaceStore((s) => s.joinSpace);
 
   const isMobile = detectDeviceMode() === "mobile";

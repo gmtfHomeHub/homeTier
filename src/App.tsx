@@ -153,8 +153,8 @@ export default function App() {
     const unregisterFileSignal = registerSignalHandler("file", async (spaceId, env) => {
       if (env.type !== "sent") return;
       try {
-        const payload = env.data as unknown as { file?: FileInfo };
-        const fileInfo = payload?.file;
+        const data = env.data as { file?: FileInfo };
+        const fileInfo = data?.file;
         if (!fileInfo || !fileInfo.id) return;
         await api.recordReceivedFile(fileInfo);
         const fresh = await api.listFiles(spaceId);

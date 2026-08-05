@@ -84,7 +84,7 @@ impl VoiceEngine {
             };
 
             // 注册 ICE 候选回调
-            let _pc_ice = peer_connection.clone();
+            let _ = peer_connection.clone();
             peer_connection.on_ice_candidate(Box::new(move |c: Option<RTCIceCandidate>| {
                 if let Some(candidate) = c {
                     let cand_json = candidate.to_json().unwrap_or_default();

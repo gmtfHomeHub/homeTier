@@ -4,9 +4,7 @@ import type { NetworkConfig, PortForwardConfig } from "../../types/network";
 import { DEFAULT_NETWORK_CONFIG, addRow, removeRow } from "../../types/network";
 import { Button, TextField, Checkbox, Text, Select, Flex } from "@radix-ui/themes";
 import { CollapsibleSection } from "../Common/CollapsibleSection";
-import {
-  Network, Eye, EyeOff, Trash2, Globe, Shield, Settings,
-} from "lucide-react";
+import { Eye, EyeOff, Trash2, Globe } from "lucide-react";
 
 interface Props {
   value: Partial<NetworkConfig>;

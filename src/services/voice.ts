@@ -27,7 +27,7 @@ interface RemotePeer {
   stream: MediaStream | null;
   pendingIce: RTCIceCandidateInit[];
   ctx: AudioContext;
-  source: MediaStreamAudioSourceNode;
+  source: MediaStreamAudioSourceNode | null;
   analyser: AnalyserNode;
   gain: GainNode;
 }
@@ -377,7 +377,7 @@ class VoiceService {
       stream: null,
       pendingIce: [],
       ctx,
-      source: null as unknown as MediaStreamAudioSourceNode,
+      source: null,
       analyser,
       gain,
     };
@@ -391,8 +391,9 @@ class VoiceService {
     pc.ontrack = (e) => {
       const stream = e.streams[0] ?? new MediaStream([e.track]);
       peer.stream = stream;
-      peer.source = ctx.createMediaStreamSource(stream);
-      peer.source.connect(analyser);
+      const src = ctx.createMediaStreamSource(stream);
+      peer.source = src;
+      src.connect(analyser);
       useVoiceStore.getState().setPeerStream(remoteIp, stream);
     };
 
