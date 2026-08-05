@@ -17,7 +17,7 @@ pub struct StoreQueue {
 
 impl StoreQueue {
     /// 同步创建队列（不含消费者任务），可在任意上下文调用
-    pub fn new(store: Arc<ConfigStore>) -> (Arc<Self>, mpsc::UnboundedReceiver<ConfigFile>) {
+    pub fn new() -> (Arc<Self>, mpsc::UnboundedReceiver<ConfigFile>) {
         let (sender, receiver) = mpsc::unbounded_channel();
         let queue = Arc::new(Self {
             pending: std::sync::Mutex::new(HashMap::new()),

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, async_runtime};
 use tokio::sync::RwLock;
 
 use crate::app::daemon::{DaemonReadyState, set_daemon_child};
@@ -212,7 +212,7 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let config_store_root = app_data.join("config_store");
     let (config_store, queue_receiver) = crate::config_store::ConfigStoreService::new(config_store_root);
     app.manage(config_store.clone());
-    tokio::spawn(async move {
+    async_runtime::spawn(async move {
         config_store.start_consumer(queue_receiver);
         if let Err(e) = config_store.serve(crate::config_store::DEFAULT_PORT).await {
             log_error!(format!("[config_store] TCP 服务退出: {}", e));

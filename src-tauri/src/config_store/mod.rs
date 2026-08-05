@@ -84,7 +84,7 @@ impl ConfigStoreService {
     /// 初始化服务（创建存储目录、组装队列，不含消费者任务）
     pub fn new(root: PathBuf) -> (Arc<Self>, mpsc::UnboundedReceiver<ConfigFile>) {
         let store = Arc::new(ConfigStore::new(root));
-        let (queue, receiver) = queue::StoreQueue::new(Arc::clone(&store));
+        let (queue, receiver) = queue::StoreQueue::new();
         (Arc::new(Self { store, queue }), receiver)
     }
 
@@ -111,7 +111,7 @@ mod tests {
     #[tokio::test]
     async fn queue_dedup() {
         let store = Arc::new(ConfigStore::new(PathBuf::from("/tmp/homeTier-cs-test")));
-        let (queue, _receiver) = queue::StoreQueue::new(Arc::clone(&store));
+        let (queue, _receiver) = queue::StoreQueue::new();
         let f1 = ConfigFile {
             name: "space_settings".into(),
             version: 1,
