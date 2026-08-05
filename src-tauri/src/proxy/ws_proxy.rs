@@ -103,21 +103,10 @@ async fn connect_upstream(
     scheme: &str,
 ) -> Result<WsUpstream, String> {
     let addr = format!("{}:{}", target_host, target_port);
-    let bare = match timeout(Duration::from_secs(10), TcpStream::connect(&addr)).await {
-        Ok(Ok(s)) => s,
-        _ => {
-            let fallback = format!("127.0.0.1:{}", target_port);
-            timeout(Duration::from_secs(10), TcpStream::connect(&fallback))
-                .await
-                .map_err(|_| format!("connect timeout: {} (fallback {})", addr, fallback))?
-                .map_err(|e| {
-                    format!(
-                        "connect failed: {} and fallback {}: {}",
-                        addr, fallback, e
-                    )
-                })?
-        }
-    };
+    let bare = timeout(Duration::from_secs(5), TcpStream::connect(&addr))
+        .await
+        .map_err(|_| format!("connect timeout: {}", addr))?
+        .map_err(|e| format!("connect failed: {}: {}", addr, e))?;
 
     if scheme == "wss" {
         let config = rustls::ClientConfig::builder()
@@ -138,6 +127,24 @@ async fn connect_upstream(
     }
 }
 
+/// 上游连接/握手失败时，向客户端发送明确的 HTTP 错误响应后关闭连接，
+/// 避免 WebView 侧只看到 "Socket is not connected"
+async fn send_error(client: &mut TcpStream, status_line: &str, message: &str) {
+    let body = format!("WebSocket proxy error: {}\n", message);
+    let resp = format!(
+        "HTTP/1.1 {}\r\n\
+        Content-Type: text/plain; charset=utf-8\r\n\
+        Content-Length: {}\r\n\
+        Connection: close\r\n\
+        \r\n\
+        {}",
+        status_line,
+        body.as_bytes().len(),
+        body
+    );
+    let _ = client.write_all(resp.as_bytes()).await;
+}
+
 /// 直接从 TcpStream 处理 WebSocket 升级请求（无需 hyper upgrade 机制）。
 /// 接收原始 TCP 流和已预读的请求数据，解析 HTTP 请求，连接上游，发送 101 响应，然后双向转发数据。
 pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
@@ -147,20 +154,30 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
     // 定位 \r\n\r\n（请求头结束）
     let eoh = match data.windows(4).position(|w| w == b"\r\n\r\n") {
         Some(p) => p,
-        None => return,
+        None => {
+            send_error(&mut client, "400 Bad Request", "incomplete request headers").await;
+            return;
+        }
     };
     let header_str = match std::str::from_utf8(&data[..eoh]) {
         Ok(s) => s,
-        Err(_) => return,
+        Err(_) => {
+            send_error(&mut client, "400 Bad Request", "request headers not utf-8").await;
+            return;
+        }
     };
 
     // 2. 解析请求行
     let request_line = match header_str.lines().next() {
         Some(l) => l,
-        None => return,
+        None => {
+            send_error(&mut client, "400 Bad Request", "empty request line").await;
+            return;
+        }
     };
     let parts: Vec<&str> = request_line.split_whitespace().collect();
     if parts.len() < 2 {
+        send_error(&mut client, "400 Bad Request", "malformed request line").await;
         return;
     }
     let path = parts[1];
@@ -173,10 +190,12 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
             ("wss", val)
         } else {
             crate::log_error!(format!("WS 代理: 无法解析查询参数: {}", path));
+            send_error(&mut client, "400 Bad Request", &format!("unsupported query: {}", path)).await;
             return;
         }
     } else {
         crate::log_error!(format!("WS 代理: 缺少查询参数: {}", path));
+        send_error(&mut client, "400 Bad Request", "missing ?ws= query").await;
         return;
     };
 
@@ -185,6 +204,7 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
         Ok(s) => s.into_owned(),
         Err(_) => {
             crate::log_error!(format!("WS 代理: URL 解码失败: {}", encoded_target));
+            send_error(&mut client, "400 Bad Request", "url decode failed").await;
             return;
         }
     };
@@ -215,6 +235,7 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
     let mut ws_version = String::new();
     let mut extra_headers: Vec<(String, String)> = Vec::new();
     let mut client_cookie: Option<String> = None;
+    let mut client_origin: Option<String> = None;
 
     for line in header_str.lines().skip(1) {
         if let Some((k, v)) = line.split_once(':') {
@@ -228,6 +249,7 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
                 "sec-websocket-key" => ws_key = value,
                 "sec-websocket-version" => ws_version = value,
                 "cookie" => client_cookie = Some(value),
+                "origin" => client_origin = Some(value),
                 _ => {
                     // 过滤 hop-by-hop 头，其余加入 extra_headers
                     if !hop_by_hop.contains(&key_lower.as_str()) {
@@ -240,18 +262,15 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
 
     // 若路径中未解析出合法 host:port（如 synoscgi.sock），从 Origin 头中提取
     if !target_host_port_valid {
-        for (k, v) in &extra_headers {
-            if k.to_lowercase() == "origin" {
-                let origin_str = v.strip_prefix("http://").or_else(|| v.strip_prefix("https://")).unwrap_or("");
-                if let Some(colon) = origin_str.rfind(':') {
-                    let host = &origin_str[..colon];
-                    if let Ok(port) = origin_str[colon + 1..].parse::<u16>() {
-                        crate::log_info!(format!("WS 代理: 从 Origin 头提取 target={}:{}", host, port));
-                        target_host = host.to_string();
-                        target_port = port;
-                    }
+        if let Some(ref origin) = client_origin {
+            let origin_str = origin.strip_prefix("http://").or_else(|| origin.strip_prefix("https://")).unwrap_or("");
+            if let Some(colon) = origin_str.rfind(':') {
+                let host = &origin_str[..colon];
+                if let Ok(port) = origin_str[colon + 1..].parse::<u16>() {
+                    crate::log_info!(format!("WS 代理: 从 Origin 头提取 target={}:{}", host, port));
+                    target_host = host.to_string();
+                    target_port = port;
                 }
-                break;
             }
         }
     }
@@ -267,26 +286,44 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
         }
         Err(e) => {
             crate::log_error!(format!("WS 代理: 上游连接失败 {}:{} - {}", target_host, target_port, e));
+            send_error(&mut client, "502 Bad Gateway", &e).await;
             return;
         }
     };
 
     // 6. 发送 WS upgrade 请求到上游（包含所有转发头 + cookie）
-    let origin_val = if scheme == "wss" { "https" } else { "http" };
     let host_header = format!("{}:{}", target_host, target_port);
+    let upstream_base = format!("http://{}", host_header);
+    // Origin 只发一次：优先使用客户端 Origin（hometierproxy:// 重写为 http://），
+    // 缺失时使用默认值。避免上游收到重复 Origin 头被拒绝（如 nginx 400）。
+    let upstream_origin = match client_origin.as_deref() {
+        Some(o) if o.starts_with("hometierproxy://") => {
+            if let Some(path_start) = o.find('/') {
+                let after_scheme = &o[path_start + 1..];
+                if let Some(slash_pos) = after_scheme.find('/') {
+                    format!("{}{}", upstream_base, &after_scheme[slash_pos..])
+                } else {
+                    upstream_base.clone()
+                }
+            } else {
+                upstream_base.clone()
+            }
+        }
+        Some(o) => o.to_string(),
+        None => format!("{}://{}", if scheme == "wss" { "https" } else { "http" }, host_header),
+    };
     let mut upstream_req = format!(
         "GET {} HTTP/1.1\r\n\
-Host: {}\r\n\
-Upgrade: websocket\r\n\
-Connection: Upgrade\r\n\
-Sec-WebSocket-Key: {}\r\n\
-Sec-WebSocket-Version: {}\r\n\
-Origin: {}://{}\r\n",
-        tpath, host_header, ws_key, ws_version, origin_val, host_header,
+        Host: {}\r\n\
+        Upgrade: websocket\r\n\
+        Connection: Upgrade\r\n\
+        Sec-WebSocket-Key: {}\r\n\
+        Sec-WebSocket-Version: {}\r\n\
+        Origin: {}\r\n",
+        tpath, host_header, ws_key, ws_version, upstream_origin,
     );
 
-    // 添加收集到的额外请求头（含 hometierproxy:// → http:// 重写）
-    let upstream_base = format!("http://{}", host_header);
+    // 添加收集到的额外请求头（含 Referer 的 hometierproxy:// → http:// 重写）
     for (key, value) in &extra_headers {
         let key_lower = key.to_lowercase();
         // 不重复添加已存在的头
@@ -295,13 +332,12 @@ Origin: {}://{}\r\n",
         {
             continue;
         }
-        // 重写 Origin/Referer 中的 hometierproxy:// 为 http://
-        let rewritten = if (key_lower == "referer" || key_lower == "origin") && value.starts_with("hometierproxy://") {
+        // 重写 Referer 中的 hometierproxy:// 为 http://
+        let rewritten = if key_lower == "referer" && value.starts_with("hometierproxy://") {
             if let Some(path_start) = value.find('/') {
                 let after_scheme = &value[path_start + 1..];
                 if let Some(slash_pos) = after_scheme.find('/') {
-                    let path_and_qs = &after_scheme[slash_pos..];
-                    format!("{}: {}", key, format!("{}{}", upstream_base, path_and_qs))
+                    format!("{}: {}", key, format!("{}{}", upstream_base, &after_scheme[slash_pos..]))
                 } else {
                     format!("{}: {}", key, upstream_base)
                 }
@@ -334,6 +370,7 @@ Origin: {}://{}\r\n",
 
     if let Err(e) = upstream.write_all(upstream_req.as_bytes()).await {
         crate::log_error!(format!("WS 代理: 发送上游请求失败 - {}", e));
+        send_error(&mut client, "502 Bad Gateway", &format!("send upstream request failed: {}", e)).await;
         return;
     }
     crate::log_info!(format!("WS 代理: 上游请求已发送, 等待 101 响应"));
@@ -346,6 +383,7 @@ Origin: {}://{}\r\n",
             Ok(n) => n,
             Err(e) => {
                 crate::log_error!(format!("WS 代理: 读取上游 101 响应失败 - {}", e));
+                send_error(&mut client, "502 Bad Gateway", &format!("read upstream response failed: {}", e)).await;
                 return;
             }
         };
@@ -367,6 +405,7 @@ Origin: {}://{}\r\n",
         Ok(s) => s,
         Err(_) => {
             crate::log_error!("WS 代理: 上游响应非 UTF-8");
+            send_error(&mut client, "502 Bad Gateway", "upstream response not utf-8").await;
             return;
         }
     };
@@ -374,6 +413,7 @@ Origin: {}://{}\r\n",
     if !resp_str.contains("101") {
         let first_line = resp_str.lines().next().unwrap_or("(empty)");
         crate::log_error!(format!("WS 代理: 上游非 101 响应 - {}", first_line));
+        send_error(&mut client, "502 Bad Gateway", &format!("upstream rejected upgrade: {}", first_line)).await;
         return;
     }
 
