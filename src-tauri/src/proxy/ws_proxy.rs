@@ -250,6 +250,9 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
                 "sec-websocket-version" => ws_version = value,
                 "cookie" => client_cookie = Some(value),
                 "origin" => client_origin = Some(value),
+                // 剥离 permessage-deflate 等扩展协商：上游(如 DSM)不支持时会在握手后立即关闭。
+                // WebSocket 帧透传代理无法参与扩展协商，主动丢弃最稳妥。
+                "sec-websocket-extensions" => {}
                 _ => {
                     // 过滤 hop-by-hop 头，其余加入 extra_headers
                     if !hop_by_hop.contains(&key_lower.as_str()) {
@@ -448,23 +451,33 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
 }
 
 /// 双向数据转发：client ↔ upstream
+/// 两个方向各自独立运行：任一侧 EOF 只对其对端执行 half-close（TCP 半关闭），
+/// 不中断另一侧，避免 select 竞态导致客户端被 RST。
 async fn bidirectional_copy(client: TcpStream, upstream: WsUpstream) {
     let (mut rc, mut wc) = tokio::io::split(client);
     let (mut ru, mut wu) = tokio::io::split(upstream);
     crate::log_info!("WS 代理: bidirectional_copy 开始执行");
-    tokio::select! {
-        result = tokio::io::copy(&mut rc, &mut wu) => {
-            match result {
-                Ok(n) => crate::log_info!(format!("WS 代理: client→upstream 转发完成, 共 {} 字节", n)),
-                Err(e) => crate::log_error!(format!("WS 代理: client→upstream 转发失败 - {}", e)),
-            }
-        },
-        result = tokio::io::copy(&mut ru, &mut wc) => {
-            match result {
-                Ok(n) => crate::log_info!(format!("WS 代理: upstream→client 转发完成, 共 {} 字节", n)),
-                Err(e) => crate::log_error!(format!("WS 代理: upstream→client 转发失败 - {}", e)),
-            }
-        },
-    }
+
+    // 方向 1: client → upstream
+    let c2u = tokio::spawn(async move {
+        match tokio::io::copy(&mut rc, &mut wu).await {
+            Ok(n) => crate::log_info!(format!("WS 代理: client→upstream 转发完成, 共 {} 字节", n)),
+            Err(e) => crate::log_error!(format!("WS 代理: client→upstream 转发失败 - {}", e)),
+        }
+        // client 侧 EOF：半关上游写端，通知上游数据结束
+        let _ = wu.shutdown().await;
+    });
+
+    // 方向 2: upstream → client
+    let u2c = tokio::spawn(async move {
+        match tokio::io::copy(&mut ru, &mut wc).await {
+            Ok(n) => crate::log_info!(format!("WS 代理: upstream→client 转发完成, 共 {} 字节", n)),
+            Err(e) => crate::log_error!(format!("WS 代理: upstream→client 转发失败 - {}", e)),
+        }
+        // 上游侧已关闭，半关客户端写端，客户端读到 FIN 自行结束
+        let _ = wc.shutdown().await;
+    });
+
+    let _ = tokio::join!(c2u, u2c);
     crate::log_info!("WS 代理: bidirectional_copy 结束");
 }
