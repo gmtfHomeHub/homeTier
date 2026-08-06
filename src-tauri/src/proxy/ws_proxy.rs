@@ -253,6 +253,12 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
                 // 剥离 permessage-deflate 等扩展协商：上游(如 DSM)不支持时会在握手后立即关闭。
                 // WebSocket 帧透传代理无法参与扩展协商，主动丢弃最稳妥。
                 "sec-websocket-extensions" => {}
+                // 以下 WebSocket 无关头透传到上游可能导致服务端(如 Getv/String)
+                // 误用 origin-ish header 构建路径/namespacename——在共享页返回错误的
+                // 例如 CasaOS 的 socket.io 会根据 Referer 生成 40//hometierproxy://host...
+                // 纯转发 WS 要求：这些头完全不应上传
+                "referer" | "pragma" | "cache-control"
+                | "sec-fetch-site" | "sec-fetch-mode" | "sec-fetch-dest" => {}
                 _ => {
                     // 过滤 hop-by-hop 头，其余加入 extra_headers
                     if !hop_by_hop.contains(&key_lower.as_str()) {
