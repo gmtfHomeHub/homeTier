@@ -342,7 +342,7 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
         } else {
             format!("{}: {}", key, value)
         };
-        let _ = writeln!(upstream_req, "{}", rewritten);
+        let _ = write!(upstream_req, "{}\r\n", rewritten);
     }
 
     // 注入 Cookie（使用 cookie jar 中的持久化 cookie，其次使用 client 提供的）
@@ -352,9 +352,9 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
         .or_insert_with(hometier_protocol::PerHostCookieJar::new)
         .build_cookie_header()
     {
-        let _ = writeln!(upstream_req, "Cookie: {}", jar_cookie);
+        let _ = write!(upstream_req, "Cookie: {}\r\n", jar_cookie);
     } else if let Some(ref cookie) = client_cookie {
-        let _ = writeln!(upstream_req, "Cookie: {}", cookie);
+        let _ = write!(upstream_req, "Cookie: {}\r\n", cookie);
     }
 
     upstream_req.push_str("\r\n");
