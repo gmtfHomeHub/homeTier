@@ -340,10 +340,19 @@ fn handle_request<R: Runtime>(
         "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade",
     ];
 
-    // Forward browser headers, replacing cookie with our jar value
+    // Forward browser headers, replacing cookie with our jar value; strip origin/referer/& compat
+    // because they are added explicitly below, and Sec-Fetch-* to avoid upstream namespace pollution.
+    let strip_filter = [
+        "origin", "referer",
+        "pragma", "cache-control",
+        "sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest",
+    ];
+
     for (key, value) in &req_headers {
         let key_lower = key.as_str().to_lowercase();
-        if !hop_by_hop.contains(&key_lower.as_str()) && key_lower != "cookie" {
+        if !hop_by_hop.contains(&key_lower.as_str()) && key_lower != "cookie"
+            && !strip_filter.contains(&key_lower.as_str())
+        {
             if let Ok(val_str) = value.to_str() {
                 req_builder = req_builder.header(key.as_str(), val_str);
             }
