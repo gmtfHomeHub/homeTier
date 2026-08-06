@@ -369,13 +369,13 @@ fn handle_request<R: Runtime>(
     if let Some(referer_val) = req_headers.get("referer") {
         if let Ok(referer_str) = referer_val.to_str() {
             if referer_str.starts_with("hometierproxy://") {
-                if let Some(path_start) = referer_str.find('/') {
-                    let after_scheme = &referer_str[path_start + 1..];
-                    if let Some(slash_pos) = after_scheme.find('/') {
-                        let path_and_qs = &after_scheme[slash_pos..];
-                        let new_referer = format!("{}{}", upstream_base, path_and_qs);
-                        req_builder = req_builder.header("referer", new_referer);
-                    }
+                // 精确去掉协议前缀，避免从第二个斜杠切出 "http://host:port//host:port" 的损坏 URL
+                let rest = &referer_str["hometierproxy://".len()..];
+                if let Some(slash_pos) = rest.find('/') {
+                    let new_referer = format!("{}{}", upstream_base, &rest[slash_pos..]);
+                    req_builder = req_builder.header("referer", new_referer);
+                } else {
+                    req_builder = req_builder.header("referer", &upstream_base);
                 }
             }
         }
