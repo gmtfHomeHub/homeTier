@@ -312,6 +312,10 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
         Some(o) => o.to_string(),
         None => format!("{}://{}", if scheme == "wss" { "https" } else { "http" }, host_header),
     };
+    crate::log_info!(format!(
+        "WS 代理: Origin 重写 → 客户端 client_origin={:?} → upstream_origin={}",
+        client_origin, upstream_origin
+    ));
     let mut upstream_req = format!(
         "GET {} HTTP/1.1\r\n\
         Host: {}\r\n\
@@ -362,6 +366,8 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
     // 打印上游请求内容（仅前 800 字符避免日志膨胀）
     let req_preview = upstream_req.lines().take(20).collect::<Vec<_>>().join("\\n");
     crate::log_info!(format!("WS 代理: 上游请求内容:\n{}", req_preview));
+    let origin_line = upstream_req.lines().find(|l| l.to_lowercase().starts_with("origin")).unwrap_or("(none)");
+    crate::log_info!(format!("WS 代理: 诊断 Origin={} client_origin_raw={:?}", origin_line, client_origin));
 
     if let Err(e) = upstream.write_all(upstream_req.as_bytes()).await {
         crate::log_error!(format!("WS 代理: 发送上游请求失败 - {}", e));
@@ -396,6 +402,7 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
     }
 
     let resp_data = &resp_buf[..resp_total];
+    crate::log_info!(format!("WS 代理: 上游响应总字节={} 期望存在WS帧={}", resp_total, resp_total > 0));
 
     // 定位响应头结束位置（\r\n\r\n）。上游可能在 101 后立即推送 WebSocket 帧，
     // 帧为二进制数据，必须与响应头分开处理，不能对整段缓冲做 UTF-8 校验。
@@ -444,7 +451,8 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
         crate::log_error!(format!("WS 代理: 发送 101 响应到客户端失败 - {}", e));
         return;
     }
-    crate::log_info!("WS 代理: 101 响应已发送, 开始双向数据转发");
+    crate::log_info!(format!("WS 代理: 发往客户端响应总字节={} 头部={}左over={}", resp_total, resp_eoh, resp_total.saturating_sub(resp_eoh + 4)));
+    crate::log_info!("WS 代理: 开始双向数据转发");
 
     // 11. 双向数据转发
     bidirectional_copy(client, upstream).await;
