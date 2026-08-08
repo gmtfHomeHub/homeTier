@@ -85,6 +85,7 @@ pub fn run() -> std::process::ExitCode {
             commands::log::query_logs,
             commands::log::get_log_modules,
             commands::log::clear_logs_filtered,
+            commands::log::export_logs,
             commands::app::add_app,
             commands::app::update_app,
             commands::app::delete_app,
@@ -315,6 +316,7 @@ pub fn run_server(
             file_manager,
             file_registry,
             config_store: Arc::clone(&config_store),
+            data_dir: data_dir.clone(),
         });
 
         // 消息监听任务：轮询各空间聊天服务器，将 EasyTier 网络收到的

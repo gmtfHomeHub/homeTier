@@ -1,4 +1,5 @@
 use crate::log::{self, LogCategory, LogFilter, LogLevel};
+use tauri::Manager;
 
 #[tauri::command]
 pub async fn get_logs(level: Option<String>, since_seq: Option<u64>) -> Vec<log::LogEntry> {
@@ -62,7 +63,7 @@ pub async fn clear_logs() {
 
 // ---- v2 复合查询 / 过滤清除 / 模块发现 ----
 
-/// v2 复合查询，支持 level / space / module / category / keyword / since_seq / limit
+/// v2 复合查询，支持 level / space / module / category / keyword / since_seq / limit / 时间范围
 #[tauri::command]
 pub async fn query_logs(
     level: Option<String>,
@@ -72,6 +73,8 @@ pub async fn query_logs(
     keyword: Option<String>,
     since_seq: Option<u64>,
     limit: Option<usize>,
+    before_ts: Option<String>,
+    after_ts: Option<String>,
 ) -> Vec<log::LogEntry> {
     let filter = LogFilter {
         level: level.as_deref().and_then(parse_level),
@@ -80,9 +83,49 @@ pub async fn query_logs(
         category: category.as_deref().and_then(parse_category),
         keyword,
         since_seq,
+        before_ts,
+        after_ts,
         limit,
     };
     log::query(&filter)
+}
+
+/// 导出日志到 {app_data_dir}/logs_export/，返回文件绝对路径
+/// format: "txt"（默认）| "json"
+#[tauri::command]
+pub async fn export_logs(
+    app: tauri::AppHandle,
+    level: Option<String>,
+    space_id: Option<String>,
+    module: Option<String>,
+    category: Option<String>,
+    keyword: Option<String>,
+    before_ts: Option<String>,
+    after_ts: Option<String>,
+    format: Option<String>,
+) -> Result<String, String> {
+    let filter = LogFilter {
+        level: level.as_deref().and_then(parse_level),
+        space_id,
+        module,
+        category: category.as_deref().and_then(parse_category),
+        keyword,
+        since_seq: None,
+        before_ts,
+        after_ts,
+        limit: None,
+    };
+    let records = log::query(&filter);
+
+    let format = format.unwrap_or_else(|| "txt".into());
+    let export_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("获取应用数据目录失败: {}", e))?
+        .join("logs_export");
+
+    let path = log::export_to_dir(&export_dir, &records, &format)?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 /// 返回当前缓存中的活跃模块列表，供前端 UI 渲染模块筛选器
@@ -114,6 +157,8 @@ pub async fn clear_logs_filtered(
         category: category.as_deref().and_then(parse_category),
         keyword,
         since_seq: None,
+        before_ts: None,
+        after_ts: None,
         limit: None,
     };
     log::clear_filtered(&filter);

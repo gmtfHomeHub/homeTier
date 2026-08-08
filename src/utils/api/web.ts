@@ -199,6 +199,8 @@ export async function queryLogs(filter: {
   category?: string;
   keyword?: string;
   since_seq?: number;
+  before_ts?: string;
+  after_ts?: string;
   limit?: number;
 }): Promise<LogEntry[]> {
   const params = new URLSearchParams();
@@ -208,9 +210,34 @@ export async function queryLogs(filter: {
   if (filter.category) params.set("category", filter.category);
   if (filter.keyword) params.set("keyword", filter.keyword);
   if (filter.since_seq !== undefined) params.set("since_seq", String(filter.since_seq));
+  if (filter.before_ts) params.set("before_ts", filter.before_ts);
+  if (filter.after_ts) params.set("after_ts", filter.after_ts);
   if (filter.limit !== undefined) params.set("limit", String(filter.limit));
   const query = params.toString() ? `?${params.toString()}` : "";
   return request<LogEntry[]>(`/log/query${query}`);
+}
+
+export async function exportLogs(filter: {
+  level?: string;
+  space_id?: string;
+  module?: string;
+  category?: string;
+  keyword?: string;
+  before_ts?: string;
+  after_ts?: string;
+  format?: "txt" | "json";
+}): Promise<string> {
+  const params = new URLSearchParams();
+  if (filter.level) params.set("level", filter.level);
+  if (filter.space_id) params.set("space_id", filter.space_id);
+  if (filter.module) params.set("module", filter.module);
+  if (filter.category) params.set("category", filter.category);
+  if (filter.keyword) params.set("keyword", filter.keyword);
+  if (filter.before_ts) params.set("before_ts", filter.before_ts);
+  if (filter.after_ts) params.set("after_ts", filter.after_ts);
+  if (filter.format) params.set("format", filter.format);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return request<string>(`/log/export${query}`);
 }
 
 export async function getLogModules(): Promise<string[]> {

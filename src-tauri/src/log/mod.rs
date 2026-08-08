@@ -184,6 +184,48 @@ pub fn clear_filtered(filter: &LogFilter) {
     }
 }
 
+/// 导出日志到指定目录，返回文件绝对路径
+/// format: "txt"（默认）| "json"
+pub fn export_to_dir(
+    dir: &Path,
+    records: &[LogRecord],
+    format: &str,
+) -> Result<std::path::PathBuf, String> {
+    let body = match format {
+        "json" => serde_json::to_string_pretty(records).map_err(|e| e.to_string())?,
+        _ => records
+            .iter()
+            .map(|r| {
+                format!(
+                    "{} [{}] [{}] [{}] {} {}",
+                    r.timestamp,
+                    r.level,
+                    r.category,
+                    r.module,
+                    r.space_id.as_deref().unwrap_or(""),
+                    r.message
+                )
+                .trim_end()
+                .to_string()
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+    };
+
+    std::fs::create_dir_all(dir).map_err(|e| format!("创建导出目录失败: {}", e))?;
+
+    let ext = if format == "json" { "json" } else { "txt" };
+    let filename = format!(
+        "logs_{}.{}",
+        chrono::Utc::now().format("%Y%m%d_%H%M%S"),
+        ext
+    );
+    let path = dir.join(filename);
+    std::fs::write(&path, body).map_err(|e| format!("写入导出文件失败: {}", e))?;
+
+    Ok(path)
+}
+
 /// 当前活跃模块列表（供前端 UI 渲染模块筛选器）
 pub fn active_modules() -> Vec<String> {
     let dispatch = global_dispatch();

@@ -109,6 +109,8 @@ export interface LogFilter {
   category?: LogCategory;
   keyword?: string;
   since_seq?: number;
+  before_ts?: string;
+  after_ts?: string;
   limit?: number;
 }
 

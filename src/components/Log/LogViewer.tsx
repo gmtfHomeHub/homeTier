@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useLayoutEffect, useMemo } from "react";
-import { queryLogs, getLogModules, clearLogsFiltered } from "../../utils/api";
+import { queryLogs, getLogModules, clearLogsFiltered, exportLogs } from "../../utils/api";
 import type { LogEntry } from "../../types";
-import { RefreshCw, Trash2, Filter, Search } from "lucide-react";
-import { Button, Select, Checkbox, Text, Flex, Badge, Dialog, ButtonProps } from "@radix-ui/themes";
+import { RefreshCw, Trash2, Filter, Search, Download, Copy, Clock } from "lucide-react";
+import { Button, Select, Checkbox, Text, Flex, Badge, Dialog, DropdownMenu, ButtonProps } from "@radix-ui/themes";
 import { List, useDynamicRowHeight, type RowComponentProps } from "react-window";
+import { toastSuccess, toastError } from "../../utils/toast";
 
 interface LogViewerProps {
   spaceId?: string;
@@ -35,15 +36,20 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 interface LogRowProps {
   logs: LogEntry[];
+  onRowClick?: (entry: LogEntry) => void;
 }
 
-const LogRow = ({ index, style, logs }: RowComponentProps<LogRowProps>) => {
+const LogRow = ({ index, style, logs, onRowClick }: RowComponentProps<LogRowProps>) => {
   const entry = logs[index];
   if (!entry) return null;
 
   const cls = `leading-[${DEFAULT_ROW_HEIGHT}px]`;
   return (
-    <div style={style} className="flex gap-2 px-2 py-0.5 items-start border-b border-[var(--color-border)] hover:bg-[var(--color-accent)]/5">
+    <div
+      style={style}
+      onClick={() => onRowClick?.(entry)}
+      className="flex gap-2 px-2 py-0.5 items-start border-b border-[var(--color-border)] hover:bg-[var(--color-accent)]/5 cursor-pointer"
+    >
       <span className={`text-[var(--color-text-secondary)] whitespace-nowrap ${cls} w-28 shrink-0`}>
         {entry.timestamp.slice(11, 24)}
       </span>
@@ -82,6 +88,25 @@ function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+type TimeRange = "all" | "1h" | "6h" | "24h" | "custom";
+
+function computeTimeFilter(range: TimeRange, from?: string, to?: string) {
+  if (range === "custom") {
+    return {
+      before_ts: to ? new Date(to).toISOString() : undefined,
+      after_ts: from ? new Date(from).toISOString() : undefined,
+    };
+  }
+  if (range === "all") {
+    return { before_ts: undefined, after_ts: undefined };
+  }
+  const hours = range === "1h" ? 1 : range === "6h" ? 6 : 24;
+  return {
+    before_ts: undefined,
+    after_ts: new Date(Date.now() - hours * 3600_000).toISOString(),
+  };
+}
+
 export function LogViewer({ spaceId }: LogViewerProps) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const lastSeqRef = useRef(0);
@@ -90,9 +115,15 @@ export function LogViewer({ spaceId }: LogViewerProps) {
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [moduleFilter, setModuleFilter] = useState<string[]>([]);
   const [keyword, setKeyword] = useState("");
+  const [timeRange, setTimeRange] = useState<TimeRange>("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportPath, setExportPath] = useState<string | null>(null);
+  const [detailEntry, setDetailEntry] = useState<LogEntry | null>(null);
   const [modules, setModules] = useState<string[]>([]);
   const { ref: containerRef, width, height } = useSize<HTMLDivElement>();
   const dynamicRowHeight = useDynamicRowHeight({ defaultRowHeight: DEFAULT_ROW_HEIGHT, key: "log-rows" });
@@ -110,12 +141,15 @@ export function LogViewer({ spaceId }: LogViewerProps) {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
     try {
+      const { before_ts, after_ts } = computeTimeFilter(timeRange, customFrom, customTo);
       const filter = {
         level: levelFilter === "all" ? undefined : levelFilter,
         space_id: spaceId || undefined,
         module: moduleFilter.length ? moduleFilter.join(",") : undefined,
         category: categoryFilter.length ? categoryFilter.join(",") : undefined,
         keyword: keyword || undefined,
+        before_ts,
+        after_ts,
         since_seq: lastSeqRef.current || undefined,
         limit: 50000,
       };
@@ -130,7 +164,42 @@ export function LogViewer({ spaceId }: LogViewerProps) {
     } finally {
       fetchingRef.current = false;
     }
-  }, [spaceId, levelFilter, categoryFilter, moduleFilter, keyword]);
+  }, [spaceId, levelFilter, categoryFilter, moduleFilter, keyword, timeRange, customFrom, customTo]);
+
+  const handleExport = useCallback(
+    async (format: "txt" | "json") => {
+      if (exporting) return;
+      setExporting(true);
+      try {
+        const { before_ts, after_ts } = computeTimeFilter(timeRange, customFrom, customTo);
+        const path = await exportLogs({
+          level: levelFilter === "all" ? undefined : levelFilter,
+          space_id: spaceId || undefined,
+          module: moduleFilter.length ? moduleFilter.join(",") : undefined,
+          category: categoryFilter.length ? categoryFilter.join(",") : undefined,
+          keyword: keyword || undefined,
+          before_ts,
+          after_ts,
+          format,
+        });
+        setExportPath(path);
+      } catch (e) {
+        toastError(String(e));
+      } finally {
+        setExporting(false);
+      }
+    },
+    [exporting, spaceId, levelFilter, categoryFilter, moduleFilter, keyword, timeRange, customFrom, customTo]
+  );
+
+  const copyText = useCallback(async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toastSuccess("已复制到剪贴板");
+    } catch (e) {
+      toastError("复制失败");
+    }
+  }, []);
 
   const handleClear = useCallback(async () => {
     if (clearing) return;
@@ -194,7 +263,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
     return entry ? `${entry.seq}-${entry.module}-${index}` : String(index);
   }, []);
 
-  const rowProps = useMemo(() => ({ logs: filtered }), [filtered]);
+  const rowProps = useMemo(() => ({ logs: filtered, onRowClick: setDetailEntry }), [filtered]);
 
   const totalCount = filtered.length;
   const displayCount = Math.min(totalCount, 5000);
@@ -283,6 +352,40 @@ export function LogViewer({ spaceId }: LogViewerProps) {
           />
         </div>
 
+        <div className="flex items-center gap-1 text-xs text-[var(--color-text-secondary)]">
+          <Clock size={14} />
+          <span>时间：</span>
+        </div>
+        <Select.Root size="1" value={timeRange} onValueChange={(v) => setTimeRange(v as TimeRange)}>
+          <Select.Trigger className="text-xs w-28" />
+          <Select.Content>
+            <Select.Item value="all">全部时间</Select.Item>
+            <Select.Item value="1h">最近 1 小时</Select.Item>
+            <Select.Item value="6h">最近 6 小时</Select.Item>
+            <Select.Item value="24h">最近 24 小时</Select.Item>
+            <Select.Item value="custom">自定义</Select.Item>
+          </Select.Content>
+        </Select.Root>
+        {timeRange === "custom" && (
+          <Flex gap="1" align="center" className="text-xs text-[var(--color-text-secondary)]">
+            <input
+              type="datetime-local"
+              value={customFrom}
+              onChange={(e) => setCustomFrom(e.target.value)}
+              title="开始时间"
+              className="text-xs px-1.5 py-1 bg-[var(--color-background)] border border-[var(--color-border)] rounded"
+            />
+            <span>—</span>
+            <input
+              type="datetime-local"
+              value={customTo}
+              onChange={(e) => setCustomTo(e.target.value)}
+              title="结束时间"
+              className="text-xs px-1.5 py-1 bg-[var(--color-background)] border border-[var(--color-border)] rounded"
+            />
+          </Flex>
+        )}
+
         <div className="flex-1" />
 
         <Flex gap="2">
@@ -290,6 +393,22 @@ export function LogViewer({ spaceId }: LogViewerProps) {
             <Checkbox checked={autoRefresh} onCheckedChange={(c) => setAutoRefresh(c === true)} />
             自动刷新
           </Text>
+
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger>
+              <Button variant="ghost" size="2" disabled={exporting} title="导出日志">
+                <Download size={16} />
+              </Button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content>
+              <DropdownMenu.Item onClick={() => handleExport("txt")} disabled={exporting}>
+                {exporting ? "导出中..." : "导出为 TXT"}
+              </DropdownMenu.Item>
+              <DropdownMenu.Item onClick={() => handleExport("json")} disabled={exporting}>
+                {exporting ? "导出中..." : "导出为 JSON"}
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
 
           <Button onClick={fetchLogs} variant="ghost" size="2" title="刷新">
             <RefreshCw size={16} />
@@ -316,6 +435,59 @@ export function LogViewer({ spaceId }: LogViewerProps) {
           </Dialog.Root>
         </Flex>
       </div>
+
+      <Dialog.Root open={!!detailEntry} onOpenChange={(o) => !o && setDetailEntry(null)}>
+        <Dialog.Content className="max-w-lg">
+          <Dialog.Title>日志详情</Dialog.Title>
+          {detailEntry && (
+            <>
+              <Flex gap="2" align="center" wrap="wrap" className="mb-2 text-xs text-[var(--color-text-secondary)]">
+                <Badge color={LEVEL_COLORS[detailEntry.level]}>
+                  {detailEntry.level.toUpperCase()}
+                </Badge>
+                <Badge color="violet">{CATEGORY_LABELS[detailEntry.category] || detailEntry.category}</Badge>
+                <span className="font-mono">{detailEntry.module}</span>
+              </Flex>
+              <Flex direction="column" gap="1" className="mb-3 text-xs text-[var(--color-text-secondary)] font-mono">
+                <span>时间: {detailEntry.timestamp}</span>
+                {detailEntry.space_id && <span>空间: {detailEntry.space_id}</span>}
+                {detailEntry.trace_id && <span>追踪: {detailEntry.trace_id}</span>}
+                <span>序号: {detailEntry.seq}</span>
+              </Flex>
+              <div className="max-h-[300px] overflow-y-auto text-xs text-[var(--color-text)] whitespace-pre-wrap break-all p-2 bg-[var(--color-background)] border border-[var(--color-border)] rounded">
+                {detailEntry.message}
+              </div>
+              <Flex gap="2" justify="end" style={{ marginTop: 16 }}>
+                <Button variant="ghost" size="2" onClick={() => copyText(detailEntry.message)}>
+                  <Copy size={14} />
+                  复制消息
+                </Button>
+                <Button size="2" onClick={() => setDetailEntry(null)}>关闭</Button>
+              </Flex>
+            </>
+          )}
+        </Dialog.Content>
+      </Dialog.Root>
+
+      <Dialog.Root open={!!exportPath} onOpenChange={(o) => !o && setExportPath(null)}>
+        <Dialog.Content className="max-w-lg">
+          <Dialog.Title>导出成功</Dialog.Title>
+          <Dialog.Description>日志已导出到以下文件：</Dialog.Description>
+          {exportPath && (
+            <Flex gap="2" align="center" className="mt-2">
+              <code className="flex-1 min-w-0 text-xs font-mono bg-[var(--color-background)] border border-[var(--color-border)] rounded px-2 py-1 break-all">
+                {exportPath}
+              </code>
+              <Button variant="ghost" size="2" onClick={() => copyText(exportPath)} title="复制路径">
+                <Copy size={14} />
+              </Button>
+            </Flex>
+          )}
+          <Flex justify="end" style={{ marginTop: 16 }}>
+            <Button onClick={() => setExportPath(null)}>确定</Button>
+          </Flex>
+        </Dialog.Content>
+      </Dialog.Root>
 
       <div ref={containerRef} className="flex-1 min-h-0">
         {filtered.length === 0 ? (
@@ -354,6 +526,17 @@ export function LogViewer({ spaceId }: LogViewerProps) {
             🔍 "{keyword}"
           </span>
         )}
+        <span className="flex items-center gap-1.5">
+          {(["error", "warning", "info", "debug"] as const).map((lv) => {
+            const n = filtered.filter((l) => l.level === lv).length;
+            if (n === 0) return null;
+            return (
+              <span key={lv} className="px-1.5 py-0.5 rounded text-[10px]" style={{ color: `var(--${LEVEL_COLORS[lv]}-10)` }}>
+                {lv} {n}
+              </span>
+            );
+          })}
+        </span>
         <span className="ml-auto text-[var(--color-text-muted)]">显示 {displayCount}/{totalCount}</span>
       </div>
     </div>

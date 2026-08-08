@@ -152,6 +152,8 @@ export async function queryLogs(filter: {
   category?: string;
   keyword?: string;
   since_seq?: number;
+  before_ts?: string;
+  after_ts?: string;
   limit?: number;
 }): Promise<LogEntry[]> {
   return invoke("query_logs", {
@@ -161,7 +163,31 @@ export async function queryLogs(filter: {
     category: filter.category ?? null,
     keyword: filter.keyword ?? null,
     sinceSeq: filter.since_seq ?? null,
+    beforeTs: filter.before_ts ?? null,
+    afterTs: filter.after_ts ?? null,
     limit: filter.limit ?? null,
+  });
+}
+
+export async function exportLogs(filter: {
+  level?: string;
+  space_id?: string;
+  module?: string;
+  category?: string;
+  keyword?: string;
+  before_ts?: string;
+  after_ts?: string;
+  format?: "txt" | "json";
+}): Promise<string> {
+  return invoke("export_logs", {
+    level: filter.level ?? null,
+    spaceId: filter.space_id ?? null,
+    module: filter.module ?? null,
+    category: filter.category ?? null,
+    keyword: filter.keyword ?? null,
+    beforeTs: filter.before_ts ?? null,
+    afterTs: filter.after_ts ?? null,
+    format: filter.format ?? null,
   });
 }
 

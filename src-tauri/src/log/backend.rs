@@ -144,6 +144,10 @@ pub struct LogFilter {
     pub category: Option<LogCategory>,
     pub keyword: Option<String>,
     pub since_seq: Option<u64>,
+    /// 仅保留 timestamp 早于该 RFC3339 字符串（含）的日志
+    pub before_ts: Option<String>,
+    /// 仅保留 timestamp 晚于该 RFC3339 字符串（含）的日志
+    pub after_ts: Option<String>,
     pub limit: Option<usize>,
 }
 
@@ -179,6 +183,16 @@ impl LogFilter {
         }
         if let Some(seq) = self.since_seq {
             if record.seq <= seq {
+                return false;
+            }
+        }
+        if let Some(ref ts) = self.before_ts {
+            if record.timestamp.as_str() > ts.as_str() {
+                return false;
+            }
+        }
+        if let Some(ref ts) = self.after_ts {
+            if record.timestamp.as_str() < ts.as_str() {
                 return false;
             }
         }

@@ -64,6 +64,7 @@ pub struct AppState {
     pub file_manager: Arc<crate::file::FileTransferManager>,
     pub file_registry: Arc<crate::file::FileServerRegistry>,
     pub config_store: Arc<crate::config_store::ConfigStoreService>,
+    pub data_dir: std::path::PathBuf,
 }
 
 pub fn init_server_config(data_dir: &std::path::Path) -> Arc<AppConfig> {

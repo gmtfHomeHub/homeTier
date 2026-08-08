@@ -60,6 +60,7 @@ pub fn cmd_router(app_state: Arc<AppState>) -> Router {
         .route("/log/query", get(query_logs_handler))
         .route("/log/modules", get(get_log_modules_handler))
         .route("/log/clear-filtered", post(clear_logs_filtered_handler))
+        .route("/log/export", get(export_logs_handler))
         // 配置
         .route("/config/system", get(get_system_config_handler).post(set_system_config_handler))
         .route("/config/app", get(get_app_config_handler).post(set_app_config_handler))
@@ -616,6 +617,8 @@ async fn query_logs_handler(
         category: parse_category_opt(params["category"].as_str()),
         keyword: params["keyword"].as_str().map(|s| s.to_string()),
         since_seq: params["since_seq"].as_u64(),
+        before_ts: params["before_ts"].as_str().map(|s| s.to_string()),
+        after_ts: params["after_ts"].as_str().map(|s| s.to_string()),
         limit: params["limit"].as_u64().map(|n| n as usize),
     };
     Json(crate::log::query(&filter)).into_response()
@@ -636,10 +639,35 @@ async fn clear_logs_filtered_handler(
         category: parse_category_opt(params["category"].as_str()),
         keyword: params["keyword"].as_str().map(|s| s.to_string()),
         since_seq: None,
+        before_ts: None,
+        after_ts: None,
         limit: None,
     };
     crate::log::clear_filtered(&filter);
     StatusCode::NO_CONTENT
+}
+
+async fn export_logs_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<serde_json::Value>,
+) -> impl IntoResponse {
+    let filter = crate::log::LogFilter {
+        level: parse_level_opt(params["level"].as_str()),
+        space_id: params["space_id"].as_str().map(|s| s.to_string()),
+        module: params["module"].as_str().map(|s| s.to_string()),
+        category: parse_category_opt(params["category"].as_str()),
+        keyword: params["keyword"].as_str().map(|s| s.to_string()),
+        since_seq: None,
+        before_ts: params["before_ts"].as_str().map(|s| s.to_string()),
+        after_ts: params["after_ts"].as_str().map(|s| s.to_string()),
+        limit: None,
+    };
+    let records = crate::log::query(&filter);
+    let format = params["format"].as_str().unwrap_or("txt");
+    match crate::log::export_to_dir(&state.data_dir.join("logs_export"), &records, format) {
+        Ok(path) => Json(serde_json::json!({ "path": path.to_string_lossy() })).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    }
 }
 
 // ---- 配置 ----
