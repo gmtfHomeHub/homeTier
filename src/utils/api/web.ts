@@ -609,6 +609,10 @@ export async function upgradeEasyTierWithProgress(
 }
 
 // ---- 兼容占位 ----
+export async function queryDaemonLogs(): Promise<LogEntry[]> {
+  throw new Error("Daemon 日志仅桌面端可用");
+}
+
 export async function isDaemonReady(): Promise<boolean> {
   return true;
 }

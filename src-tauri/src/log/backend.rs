@@ -295,6 +295,24 @@ impl MemoryBackend {
             logs.clear();
         }
     }
+
+    /// 启动恢复：注入历史记录（按 seq 排序追加），并续接 seq 计数
+    pub fn restore(&self, mut records: Vec<LogRecord>) {
+        if records.is_empty() {
+            return;
+        }
+        records.sort_by_key(|r| r.seq);
+        let max_seq = records.last().map(|r| r.seq).unwrap_or(0);
+        if let Ok(mut logs) = self.store.lock() {
+            for r in records {
+                logs.push_back(r);
+                while logs.len() > self.max_entries {
+                    logs.pop_front();
+                }
+            }
+        }
+        self.seq.store(max_seq + 1, Ordering::Relaxed);
+    }
 }
 
 impl LogBackend for MemoryBackend {
@@ -348,6 +366,55 @@ impl FileBackend {
     fn roll_path(&self) -> String {
         let n = self.seq.fetch_add(1, Ordering::Relaxed);
         Path::new(&self.dir).join(format!("hometier.log.{}", n)).to_string_lossy().into_owned()
+    }
+
+    /// 读取所有日志文件（含滚动文件），按 seq 排序，返回最近 n 条
+    pub fn load_recent(&self, n: usize) -> Vec<LogRecord> {
+        let mut paths: Vec<std::path::PathBuf> = vec![Path::new(&self.dir).join("hometier.log")];
+        let mut i: u64 = 0;
+        loop {
+            let p = Path::new(&self.dir).join(format!("hometier.log.{}", i));
+            if p.exists() {
+                paths.push(p);
+                i += 1;
+            } else {
+                break;
+            }
+        }
+
+        let mut records: Vec<LogRecord> = Vec::new();
+        for p in &paths {
+            let Ok(content) = std::fs::read_to_string(p) else { continue };
+            for line in content.lines() {
+                if let Ok(r) = serde_json::from_str::<LogRecord>(line) {
+                    records.push(r);
+                }
+            }
+        }
+
+        records.sort_by_key(|r| r.seq);
+        if records.len() > n {
+            records = records.split_off(records.len() - n);
+        }
+        records
+    }
+
+    /// 删除所有日志文件（含滚动文件），用于"清空日志"持久化语义
+    pub fn delete_all(&self) {
+        let mut paths: Vec<std::path::PathBuf> = vec![Path::new(&self.dir).join("hometier.log")];
+        let mut i: u64 = 0;
+        loop {
+            let p = Path::new(&self.dir).join(format!("hometier.log.{}", i));
+            if p.exists() {
+                paths.push(p);
+                i += 1;
+            } else {
+                break;
+            }
+        }
+        for p in paths {
+            let _ = std::fs::remove_file(p);
+        }
     }
 }
 

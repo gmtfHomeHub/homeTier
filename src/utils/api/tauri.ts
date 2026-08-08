@@ -169,6 +169,28 @@ export async function queryLogs(filter: {
   });
 }
 
+export async function queryDaemonLogs(filter: {
+  level?: string;
+  space_id?: string;
+  module?: string;
+  category?: string;
+  keyword?: string;
+  before_ts?: string;
+  after_ts?: string;
+  limit?: number;
+}): Promise<LogEntry[]> {
+  return invoke("query_daemon_logs", {
+    level: filter.level ?? null,
+    spaceId: filter.space_id ?? null,
+    module: filter.module ?? null,
+    category: filter.category ?? null,
+    keyword: filter.keyword ?? null,
+    beforeTs: filter.before_ts ?? null,
+    afterTs: filter.after_ts ?? null,
+    limit: filter.limit ?? null,
+  });
+}
+
 export async function exportLogs(filter: {
   level?: string;
   space_id?: string;

@@ -184,6 +184,38 @@ pub fn clear_filtered(filter: &LogFilter) {
     }
 }
 
+/// 启动恢复：从文件后端加载最近 n 条历史日志注入内存后端
+pub fn restore_history(n: usize) {
+    let dispatch = global_dispatch();
+    let mut records: Vec<LogRecord> = Vec::new();
+    for backend in &dispatch.backends {
+        if let Some(fb) = backend.as_any().downcast_ref::<FileBackend>() {
+            records = fb.load_recent(n);
+            break;
+        }
+    }
+    if records.is_empty() {
+        return;
+    }
+    for backend in &dispatch.backends {
+        if let Some(mem) = backend.as_any().downcast_ref::<MemoryBackend>() {
+            mem.restore(records);
+            break;
+        }
+    }
+}
+
+/// 删除文件后端的所有日志文件（含滚动文件）——"清空日志"持久化语义
+pub fn delete_log_files() {
+    let dispatch = global_dispatch();
+    for backend in &dispatch.backends {
+        if let Some(fb) = backend.as_any().downcast_ref::<FileBackend>() {
+            fb.delete_all();
+            break;
+        }
+    }
+}
+
 /// 导出日志到指定目录，返回文件绝对路径
 /// format: "txt"（默认）| "json"
 pub fn export_to_dir(

@@ -20,6 +20,7 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     crate::log::init_logger(None, log_path.as_deref(), None);
 
     crate::log::clear();
+    crate::log::restore_history(50_000);
     crate::log_info!("homeTier 应用启动");
 
     // 初始化数据库

@@ -162,11 +162,21 @@ pub async fn clear_logs_filtered(
         limit: None,
     };
     log::clear_filtered(&filter);
+
+    // 全清语义：同时删除文件日志，避免重启后历史"复活"
+    if filter.level.is_none()
+        && filter.space_id.is_none()
+        && filter.module.is_none()
+        && filter.category.is_none()
+        && filter.keyword.is_none()
+    {
+        log::delete_log_files();
+    }
 }
 
 // ---- 工具 ----
 
-fn parse_level(s: &str) -> Option<LogLevel> {
+pub fn parse_level(s: &str) -> Option<LogLevel> {
     match s.to_lowercase().as_str() {
         "debug" => Some(LogLevel::Debug),
         "info" => Some(LogLevel::Info),
@@ -176,7 +186,7 @@ fn parse_level(s: &str) -> Option<LogLevel> {
     }
 }
 
-fn parse_category(s: &str) -> Option<LogCategory> {
+pub fn parse_category(s: &str) -> Option<LogCategory> {
     match s.to_lowercase().as_str() {
         "system" => Some(LogCategory::System),
         "network" => Some(LogCategory::Network),

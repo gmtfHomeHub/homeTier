@@ -89,6 +89,7 @@ export const queryLogs = impl.queryLogs;
 export const getLogModules = impl.getLogModules;
 export const clearLogsFiltered = impl.clearLogsFiltered;
 export const exportLogs = impl.exportLogs;
+export const queryDaemonLogs = impl.queryDaemonLogs;
 export const getLogEnabled = impl.getLogEnabled;
 export const setLogEnabled = impl.setLogEnabled;
 

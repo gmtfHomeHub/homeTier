@@ -103,6 +103,7 @@ pub fn run() -> std::process::ExitCode {
             commands::daemon::is_daemon_ready,
             commands::daemon::get_daemon_error_reason,
             commands::daemon::get_daemon_logs,
+            commands::daemon::query_daemon_logs,
             commands::daemon::check_easytier_binary,
             commands::easytier::get_easytier_version,
             commands::easytier::check_easytier_update,
