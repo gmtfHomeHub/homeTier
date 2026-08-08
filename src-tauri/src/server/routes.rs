@@ -57,6 +57,9 @@ pub fn cmd_router(app_state: Arc<AppState>) -> Router {
         .route("/log/list", get(get_logs_handler))
         .route("/log/space/{space_id}", get(get_space_logs_handler))
         .route("/log/clear", post(clear_logs_handler))
+        .route("/log/query", get(query_logs_handler))
+        .route("/log/modules", get(get_log_modules_handler))
+        .route("/log/clear-filtered", post(clear_logs_filtered_handler))
         // 配置
         .route("/config/system", get(get_system_config_handler).post(set_system_config_handler))
         .route("/config/app", get(get_app_config_handler).post(set_app_config_handler))
@@ -573,6 +576,69 @@ async fn get_space_logs_handler(
 
 async fn clear_logs_handler() -> impl IntoResponse {
     crate::log::clear();
+    StatusCode::NO_CONTENT
+}
+
+// ---- v2 复合查询 / 模块发现 / 过滤清除 ----
+
+fn parse_level_opt(s: Option<&str>) -> Option<crate::log::LogLevel> {
+    match s.map(|x| x.to_lowercase()).as_deref() {
+        Some("debug") => Some(crate::log::LogLevel::Debug),
+        Some("info") => Some(crate::log::LogLevel::Info),
+        Some("warning") => Some(crate::log::LogLevel::Warning),
+        Some("error") => Some(crate::log::LogLevel::Error),
+        _ => None,
+    }
+}
+
+fn parse_category_opt(s: Option<&str>) -> Option<crate::log::LogCategory> {
+    match s.map(|x| x.to_lowercase()).as_deref() {
+        Some("system") => Some(crate::log::LogCategory::System),
+        Some("network") => Some(crate::log::LogCategory::Network),
+        Some("webrtc") => Some(crate::log::LogCategory::WebRTC),
+        Some("data") => Some(crate::log::LogCategory::Data),
+        Some("proxy") => Some(crate::log::LogCategory::Proxy),
+        Some("daemon") => Some(crate::log::LogCategory::Daemon),
+        Some("space") => Some(crate::log::LogCategory::Space),
+        Some("server") => Some(crate::log::LogCategory::Server),
+        _ => None,
+    }
+}
+
+async fn query_logs_handler(
+    State(_state): State<Arc<AppState>>,
+    Query(params): Query<serde_json::Value>,
+) -> impl IntoResponse {
+    let filter = crate::log::LogFilter {
+        level: parse_level_opt(params["level"].as_str()),
+        space_id: params["space_id"].as_str().map(|s| s.to_string()),
+        module: params["module"].as_str().map(|s| s.to_string()),
+        category: parse_category_opt(params["category"].as_str()),
+        keyword: params["keyword"].as_str().map(|s| s.to_string()),
+        since_seq: params["since_seq"].as_u64(),
+        limit: params["limit"].as_u64().map(|n| n as usize),
+    };
+    Json(crate::log::query(&filter)).into_response()
+}
+
+async fn get_log_modules_handler() -> impl IntoResponse {
+    Json(crate::log::active_modules()).into_response()
+}
+
+async fn clear_logs_filtered_handler(
+    State(_state): State<Arc<AppState>>,
+    Query(params): Query<serde_json::Value>,
+) -> impl IntoResponse {
+    let filter = crate::log::LogFilter {
+        level: parse_level_opt(params["level"].as_str()),
+        space_id: params["space_id"].as_str().map(|s| s.to_string()),
+        module: params["module"].as_str().map(|s| s.to_string()),
+        category: parse_category_opt(params["category"].as_str()),
+        keyword: params["keyword"].as_str().map(|s| s.to_string()),
+        since_seq: None,
+        limit: None,
+    };
+    crate::log::clear_filtered(&filter);
     StatusCode::NO_CONTENT
 }
 

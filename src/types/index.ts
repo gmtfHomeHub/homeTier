@@ -75,9 +75,41 @@ export interface LogEntry {
   seq: number;
   timestamp: string;
   level: "debug" | "info" | "warning" | "error";
+  target: string;
   module: string;
+  category:
+    | "system"
+    | "network"
+    | "webrtc"
+    | "data"
+    | "proxy"
+    | "daemon"
+    | "space"
+    | "server";
   message: string;
   space_id?: string;
+  trace_id?: string;
+}
+
+export type LogLevel = "debug" | "info" | "warning" | "error";
+export type LogCategory =
+  | "system"
+  | "network"
+  | "webrtc"
+  | "data"
+  | "proxy"
+  | "daemon"
+  | "space"
+  | "server";
+
+export interface LogFilter {
+  level?: LogLevel;
+  space_id?: string;
+  module?: string;
+  category?: LogCategory;
+  keyword?: string;
+  since_seq?: number;
+  limit?: number;
 }
 
 export interface PeerInfo {

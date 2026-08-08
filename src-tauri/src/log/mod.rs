@@ -13,7 +13,7 @@ static LOG_ENABLED: AtomicBool = AtomicBool::new(true);
 
 // ---- 对外公开的 re-exports ----
 
-pub use crate::log::backend::{LogLevel, LogRecord};
+pub use crate::log::backend::{LogCategory, LogFilter, LogLevel, LogRecord};
 
 /// 兼容别名（旧 LogEntry 类型，沿用约定）
 pub type LogEntry = LogRecord;
@@ -64,7 +64,7 @@ impl Default for ServerLogConfig {
 
 fn build_desktop_dispatch(log_dir: Option<&Path>) -> Dispatch {
     let mut dispatch = Dispatch::new()
-        .add_backend(MemoryBackend::new(5000))
+        .add_backend(MemoryBackend::new(50000))
         .add_backend(ForwardBackend::new());
 
     if let Some(dir) = log_dir {
@@ -162,6 +162,39 @@ pub fn get_by_space(space_id: &str, level_filter: Option<LogLevel>) -> Vec<LogRe
     vec![]
 }
 
+/// v2 复合查询
+pub fn query(filter: &LogFilter) -> Vec<LogRecord> {
+    let dispatch = global_dispatch();
+    for backend in &dispatch.backends {
+        if let Some(mem) = backend.as_any().downcast_ref::<MemoryBackend>() {
+            return mem.query(filter);
+        }
+    }
+    vec![]
+}
+
+/// v2 按过滤器清除
+pub fn clear_filtered(filter: &LogFilter) {
+    let dispatch = global_dispatch();
+    for backend in &dispatch.backends {
+        if let Some(mem) = backend.as_any().downcast_ref::<MemoryBackend>() {
+            mem.clear_filtered(filter);
+            break;
+        }
+    }
+}
+
+/// 当前活跃模块列表（供前端 UI 渲染模块筛选器）
+pub fn active_modules() -> Vec<String> {
+    let dispatch = global_dispatch();
+    for backend in &dispatch.backends {
+        if let Some(mem) = backend.as_any().downcast_ref::<MemoryBackend>() {
+            return mem.active_modules();
+        }
+    }
+    vec![]
+}
+
 // ---- 系统日志 ----
 
 /// 系统日志写入（授权失败等重要错误）
@@ -215,7 +248,7 @@ pub fn init_file_logging(log_dir: &Path) {
         }
     }
     let new_dispatch = Dispatch::new()
-        .add_backend(MemoryBackend::new(5000))
+        .add_backend(MemoryBackend::new(50000))
         .add_backend(ForwardBackend::new())
         .add_backend(FileBackend::new(
             log_dir.to_str().unwrap_or("./logs"),

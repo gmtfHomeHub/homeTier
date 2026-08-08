@@ -192,6 +192,48 @@ export async function clearLogs(): Promise<void> {
   return request<void>("/log/clear", { method: "POST" });
 }
 
+export async function queryLogs(filter: {
+  level?: string;
+  space_id?: string;
+  module?: string;
+  category?: string;
+  keyword?: string;
+  since_seq?: number;
+  limit?: number;
+}): Promise<LogEntry[]> {
+  const params = new URLSearchParams();
+  if (filter.level) params.set("level", filter.level);
+  if (filter.space_id) params.set("space_id", filter.space_id);
+  if (filter.module) params.set("module", filter.module);
+  if (filter.category) params.set("category", filter.category);
+  if (filter.keyword) params.set("keyword", filter.keyword);
+  if (filter.since_seq !== undefined) params.set("since_seq", String(filter.since_seq));
+  if (filter.limit !== undefined) params.set("limit", String(filter.limit));
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return request<LogEntry[]>(`/log/query${query}`);
+}
+
+export async function getLogModules(): Promise<string[]> {
+  return request<string[]>("/log/modules");
+}
+
+export async function clearLogsFiltered(filter: {
+  level?: string;
+  space_id?: string;
+  module?: string;
+  category?: string;
+  keyword?: string;
+}): Promise<void> {
+  const params = new URLSearchParams();
+  if (filter.level) params.set("level", filter.level);
+  if (filter.space_id) params.set("space_id", filter.space_id);
+  if (filter.module) params.set("module", filter.module);
+  if (filter.category) params.set("category", filter.category);
+  if (filter.keyword) params.set("keyword", filter.keyword);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return request<void>(`/log/clear-filtered${query}`, { method: "POST" });
+}
+
 // ---- 配置 ----
 export async function getSystemConfig(): Promise<string | null> {
   const res = await request<string | null>("/config/system");

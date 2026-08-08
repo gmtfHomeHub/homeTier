@@ -1,7 +1,6 @@
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
@@ -32,36 +31,97 @@ impl std::fmt::Display for LogLevel {
     }
 }
 
+/// 日志分类
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum LogCategory {
+    System,
+    Network,
+    WebRTC,
+    Data,
+    Proxy,
+    Daemon,
+    Space,
+    Server,
+}
+
+impl std::fmt::Display for LogCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            LogCategory::System => "system",
+            LogCategory::Network => "network",
+            LogCategory::WebRTC => "webrtc",
+            LogCategory::Data => "data",
+            LogCategory::Proxy => "proxy",
+            LogCategory::Daemon => "daemon",
+            LogCategory::Space => "space",
+            LogCategory::Server => "server",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 /// 统一日志记录结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogRecord {
     pub seq: u64,
     pub timestamp: String,
     pub level: LogLevel,
-    #[serde(alias = "module")]
     pub target: String,
+    pub module: String,
+    pub category: LogCategory,
     pub message: String,
     pub space_id: Option<String>,
     pub trace_id: Option<String>,
-    pub extra: Value,
 }
 
 impl LogRecord {
-    pub fn new(level: LogLevel, target: &str, message: String) -> Self {
+    pub fn new(level: LogLevel, target: &str, message: String, space_id: Option<String>, trace_id: Option<String>) -> Self {
+        let target_str = target.to_string();
+        let module = extract_module(&target_str);
+        let category = categorize_module(&module);
         Self {
             seq: 0,
             timestamp: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             level,
-            target: target.to_string(),
+            target: target_str,
+            module,
+            category,
             message,
-            space_id: None,
-            trace_id: None,
-            extra: Value::Null,
+            space_id,
+            trace_id,
         }
     }
 
     pub fn module(&self) -> &str {
-        &self.target
+        &self.module
+    }
+}
+
+/// 从 target 路径提取模块标签
+fn extract_module(target: &str) -> String {
+    // target 形如 "home_tier_lib::easytier::manager" 或 "crate::proxy::server"
+    // 提取第一个有意义的模块名
+    let parts: Vec<&str> = target.split("::").collect();
+    for part in parts.iter().rev() {
+        if !part.is_empty() && *part != "crate" {
+            return part.to_string();
+        }
+    }
+    parts.last().unwrap_or(&"unknown").to_string()
+}
+
+/// 根据模块名映射到分类
+fn categorize_module(module: &str) -> LogCategory {
+    match module {
+        m if m.starts_with("easytier") || m.contains("network") || m.contains("space") => LogCategory::Network,
+        m if m.contains("voice") || m.contains("screen") || m.contains("webrtc") => LogCategory::WebRTC,
+        m if m.contains("chat") || m.contains("file") || m.contains("data") => LogCategory::Data,
+        m if m.contains("proxy") => LogCategory::Proxy,
+        m if m.contains("daemon") => LogCategory::Daemon,
+        m if m.contains("space") => LogCategory::Space,
+        m if m.contains("server") || m.contains("http") || m.contains("ws") => LogCategory::Server,
+        _ => LogCategory::System,
     }
 }
 
@@ -73,6 +133,57 @@ pub trait LogBackend: Send + Sync {
     fn flush(&self) {}
     fn name(&self) -> &'static str;
     fn as_any(&self) -> &dyn std::any::Any;
+}
+
+/// 日志查询过滤器
+#[derive(Debug, Clone, Default)]
+pub struct LogFilter {
+    pub level: Option<LogLevel>,
+    pub space_id: Option<String>,
+    pub module: Option<String>,
+    pub category: Option<LogCategory>,
+    pub keyword: Option<String>,
+    pub since_seq: Option<u64>,
+    pub limit: Option<usize>,
+}
+
+impl LogFilter {
+    pub fn matches(&self, record: &LogRecord) -> bool {
+        if let Some(lv) = self.level {
+            if record.level != lv {
+                return false;
+            }
+        }
+        if let Some(ref sid) = self.space_id {
+            if record.space_id.as_deref() != Some(sid) {
+                return false;
+            }
+        }
+        if let Some(ref m) = self.module {
+            if !record.module.contains(m) {
+                return false;
+            }
+        }
+        if let Some(cat) = self.category {
+            if record.category != cat {
+                return false;
+            }
+        }
+        if let Some(ref kw) = self.keyword {
+            let kw_lower = kw.to_lowercase();
+            if !record.message.to_lowercase().contains(&kw_lower)
+                && !record.target.to_lowercase().contains(&kw_lower)
+            {
+                return false;
+            }
+        }
+        if let Some(seq) = self.since_seq {
+            if record.seq <= seq {
+                return false;
+            }
+        }
+        true
+    }
 }
 
 // ---- 内存后端 ----
@@ -116,6 +227,52 @@ impl MemoryBackend {
                 .collect()
         } else {
             vec![]
+        }
+    }
+
+    /// v2 复合查询
+    pub fn query(&self, filter: &LogFilter) -> Vec<LogRecord> {
+        let logs = match self.store.lock() {
+            Ok(l) => l,
+            Err(_) => return vec![],
+        };
+        let mut result: Vec<LogRecord> = logs
+            .iter()
+            .filter(|e| filter.matches(e))
+            .cloned()
+            .collect();
+        if let Some(limit) = filter.limit {
+            result.truncate(limit);
+        }
+        result
+    }
+
+    /// 返回当前缓存中的所有活跃模块（去重）
+    pub fn active_modules(&self) -> Vec<String> {
+        if let Ok(logs) = self.store.lock() {
+            let mut set: HashSet<String> = HashSet::new();
+            for e in logs.iter() {
+                set.insert(e.module.clone());
+            }
+            set.into_iter().collect()
+        } else {
+            vec![]
+        }
+    }
+
+    /// v2 清除：按过滤器清除匹配项；filter 为空则清空全部
+    pub fn clear_filtered(&self, filter: &LogFilter) {
+        if let Ok(mut logs) = self.store.lock() {
+            if filter.level.is_none()
+                && filter.space_id.is_none()
+                && filter.module.is_none()
+                && filter.category.is_none()
+                && filter.keyword.is_none()
+            {
+                logs.clear();
+            } else {
+                logs.retain(|e| !filter.matches(e));
+            }
         }
     }
 
@@ -399,7 +556,7 @@ pub fn init_dispatch(dispatch: Dispatch) {
 pub fn global_dispatch() -> &'static Dispatch {
     GLOBAL_DISPATCH.get_or_init(|| {
         Dispatch::new()
-            .add_backend(MemoryBackend::new(5000))
+            .add_backend(MemoryBackend::new(50000))
             .add_backend(ForwardBackend::new())
     })
 }
@@ -412,16 +569,7 @@ pub fn dispatch_log(
     space_id: Option<String>,
     trace_id: Option<String>,
 ) {
-    let record = LogRecord {
-        seq: 0,
-        timestamp: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-        level,
-        target: target.to_string(),
-        message,
-        space_id,
-        trace_id,
-        extra: Value::Null,
-    };
+    let record = LogRecord::new(level, target, message, space_id, trace_id);
     global_dispatch().write(&record);
 }
 
@@ -458,7 +606,7 @@ mod tests {
     #[test]
     fn test_memory_backend() {
         let backend = MemoryBackend::new(10);
-        backend.write(&LogRecord::new(LogLevel::Info, "test", "hello".into()));
+        backend.write(&LogRecord::new(LogLevel::Info, "test", "hello".into(), None, None));
         let logs = backend.get_all(None);
         assert_eq!(logs.len(), 1);
         assert_eq!(logs[0].seq, 1);
@@ -467,6 +615,6 @@ mod tests {
     #[test]
     fn test_stdout_backend() {
         let backend = StdoutBackend::json();
-        backend.write(&LogRecord::new(LogLevel::Error, "test", "error msg".into()));
+        backend.write(&LogRecord::new(LogLevel::Error, "test", "error msg".into(), None, None));
     }
 }

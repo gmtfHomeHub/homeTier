@@ -145,6 +145,46 @@ export async function clearLogs(): Promise<void> {
   return invoke("clear_logs");
 }
 
+export async function queryLogs(filter: {
+  level?: string;
+  space_id?: string;
+  module?: string;
+  category?: string;
+  keyword?: string;
+  since_seq?: number;
+  limit?: number;
+}): Promise<LogEntry[]> {
+  return invoke("query_logs", {
+    level: filter.level ?? null,
+    spaceId: filter.space_id ?? null,
+    module: filter.module ?? null,
+    category: filter.category ?? null,
+    keyword: filter.keyword ?? null,
+    sinceSeq: filter.since_seq ?? null,
+    limit: filter.limit ?? null,
+  });
+}
+
+export async function getLogModules(): Promise<string[]> {
+  return invoke("get_log_modules");
+}
+
+export async function clearLogsFiltered(filter: {
+  level?: string;
+  space_id?: string;
+  module?: string;
+  category?: string;
+  keyword?: string;
+}): Promise<void> {
+  return invoke("clear_logs_filtered", {
+    level: filter.level ?? null,
+    spaceId: filter.space_id ?? null,
+    module: filter.module ?? null,
+    category: filter.category ?? null,
+    keyword: filter.keyword ?? null,
+  });
+}
+
 export async function getLogEnabled(): Promise<boolean> {
   return invoke("get_log_enabled");
 }

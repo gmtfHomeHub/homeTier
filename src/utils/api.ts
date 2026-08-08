@@ -29,6 +29,9 @@ export type {
   FileInfo,
   NetworkStats,
   LogEntry,
+  LogFilter,
+  LogLevel,
+  LogCategory,
   SpaceApp,
   PeerInfo,
   AclRule,
@@ -82,6 +85,9 @@ export const getTransferProgress = impl.getTransferProgress;
 export const getLogs = impl.getLogs;
 export const getSpaceLogs = impl.getSpaceLogs;
 export const clearLogs = impl.clearLogs;
+export const queryLogs = impl.queryLogs;
+export const getLogModules = impl.getLogModules;
+export const clearLogsFiltered = impl.clearLogsFiltered;
 export const getLogEnabled = impl.getLogEnabled;
 export const setLogEnabled = impl.setLogEnabled;
 
