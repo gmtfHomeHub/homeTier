@@ -257,8 +257,11 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
                 // 误用 origin-ish header 构建路径/namespacename——在共享页返回错误的
                 // 例如 CasaOS 的 socket.io 会根据 Referer 生成 40//hometierproxy://host...
                 // 纯转发 WS 要求：这些头完全不应上传
+                // accept-encoding: 剥离后上游(CasaOS Go gzip 中间件等)不会对 101 升级
+                // 响应错误启用 gzip——WS 帧传输与 HTTP 压缩无关(permessage-deflate 已剥离)
                 "referer" | "pragma" | "cache-control"
-                | "sec-fetch-site" | "sec-fetch-mode" | "sec-fetch-dest" => {}
+                | "sec-fetch-site" | "sec-fetch-mode" | "sec-fetch-dest"
+                | "accept-encoding" => {}
                 _ => {
                     // 过滤 hop-by-hop 头，其余加入 extra_headers
                     if !hop_by_hop.contains(&key_lower.as_str()) {
@@ -357,14 +360,20 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
 
     // 注入 Cookie（使用 cookie jar 中的持久化 cookie，其次使用 client 提供的）
     let host_key = format!("{}:{}", target_host, target_port);
-    if let Some(jar_cookie) = hometier_protocol::cookie_jars().lock().unwrap()
+    let jar_cookie = hometier_protocol::cookie_jars()
+        .lock()
+        .unwrap()
         .entry(host_key.clone())
         .or_insert_with(hometier_protocol::PerHostCookieJar::new)
-        .build_cookie_header()
-    {
+        .build_cookie_header();
+    if let Some(ref jar_cookie) = jar_cookie {
+        crate::log_info!("WS 代理: Cookie 注入来源=jar(持久化), 优先于客户端请求头");
         let _ = write!(upstream_req, "Cookie: {}\r\n", jar_cookie);
     } else if let Some(ref cookie) = client_cookie {
+        crate::log_info!("WS 代理: Cookie 注入来源=客户端请求头");
         let _ = write!(upstream_req, "Cookie: {}\r\n", cookie);
+    } else {
+        crate::log_info!("WS 代理: Cookie 注入来源=无");
     }
 
     upstream_req.push_str("\r\n");
@@ -408,7 +417,7 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
     }
 
     let resp_data = &resp_buf[..resp_total];
-    crate::log_info!(format!("WS 代理: 上游响应总字节={} 期望存在WS帧={}", resp_total, resp_total > 0));
+    crate::log_info!(format!("WS 代理: 上游响应总字节={}", resp_total));
 
     // 定位响应头结束位置（\r\n\r\n）。上游可能在 101 后立即推送 WebSocket 帧，
     // 帧为二进制数据，必须与响应头分开处理，不能对整段缓冲做 UTF-8 校验。
@@ -448,16 +457,80 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
     let resp_preview: Vec<&str> = resp_str.lines().take(10).collect();
     crate::log_info!(format!("WS 代理: 上游 101 响应:\n{}", resp_preview.join("\n")));
 
+    // 诊断: 101 响应是否携带 content-encoding(异常——升级响应不应有表示元数据头,
+    // 如 CasaOS Go gzip 中间件错误附加的 content-encoding: gzip)
+    if resp_str.lines().any(|l| l.to_lowercase().starts_with("content-encoding:")) {
+        crate::log_warn!("WS 代理: 上游 101 响应含 content-encoding 头(异常)——服务器可能对 WS 连接启用了 HTTP gzip, 该头将在透传时清洗");
+    }
+
+    // 诊断: leftover 帧数据 hex dump + gzip 魔数检测(1f 8b)——判断 101 后紧随的数据
+    // 是否被 gzip 污染(若为 gzip 流则客户端按 WS 帧解析会协议错误并关闭连接)
+    let leftover_start = resp_eoh + 4;
+    let leftover = &resp_data[leftover_start..];
+    if !leftover.is_empty() {
+        let hex_head: String = leftover
+            .iter()
+            .take(16)
+            .map(|b| format!("{:02x}", b))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let gzip_magic = leftover.len() >= 2 && leftover[0] == 0x1f && leftover[1] == 0x8b;
+        crate::log_info!(format!(
+            "WS 代理: leftover 帧数据={} 字节 hex(前16)=[{}] gzip魔数={}",
+            leftover.len(),
+            hex_head,
+            gzip_magic
+        ));
+    }
+
     // 8. 提取 accept 值
     let accept_val = extract_header(resp_str, "sec-websocket-accept");
 
-    // 9. 发送 101 响应到客户端（全量透传上游原始响应头；残留的 WebSocket 帧数据一并下发）
-    crate::log_info!(format!("WS 代理: 发往客户端 101 (accept={})", accept_val));
-    if let Err(e) = client.write_all(&resp_buf[..resp_total]).await {
+    // 9. 清洗 101 响应头后发送到客户端：剔除 HTTP 表示/传输元数据头
+    //    (content-encoding/content-length/transfer-encoding/vary 等——101 升级响应
+    //     不应携带, 如 CasaOS 的 gzip 中间件错误附加的 content-encoding: gzip),
+    //    保留 WS 必需头(upgrade/connection/sec-websocket-accept)与会话头(set-cookie)。
+    //    Sec-WebSocket-Accept 由客户端直接校验, 代理不重算, 原值透传即通过。
+    let strip_resp_headers = [
+        "content-encoding",
+        "content-length",
+        "transfer-encoding",
+        "vary",
+        "trailer",
+        "trailers",
+    ];
+    let mut filtered_resp: Vec<&str> = Vec::new();
+    for line in resp_str.lines() {
+        let lower = line.to_lowercase();
+        let skip = strip_resp_headers
+            .iter()
+            .any(|h| lower.starts_with(&format!("{}:", h)));
+        if skip {
+            continue;
+        }
+        filtered_resp.push(line);
+    }
+    let filtered_head = filtered_resp.join("\r\n");
+
+    crate::log_info!(format!(
+        "WS 代理: 发往客户端 101 (accept={}) 清洗后头={}行/{}字节",
+        accept_val,
+        filtered_resp.len(),
+        filtered_head.len()
+    ));
+    let mut out = Vec::with_capacity(filtered_head.len() + 4 + leftover.len());
+    out.extend_from_slice(filtered_head.as_bytes());
+    out.extend_from_slice(b"\r\n\r\n");
+    out.extend_from_slice(leftover);
+    if let Err(e) = client.write_all(&out).await {
         crate::log_error!(format!("WS 代理: 发送 101 响应到客户端失败 - {}", e));
         return;
     }
-    crate::log_info!(format!("WS 代理: 发往客户端响应总字节={} 头部={}左over={}", resp_total, resp_eoh, resp_total.saturating_sub(resp_eoh + 4)));
+    crate::log_info!(format!(
+        "WS 代理: 发往客户端响应: 头部={} 字节, leftover帧数据={} 字节",
+        filtered_head.len() + 4,
+        leftover.len()
+    ));
     crate::log_info!("WS 代理: 开始双向数据转发");
 
     // 11. 双向数据转发
@@ -465,17 +538,22 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
 }
 
 /// 双向数据转发：client ↔ upstream
-/// 两个方向各自独立运行：任一侧 EOF 只对其对端执行 half-close（TCP 半关闭），
-/// 不中断另一侧，避免 select 竞态导致客户端被 RST。
+/// 两个方向各自独立运行：任一侧 EOF 只对其对端执行 half-close（TCP 半关闭）。
+/// 任一侧先结束(EOF/错误)后, 立即半关对端写端并终止另一侧任务, 避免连接挂起泄漏
+/// (原 join! 在客户端不关闭时会永久等待上游方向)。
 async fn bidirectional_copy(client: TcpStream, upstream: WsUpstream) {
     let (mut rc, mut wc) = tokio::io::split(client);
     let (mut ru, mut wu) = tokio::io::split(upstream);
     crate::log_info!("WS 代理: bidirectional_copy 开始执行");
 
     // 方向 1: client → upstream
-    let c2u = tokio::spawn(async move {
+    let mut c2u_h = tokio::spawn(async move {
         match tokio::io::copy(&mut rc, &mut wu).await {
-            Ok(n) => crate::log_info!(format!("WS 代理: client→upstream 转发完成, 共 {} 字节", n)),
+            Ok(0) => crate::log_info!("WS 代理: client→upstream EOF (客户端关闭, 未转发数据)"),
+            Ok(n) => crate::log_info!(format!(
+                "WS 代理: client→upstream 转发完成, 共 {} 字节 (客户端关闭)",
+                n
+            )),
             Err(e) => crate::log_error!(format!("WS 代理: client→upstream 转发失败 - {}", e)),
         }
         // client 侧 EOF：半关上游写端，通知上游数据结束
@@ -483,15 +561,29 @@ async fn bidirectional_copy(client: TcpStream, upstream: WsUpstream) {
     });
 
     // 方向 2: upstream → client
-    let u2c = tokio::spawn(async move {
+    let mut u2c_h = tokio::spawn(async move {
         match tokio::io::copy(&mut ru, &mut wc).await {
-            Ok(n) => crate::log_info!(format!("WS 代理: upstream→client 转发完成, 共 {} 字节", n)),
+            Ok(0) => crate::log_info!("WS 代理: upstream→client EOF (上游关闭, 未转发数据)"),
+            Ok(n) => crate::log_info!(format!(
+                "WS 代理: upstream→client 转发完成, 共 {} 字节 (上游关闭)",
+                n
+            )),
             Err(e) => crate::log_error!(format!("WS 代理: upstream→client 转发失败 - {}", e)),
         }
         // 上游侧已关闭，半关客户端写端，客户端读到 FIN 自行结束
         let _ = wc.shutdown().await;
     });
 
-    let _ = tokio::join!(c2u, u2c);
+    // 等待先结束的方向：终止另一侧任务, 避免连接挂起泄漏
+    tokio::select! {
+        _ = &mut c2u_h => {
+            crate::log_info!("WS 代理: client→upstream 方向先完成, 终止 upstream→client");
+        }
+        _ = &mut u2c_h => {
+            crate::log_info!("WS 代理: upstream→client 方向先完成, 终止 client→upstream");
+        }
+    }
+    c2u_h.abort();
+    u2c_h.abort();
     crate::log_info!("WS 代理: bidirectional_copy 结束");
 }
