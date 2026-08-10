@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Share2, X } from "lucide-react";
 import { Button, Dialog, Flex, Text, Box } from "@radix-ui/themes";
 import * as api from "../../utils/api";
@@ -18,6 +19,7 @@ export function ShareAppDialog({
   onClose,
   onShared,
 }: ShareAppDialogProps) {
+  const { t } = useTranslation();
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [sharingId, setSharingId] = useState<string | null>(null);
 
@@ -46,18 +48,18 @@ export function ShareAppDialog({
       <Dialog.Content maxWidth="420px" className="w-full max-w-[calc(100vw-24px)] sm:w-[420px]">
         <Flex justify="between" align="center" mb="3">
           <Text size="4" weight="bold">
-            分享应用「{app.name}」
+            {t("appNav.shareApp")}「{app.name}」
           </Text>
           <Button variant="ghost" size="1" onClick={onClose}>
             <X size={14} />
           </Button>
         </Flex>
         <Text size="2" color="gray" mb="3" className="block">
-          选择目标空间，应用将被授权复制到该空间，其成员即可使用。
+          {t("appNav.shareDesc")}
         </Text>
         {spaces.length === 0 ? (
           <Text size="2" color="gray">
-            暂无其他空间可供分享
+            {t("appNav.noSpacesToShare")}
           </Text>
         ) : (
           <Box className="space-y-2 max-h-[300px] overflow-y-auto">
@@ -85,7 +87,7 @@ export function ShareAppDialog({
                   disabled={sharingId === s.id}
                   onClick={() => handleShare(s.id)}
                 >
-                  <Share2 size={12} /> {sharingId === s.id ? "分享中..." : "分享"}
+                  <Share2 size={12} /> {sharingId === s.id ? t("appNav.sharing") : t("appNav.shareApp", { name: "" }).replace(/「.*」/, "")}
                 </Button>
               </Flex>
             ))}

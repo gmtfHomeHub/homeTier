@@ -1,15 +1,14 @@
-import { useEffect, useState, Fragment } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Edit3, Trash2, Share2 } from "lucide-react";
-import { Button, Flex, Card, Text, Box } from "@radix-ui/themes";
-import { Icon } from "@iconify/react";
+import { Button, Flex, Text } from "@radix-ui/themes";
 import { useNavigate } from "react-router-dom";
 import * as api from "../../utils/api";
 import { useAppTabsStore } from "../../stores/appTabsStore";
-import type { SpaceApp, Space } from "../../types";
-import { SpaceStatus } from '../../enum';
+import type { SpaceApp, SystemApp, Space } from "../../types";
+import { SpaceStatus } from "../../enum";
 import { AppFormDialog } from "./AppFormDialog";
 import { ShareAppDialog } from "./ShareAppDialog";
+import { AppNavContainer, type NavApp, type NavGroup } from "./AppNavContainer";
 import { toastError } from "../../utils/toast";
 
 interface AppNavPageProps {
@@ -17,10 +16,22 @@ interface AppNavPageProps {
   isOwner: boolean;
 }
 
+const SYSTEM_GROUP_KEY = "__system__";
+
+function toNavApp(app: SpaceApp): NavApp {
+  return { id: app.id, name: app.name, icon: app.icon, description: app.description, system: false };
+}
+
+function systemAppToNav(app: SystemApp, t: (key: string) => string): NavApp {
+  const label = t(app.name);
+  return { id: app.path, name: label !== app.name ? label : app.name, icon: app.icon, description: app.desc, enabled: app.enabled, system: true };
+}
+
 export function AppNavPage({ space, isOwner }: AppNavPageProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [apps, setApps] = useState<SpaceApp[]>([]);
+  const [systemApps, setSystemApps] = useState<SystemApp[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -29,85 +40,116 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
 
   const isRunning = space?.status === SpaceStatus.CED;
 
-  const loadApps = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.listApps(space.id);
-      setApps(data);
+      const [userApps, sysApps] = await Promise.all([
+        api.listApps(space.id),
+        api.getSystemApps(),
+      ]);
+      setApps(userApps);
+      setSystemApps(sysApps);
     } catch (e) {
       console.error("Failed to load apps:", e);
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadApps();
   }, [space.id]);
 
-  const handleAdd = (category?: string) => () => {
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const handleAdd = useCallback((category?: string) => () => {
     setEditApp(category ? { category } as SpaceApp : null);
     setShowForm(true);
-  };
+  }, []);
 
-  const handleEdit = (app: SpaceApp) => {
-    setEditApp(app);
-    setShowForm(true);
-  };
+  const handleEdit = useCallback((app: NavApp) => {
+    if (app.system) return;
+    const found = apps.find((a) => a.id === app.id);
+    if (found) {
+      setEditApp(found);
+      setShowForm(true);
+    }
+  }, [apps]);
 
-  const handleDelete = async (appId: string) => {
-    if (!confirm(t("common.confirmDeleteApp"))) return;
+  const handleDelete = useCallback(async (app: NavApp) => {
+    if (app.system) return;
     try {
-      await api.deleteApp(appId);
-      loadApps();
+      await api.deleteApp(app.id);
+      loadData();
     } catch (e) {
       toastError(String(e));
     }
-  };
+  }, [loadData]);
 
-  const handleFormSubmit = () => {
+  const handleShare = useCallback((app: NavApp) => {
+    if (app.system) return;
+    const found = apps.find((a) => a.id === app.id);
+    if (found) setShareApp(found);
+  }, [apps]);
+
+  const handleFormSubmit = useCallback(() => {
     setShowForm(false);
     setEditApp(null);
-    loadApps();
-  };
+    loadData();
+  }, [loadData]);
 
-  const handleShare = (app: SpaceApp) => () => {
-    setShareApp(app);
-  };
-
-  const openApp = (app: SpaceApp) => () => {
-    if (!editing && isRunning) {
-      useAppTabsStore.getState().openApp(space, app);
-      navigate(`/space/${space.id}/app/${app.id}`);
-      return;
+  const handleOpen = useCallback((app: NavApp) => {
+    if (!isRunning) return;
+    if (editing) return;
+    if (app.system) {
+      navigate(`/space/${space.id}${app.id}`);
+    } else {
+      const found = apps.find((a) => a.id === app.id);
+      if (found) {
+        useAppTabsStore.getState().openApp(space, found);
+        navigate(`/space/${space.id}/app/${app.id}`);
+      }
     }
-  };
+  }, [isRunning, editing, space, apps, navigate]);
 
-  // 按分类分组
-  const grouped = apps.reduce<Record<string, SpaceApp[]>>((acc, app) => {
-    const cat = app.category || "未分类";
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(app);
-    return acc;
-  }, {});
+  const groups = useMemo<NavGroup[]>(() => {
+    const userGroups: NavGroup[] = [];
+    const grouped = apps.reduce<Record<string, SpaceApp[]>>((acc, app) => {
+      const cat = app.category || t("appNav.uncategorized");
+      if (!acc[cat]) acc[cat] = [];
+      acc[cat].push(app);
+      return acc;
+    }, {});
+    for (const cat of Object.keys(grouped).sort()) {
+      userGroups.push({
+        title: cat,
+        apps: grouped[cat].map(toNavApp),
+      });
+    }
+    const enabledSystem = systemApps.filter((a) => a.enabled !== false);
+    if (enabledSystem.length > 0) {
+      userGroups.push({
+        title: t("appNav.systemGroup"),
+        apps: enabledSystem.map((a) => systemAppToNav(a, t)),
+      });
+    }
+    return userGroups;
+  }, [apps, systemApps, t]);
 
-  const categories = Object.keys(grouped).sort();
-  const existingCategories = [...new Set(apps.map((a) => a.category || "未分类"))];
+  const existingCategories = useMemo(
+    () => [...new Set(apps.map((a) => a.category || t("appNav.uncategorized")))],
+    [apps, t]
+  );
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12 text-[var(--color-text-secondary)]">
-        加载中...
+        {t("common.loading")}
       </div>
     );
   }
 
   return (
     <div className="flex flex-col flex-1 p-4 overflow-y-auto">
-      {/* 编辑模式切换 */}
       <Flex justify="between" align="center" mb="3">
         <Text size="2" weight="bold" className="text-[var(--color-text-secondary)]">
-          {/* 应用导航 */}
+          {t("appNav.title")}
         </Text>
         {isOwner && (
           <Button
@@ -116,93 +158,22 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
             size="1"
             color={editing ? "sky" : "blue"}
           >
-            {editing ? "完成" : "编辑"}
+            {editing ? t("common.done") : t("common.edit")}
           </Button>
         )}
       </Flex>
 
-      {apps.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-[var(--color-text-secondary)]">
-          {!editing && (
-            <>
-              <div className="mb-2 text-4xl">📋</div>
-              <Text size="2" mb="2">暂无应用</Text>
-            </>
-          )}
-          {isOwner && editing && (
-            <Button onClick={handleAdd()} variant="soft" size="1">
-              <Plus size={14} /> 添加应用
-            </Button>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-8">
-          {categories.map((cat) => (
-            <div key={cat}>
-              {cat !== "未分类" && (
-                <Text size="1" weight="bold" className="text-[var(--color-text-secondary)] block mb-3 uppercase tracking-wider">
-                  {cat}
-                </Text>
-              )}
-              {/* 上下结构：图标在上，名称在下 */}
-              <div className="grid w-full grid-cols-4 gap-3 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))' }}>
-                {grouped[cat].map((app: SpaceApp, i) => (
-                  <Fragment key={app.id}>
-                    <Box className={`relative group ${isRunning ? 'cursor-pointer' : 'gray disabled'}`} onClick={openApp(app)}>
-                      <Card>
-                        <Flex gap="3" align="center">
-                          {app.icon ? (
-                            <Icon icon={app.icon} width={50} height={50} className="text-[var(--color-primary)]" />
-                          ) : (
-                            <div className="w-50 h-50 rounded bg-[var(--color-border)]" />
-                          )}
-                          <Box>
-                            <Text as="div" size="5" weight="bold">
-                              {app.name}
-                            </Text>
-                            {app.description && <Text as="div" size="2" color="gray">
-                              {app.description}
-                            </Text>}
-                          </Box>
-                        </Flex>
-
-                        {editing && isOwner && (
-                          <div className="absolute flex gap-2 transition-opacity opacity-0 top-1 right-2 group-hover:opacity-100">
-                            <Button onClick={() => handleEdit(app)} variant="ghost" size="1">
-                              <Edit3 size={12} />
-                            </Button>
-                            <Button onClick={handleShare(app)} variant="ghost" size="1" title={t("common.shareApp")}>
-                              <Share2 size={12} />
-                            </Button>
-                            <Button onClick={() => handleDelete(app.id)} variant="ghost" color="red" size="1">
-                              <Trash2 size={12} />
-                            </Button>
-                          </div>
-                        )}
-                      </Card>
-                    </Box>
-                    { editing && (i === grouped[cat].length - 1) && (
-                      <Box maxWidth="70px" minHeight="70px" key={`${cat}_add`} className="relative cursor-pointer group" onClick={handleAdd(cat)}>
-                        <Card className="flex flex-col items-center justify-center flex-1 h-full">
-                              <Icon icon="icon-park-solid:add-web" width={24} height={24} />
-                              <Text size="1">添加</Text>
-                        </Card>
-                      </Box>
-                    )}
-                  </Fragment>
-                ))}
-              </div>
-            </div>
-          ))}
-          {apps.length <= 0 && editing && isOwner && (
-            <Flex justify="center" mt="2">
-              <Button onClick={handleAdd()} variant="soft" size="1">
-                <Plus size={14} /> 添加应用
-              </Button>
-            </Flex>
-          )}
-        </div>
-      )}
+      <AppNavContainer
+        groups={groups}
+        mode={editing ? "edit" : "view"}
+        canEdit={isOwner}
+        onOpen={handleOpen}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        onShare={handleShare}
+        onAdd={handleAdd()}
+        emptyText={t("appNav.noApps")}
+      />
 
       {showForm && (
         <AppFormDialog
@@ -219,7 +190,7 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
           app={shareApp}
           currentSpaceId={space.id}
           onClose={() => setShareApp(null)}
-          onShared={loadApps}
+          onShared={loadData}
         />
       )}
     </div>

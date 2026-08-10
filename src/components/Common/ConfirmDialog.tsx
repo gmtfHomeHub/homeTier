@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { X, AlertTriangle } from "lucide-react";
 import { Dialog, Button, Flex } from "@radix-ui/themes";
+import { useTranslation } from "react-i18next";
 import { toastError } from "../../utils/toast";
 
 interface ConfirmDialogProps {
@@ -18,12 +19,13 @@ export function ConfirmDialog({
   open,
   title,
   message,
-  confirmText = "确定",
-  cancelText = "取消",
+  confirmText,
+  cancelText,
   danger = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
 
   const handleConfirm = async () => {
@@ -55,7 +57,7 @@ export function ConfirmDialog({
         <Flex justify="end" gap="2">
           <Dialog.Close>
             <Button variant="outline" size="2" disabled={loading}>
-              {cancelText}
+              {cancelText ?? t("common.cancel")}
             </Button>
           </Dialog.Close>
           <Button
@@ -66,7 +68,7 @@ export function ConfirmDialog({
             size="2"
             loading={loading}
           >
-            {loading ? "处理中..." : confirmText}
+            {loading ? t("common.saving") : (confirmText ?? t("common.confirm"))}
           </Button>
         </Flex>
       </Dialog.Content>

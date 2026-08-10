@@ -157,3 +157,12 @@ pub async fn share_app(
     crate::log_info!(format!("应用已分享: id={}", app.id));
     Ok(app)
 }
+
+#[tauri::command]
+pub async fn get_system_apps(
+    app: tauri::AppHandle,
+) -> Result<Vec<crate::server::system_apps::SystemApp>, String> {
+    use tauri::Manager;
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    Ok(crate::server::system_apps::load_system_apps(&data_dir))
+}

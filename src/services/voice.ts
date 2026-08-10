@@ -1,3 +1,4 @@
+import i18next from "i18next";
 import { registerSignalHandler, sendSignal, preloadMembers, resolveMember, getSelfVirtualIp } from "./signal";
 import { useVoiceStore } from "../stores/voiceStore";
 
@@ -56,7 +57,7 @@ class VoiceService {
     await this.leave();
 
     if (!navigator.mediaDevices?.getUserMedia) {
-      throw new Error("当前环境不支持麦克风采集（mediaDevices 不可用）");
+      throw new Error(i18next.t("voice.unsupported", "当前环境不支持麦克风采集（mediaDevices 不可用）"));
     }
 
     useVoiceStore.getState().setJoining(true);

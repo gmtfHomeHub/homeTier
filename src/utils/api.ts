@@ -33,6 +33,7 @@ export type {
   LogLevel,
   LogCategory,
   SpaceApp,
+  SystemApp,
   PeerInfo,
   AclRule,
   PortForwardRule,
@@ -108,6 +109,7 @@ export const updateApp = impl.updateApp;
 export const deleteApp = impl.deleteApp;
 export const listApps = impl.listApps;
 export const shareApp = impl.shareApp;
+export const getSystemApps = impl.getSystemApps;
 
 export const isDaemonReady = impl.isDaemonReady;
 export const getDaemonErrorReason = impl.getDaemonErrorReason;

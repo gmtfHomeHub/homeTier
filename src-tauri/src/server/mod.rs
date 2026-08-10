@@ -24,6 +24,7 @@ use crate::space::manager::SpaceManager;
 pub mod auth;
 pub mod event;
 pub mod routes;
+pub mod system_apps;
 pub mod ws;
 
 pub mod assets;

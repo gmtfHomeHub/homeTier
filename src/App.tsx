@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import i18next from "i18next";
 import { AppLayout } from "./components/Layout/AppLayout";
 import { TrayBridge } from "./components/Layout/TrayBridge";
 import { SpaceList } from "./components/Space/SpaceList";
@@ -76,7 +77,7 @@ export default function App() {
         "daemon-ready",
         (event) => {
           if (!event.payload.ready) {
-            setAppError(`daemon 启动失败: ${event.payload.reason || "未知原因"}`);
+            setAppError(i18next.t("common.daemonStartFailed", { reason: event.payload.reason || i18next.t("common.unknown") }));
           }
         }
       );
@@ -96,11 +97,11 @@ export default function App() {
             const reason = await getDaemonErrorReason();
             setAppError(
               reason 
-                ? `daemon 启动超时: ${reason}` 
-                : "daemon 启动超时（超过30秒），请重试"
+                ? i18next.t("common.daemonStartTimeoutReason", { reason }) 
+                : i18next.t("common.daemonStartTimeout")
             );
           } catch {
-            setAppError("daemon 启动超时（超过30秒），请重试");
+            setAppError(i18next.t("common.daemonStartTimeout"));
           }
           return;
         }

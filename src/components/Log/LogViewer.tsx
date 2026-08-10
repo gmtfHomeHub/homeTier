@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useLayoutEffect, useMemo, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { queryLogs, queryDaemonLogs, getLogModules, clearLogsFiltered, exportLogs, isTauri } from "../../utils/api";
 import type { LogEntry } from "../../types";
 import { RefreshCw, Trash2, Filter, Search, Download, Copy, Clock } from "lucide-react";
@@ -23,15 +24,15 @@ const LEVEL_COLORS: Record<string, ButtonProps["color"]> = {
 
 const DEFAULT_ROW_HEIGHT = 26;
 
-const CATEGORY_LABELS: Record<string, string> = {
-  system: "系统",
-  network: "网络",
-  webrtc: "语音/屏幕",
-  data: "数据传输",
-  proxy: "代理",
-  daemon: "守护进程",
-  space: "空间",
-  server: "服务端",
+const CATEGORY_I18N_KEYS: Record<string, string> = {
+  system: "log.categorySystem",
+  network: "log.categoryNetwork",
+  webrtc: "log.categoryVoice",
+  data: "log.categoryDataTransfer",
+  proxy: "log.categoryProxy",
+  daemon: "log.categoryDaemon",
+  space: "log.categorySpace",
+  server: "log.categoryServer",
 };
 
 interface LogRowProps {
@@ -132,6 +133,7 @@ function computeTimeFilter(range: TimeRange, from?: string, to?: string) {
 }
 
 export function LogViewer({ spaceId }: LogViewerProps) {
+  const { t } = useTranslation();
   const [source, setSource] = useState<"gui" | "daemon">("gui");
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const lastSeqRef = useRef(0);
@@ -231,9 +233,9 @@ export function LogViewer({ spaceId }: LogViewerProps) {
   const copyText = useCallback(async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      toastSuccess("已复制到剪贴板");
+      toastSuccess(t("log.copiedToClipboard"));
     } catch (e) {
-      toastError("复制失败");
+      toastError(t("log.copyFailed"));
     }
   }, []);
 
@@ -311,20 +313,20 @@ export function LogViewer({ spaceId }: LogViewerProps) {
           <Select.Root size="1" value={source} onValueChange={(v) => setSource(v as "gui" | "daemon")}>
             <Select.Trigger className="text-xs w-28" />
             <Select.Content>
-              <Select.Item value="gui">本地日志</Select.Item>
-              <Select.Item value="daemon">Daemon 日志</Select.Item>
+              <Select.Item value="gui">{t("log.localLogs")}</Select.Item>
+              <Select.Item value="daemon">{t("log.daemonLogs")}</Select.Item>
             </Select.Content>
           </Select.Root>
         )}
 
         <div className="flex items-center gap-1 text-xs text-[var(--color-text-secondary)]">
           <Filter size={14} />
-          <span>级别：</span>
+          <span>{t("log.levelLabel")}</span>
         </div>
         <Select.Root size="1" value={levelFilter} onValueChange={(v) => setLevelFilter(v)}>
           <Select.Trigger className="text-xs w-28" />
           <Select.Content>
-            <Select.Item value="all">全部级别</Select.Item>
+            <Select.Item value="all">{t("log.allLevels")}</Select.Item>
             <Select.Item value="error">Error</Select.Item>
             <Select.Item value="warning">Warning</Select.Item>
             <Select.Item value="info">Info</Select.Item>
@@ -334,7 +336,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
 
         <div className="flex items-center gap-1 text-xs text-[var(--color-text-secondary)]">
           <Filter size={14} />
-          <span>分类：</span>
+          <span>{t("log.categoryLabel")}</span>
         </div>
         <Select.Root
           size="1"
@@ -343,7 +345,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
         >
           <Select.Trigger className="text-xs w-32" />
           <Select.Content>
-            <Select.Item value="all">全部分类</Select.Item>
+            <Select.Item value="all">{t("log.allCategories")}</Select.Item>
             {CATEGORIES.map((cat) => (
               <Select.Item
                 key={cat}
@@ -351,7 +353,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
               >
                 <Flex align="center" gap="2">
                   <Checkbox checked={categoryFilter.includes(cat)} onCheckedChange={() => {}} />
-                  <span>{CATEGORY_LABELS[cat] || capitalize(cat)}</span>
+                  <span>{t(CATEGORY_I18N_KEYS[cat] || capitalize(cat))}</span>
                 </Flex>
               </Select.Item>
             ))}
@@ -362,16 +364,16 @@ export function LogViewer({ spaceId }: LogViewerProps) {
           <>
             <div className="flex items-center gap-1 text-xs text-[var(--color-text-secondary)]">
               <Filter size={14} />
-              <span>模块：</span>
-            </div>
-            <Select.Root
-              size="1"
-              value={moduleFilter.length ? moduleFilter.join(",") : "all"}
-              onValueChange={(v) => setModuleFilter(v === "all" ? [] : v.split(","))}
-            >
-              <Select.Trigger className="text-xs w-32" />
-              <Select.Content>
-                <Select.Item value="all">全部模块</Select.Item>
+          <span>{t("log.moduleLabel")}</span>
+        </div>
+        <Select.Root
+          size="1"
+          value={moduleFilter.length ? moduleFilter.join(",") : "all"}
+          onValueChange={(v) => setModuleFilter(v === "all" ? [] : v.split(","))}
+        >
+          <Select.Trigger className="text-xs w-32" />
+          <Select.Content>
+            <Select.Item value="all">{t("log.allModules")}</Select.Item>
                 {modules.map((mod) => (
                   <Select.Item
                     key={mod}
@@ -390,30 +392,30 @@ export function LogViewer({ spaceId }: LogViewerProps) {
 
         <div className="flex items-center gap-1 text-xs text-[var(--color-text-secondary)]">
           <Search size={14} />
-          <span>搜索：</span>
+          <span>{t("log.searchLabel")}</span>
         </div>
         <div className="relative flex-1 min-w-[180px] max-w-[320px]">
           <input
             type="text"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            placeholder="搜索消息/模块/目标..."
+            placeholder={t("log.searchPlaceholder")}
             className="w-full text-xs px-2 py-1 bg-[var(--color-background)] border border-[var(--color-border)] rounded"
           />
         </div>
 
         <div className="flex items-center gap-1 text-xs text-[var(--color-text-secondary)]">
           <Clock size={14} />
-          <span>时间：</span>
+          <span>{t("log.timeRange")}</span>
         </div>
         <Select.Root size="1" value={timeRange} onValueChange={(v) => setTimeRange(v as TimeRange)}>
           <Select.Trigger className="text-xs w-28" />
           <Select.Content>
-            <Select.Item value="all">全部时间</Select.Item>
-            <Select.Item value="1h">最近 1 小时</Select.Item>
-            <Select.Item value="6h">最近 6 小时</Select.Item>
-            <Select.Item value="24h">最近 24 小时</Select.Item>
-            <Select.Item value="custom">自定义</Select.Item>
+            <Select.Item value="all">{t("log.allTime")}</Select.Item>
+            <Select.Item value="1h">{t("log.last1h")}</Select.Item>
+            <Select.Item value="6h">{t("log.last6h")}</Select.Item>
+            <Select.Item value="24h">{t("log.last24h")}</Select.Item>
+            <Select.Item value="custom">{t("log.custom")}</Select.Item>
           </Select.Content>
         </Select.Root>
         {timeRange === "custom" && (
@@ -422,7 +424,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
               type="datetime-local"
               value={customFrom}
               onChange={(e) => setCustomFrom(e.target.value)}
-              title="开始时间"
+              title={t("log.startTime")}
               className="text-xs px-1.5 py-1 bg-[var(--color-background)] border border-[var(--color-border)] rounded"
             />
             <span>—</span>
@@ -430,7 +432,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
               type="datetime-local"
               value={customTo}
               onChange={(e) => setCustomTo(e.target.value)}
-              title="结束时间"
+              title={t("log.endTime")}
               className="text-xs px-1.5 py-1 bg-[var(--color-background)] border border-[var(--color-border)] rounded"
             />
           </Flex>
@@ -441,47 +443,47 @@ export function LogViewer({ spaceId }: LogViewerProps) {
         <Flex gap="2">
           <Text as="label" size="1" className="flex items-center gap-1 cursor-pointer">
             <Checkbox checked={autoRefresh} onCheckedChange={(c) => setAutoRefresh(c === true)} />
-            自动刷新
+            {t("log.autoRefresh")}
           </Text>
 
           {source === "gui" && (
             <DropdownMenu.Root>
               <DropdownMenu.Trigger>
-                <Button variant="ghost" size="2" disabled={exporting} title="导出日志">
+                <Button variant="ghost" size="2" disabled={exporting} title={t("log.exportLogs")}>
                   <Download size={16} />
                 </Button>
               </DropdownMenu.Trigger>
               <DropdownMenu.Content>
                 <DropdownMenu.Item onClick={() => handleExport("txt")} disabled={exporting}>
-                  {exporting ? "导出中..." : "导出为 TXT"}
+                  {exporting ? t("log.exporting") : t("log.exportTxt")}
                 </DropdownMenu.Item>
                 <DropdownMenu.Item onClick={() => handleExport("json")} disabled={exporting}>
-                  {exporting ? "导出中..." : "导出为 JSON"}
+                  {exporting ? t("log.exporting") : t("log.exportJson")}
                 </DropdownMenu.Item>
               </DropdownMenu.Content>
             </DropdownMenu.Root>
           )}
 
-          <Button onClick={fetchLogs} variant="ghost" size="2" title="刷新">
+          <Button onClick={fetchLogs} variant="ghost" size="2" title={t("log.refresh")}>
             <RefreshCw size={16} />
           </Button>
 
           {source === "gui" && (
             <Dialog.Root open={showClearDialog} onOpenChange={setShowClearDialog}>
-              <Button variant="ghost" size="2" color="red" title="清空日志" onClick={() => setShowClearDialog(true)}>
+              <Button variant="ghost" size="2" color="red" title={t("log.clearLogs")} onClick={() => setShowClearDialog(true)}>
                 <Trash2 size={16} />
               </Button>
               <Dialog.Content className="max-w-md">
-                <Dialog.Title>确认清空日志</Dialog.Title>
+                <Dialog.Title>{t("log.confirmClear")}</Dialog.Title>
                 <Dialog.Description>
-                  此操作将清空当前筛选条件下的所有日志（当前显示 {filtered.length} 条）。
-                  {filtered.length === totalCount ? "" : `（共 ${totalCount} 条，当前筛选显示 ${filtered.length} 条）`}
-                  操作不可撤销，仅删除已存日志，后续新日志仍会正常记录。
+                  {t("log.clearDesc", { count: filtered.length })}
+                  {filtered.length === totalCount ? "" : ` ${t("log.clearCount", { total: totalCount, count: filtered.length })}`}
+                  {t("log.clearWarning")}
                 </Dialog.Description>
                 <Flex gap="2" justify="end" style={{ marginTop: 16 }}>
-                  <Button variant="ghost" onClick={() => setShowClearDialog(false)}>取消</Button>
+                  <Button variant="ghost" onClick={() => setShowClearDialog(false)}>{t("common.cancel")}</Button>
                   <Button onClick={handleClear} color="red" disabled={clearing}>
-                    {clearing ? "清空中..." : "确认清空"}
+                    {clearing ? t("log.clearing") : t("log.confirmClearBtn")}
                   </Button>
                 </Flex>
               </Dialog.Content>
@@ -492,21 +494,21 @@ export function LogViewer({ spaceId }: LogViewerProps) {
 
       <Dialog.Root open={!!detailEntry} onOpenChange={(o) => !o && setDetailEntry(null)}>
         <Dialog.Content className="max-w-lg">
-          <Dialog.Title>日志详情</Dialog.Title>
+          <Dialog.Title>{t("log.detail")}</Dialog.Title>
           {detailEntry && (
             <>
               <Flex gap="2" align="center" wrap="wrap" className="mb-2 text-xs text-[var(--color-text-secondary)]">
                 <Badge color={LEVEL_COLORS[detailEntry.level]}>
                   {detailEntry.level.toUpperCase()}
                 </Badge>
-                <Badge color="violet">{CATEGORY_LABELS[detailEntry.category] || detailEntry.category}</Badge>
+                <Badge color="violet">{t(CATEGORY_I18N_KEYS[detailEntry.category] || detailEntry.category)}</Badge>
                 <span className="font-mono">{detailEntry.module}</span>
               </Flex>
               <Flex direction="column" gap="1" className="mb-3 text-xs text-[var(--color-text-secondary)] font-mono">
-                <span>时间: {detailEntry.timestamp}</span>
-                {detailEntry.space_id && <span>空间: {detailEntry.space_id}</span>}
-                {detailEntry.trace_id && <span>追踪: {detailEntry.trace_id}</span>}
-                <span>序号: {detailEntry.seq}</span>
+                <span>{t("log.detailTime")} {detailEntry.timestamp}</span>
+                {detailEntry.space_id && <span>{t("log.detailSpace")} {detailEntry.space_id}</span>}
+                {detailEntry.trace_id && <span>{t("log.detailTrace")} {detailEntry.trace_id}</span>}
+                <span>{t("log.detailSeq")} {detailEntry.seq}</span>
               </Flex>
               <div className="max-h-[300px] overflow-y-auto text-xs text-[var(--color-text)] whitespace-pre-wrap break-all p-2 bg-[var(--color-background)] border border-[var(--color-border)] rounded">
                 {detailEntry.message}
@@ -514,9 +516,9 @@ export function LogViewer({ spaceId }: LogViewerProps) {
               <Flex gap="2" justify="end" style={{ marginTop: 16 }}>
                 <Button variant="ghost" size="2" onClick={() => copyText(detailEntry.message)}>
                   <Copy size={14} />
-                  复制消息
+                  {t("log.copyMessage")}
                 </Button>
-                <Button size="2" onClick={() => setDetailEntry(null)}>关闭</Button>
+                <Button size="2" onClick={() => setDetailEntry(null)}>{t("common.close")}</Button>
               </Flex>
             </>
           )}
@@ -525,20 +527,20 @@ export function LogViewer({ spaceId }: LogViewerProps) {
 
       <Dialog.Root open={!!exportPath} onOpenChange={(o) => !o && setExportPath(null)}>
         <Dialog.Content className="max-w-lg">
-          <Dialog.Title>导出成功</Dialog.Title>
-          <Dialog.Description>日志已导出到以下文件：</Dialog.Description>
+          <Dialog.Title>{t("log.exportSuccess")}</Dialog.Title>
+          <Dialog.Description>{t("log.exportPath")}</Dialog.Description>
           {exportPath && (
             <Flex gap="2" align="center" className="mt-2">
               <code className="flex-1 min-w-0 text-xs font-mono bg-[var(--color-background)] border border-[var(--color-border)] rounded px-2 py-1 break-all">
                 {exportPath}
               </code>
-              <Button variant="ghost" size="2" onClick={() => copyText(exportPath)} title="复制路径">
+              <Button variant="ghost" size="2" onClick={() => copyText(exportPath)} title={t("log.copyPath")}>
                 <Copy size={14} />
               </Button>
             </Flex>
           )}
           <Flex justify="end" style={{ marginTop: 16 }}>
-            <Button onClick={() => setExportPath(null)}>确定</Button>
+            <Button onClick={() => setExportPath(null)}>{t("common.confirm")}</Button>
           </Flex>
         </Dialog.Content>
       </Dialog.Root>
@@ -546,7 +548,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
       <div ref={containerRef} className="flex-1 min-h-0">
         {filtered.length === 0 ? (
           <div className="flex items-center justify-center h-full text-[var(--color-text-secondary)] p-4">
-            暂无日志
+            {t("log.empty")}
           </div>
         ) : (
           <List<{ logs: LogEntry[]; onRowClick?: (e: LogEntry) => void; keyword?: string }>
@@ -563,10 +565,10 @@ export function LogViewer({ spaceId }: LogViewerProps) {
       </div>
 
       <div className="px-4 py-1.5 border-t border-[var(--color-border)] bg-[var(--color-surface)] text-xs text-[var(--color-text-secondary)] flex flex-wrap items-center gap-2">
-        <span>共 {totalCount} 条日志 {displayCount < totalCount && `（显示 ${displayCount}）`}</span>
+        <span>{t("log.total", { count: totalCount })} {displayCount < totalCount && ` ${t("log.showing", { count: displayCount })}`}</span>
         {categoryFilter.length > 0 && (
           <span className="px-1.5 py-0.5 bg-[var(--color-accent)]/20 rounded text-[10px]">
-            {categoryFilter.map((c) => CATEGORY_LABELS[c] || c).join(", ")}
+            {categoryFilter.map((c) => t(CATEGORY_I18N_KEYS[c] || c)).join(", ")}
           </span>
         )}
         {moduleFilter.length > 0 && (
@@ -596,7 +598,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
             );
           })}
         </span>
-        <span className="ml-auto text-[var(--color-text-muted)]">显示 {displayCount}/{totalCount}</span>
+        <span className="ml-auto text-[var(--color-text-muted)]">{t("log.showingOf", { count: displayCount, total: totalCount })}</span>
       </div>
     </div>
   );

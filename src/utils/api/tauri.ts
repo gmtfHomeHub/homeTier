@@ -9,6 +9,7 @@ import type {
   NetworkStats,
   LogEntry,
   SpaceApp,
+  SystemApp,
   PeerInfo,
   AclRule,
   PortForwardRule,
@@ -323,6 +324,10 @@ export async function deleteApp(appId: string): Promise<void> {
 
 export async function listApps(spaceId: string): Promise<SpaceApp[]> {
   return invoke("list_apps", { spaceId });
+}
+
+export async function getSystemApps(): Promise<SystemApp[]> {
+  return invoke("get_system_apps");
 }
 
 export async function shareApp(appId: string, targetSpaceId: string): Promise<SpaceApp> {

@@ -21,7 +21,7 @@ export function TitleBar() {
             variant="ghost"
             size="2"
             className="shrink-0"
-            title={sidebarOpen ? "收起侧栏" : "展开侧栏"}
+            title={sidebarOpen ? t("common.collapseSidebar") : t("common.expandSidebar")}
           >
             <Menu size={18} />
           </Button>

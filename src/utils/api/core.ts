@@ -10,6 +10,7 @@ export type {
   LogLevel,
   LogCategory,
   SpaceApp,
+  SystemApp,
   PeerInfo,
   AclRule,
   PortForwardRule,

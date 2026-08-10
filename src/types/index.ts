@@ -145,6 +145,14 @@ export interface SpaceApp {
   created_at: string;
 }
 
+export interface SystemApp {
+  name: string;
+  path: string;
+  icon?: string;
+  desc?: string;
+  enabled?: boolean;
+}
+
 export function buildAppUrl(app: SpaceApp): string {
   const base = `${app.protocol}//${app.hostname}`;
   const port = app.port ? `:${app.port}` : '';

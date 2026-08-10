@@ -4,12 +4,14 @@ import { ArrowLeft, Terminal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { Button } from "@radix-ui/themes";
+import { useTranslation } from "react-i18next";
 
 export function SpaceLogView() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const spaces = useSpaceStore((s) => s.spaces);
   const space = spaces.find((s) => s.id === id);
+  const { t } = useTranslation();
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -24,7 +26,7 @@ export function SpaceLogView() {
         </Button>
         <Terminal size={18} className="text-[var(--color-text-secondary)]" />
         <span className="font-semibold">
-          {space ? `${space.name} 日志` : "空间日志"}
+          {space ? t("space.logTitle", { name: space.name }) : t("space.logTitleFallback")}
         </span>
       </div>
 

@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Send, Image } from "lucide-react";
 import { Button, TextArea, Flex } from "@radix-ui/themes";
 
@@ -9,6 +10,7 @@ interface MessageInputProps {
 }
 
 export function MessageInput({ spaceId, onSend, disabled }: MessageInputProps) {
+  const { t } = useTranslation();
   const [text, setText] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -59,7 +61,7 @@ export function MessageInput({ spaceId, onSend, disabled }: MessageInputProps) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={disabled ? "请先连接到空间" : "输入消息，Enter 发送"}
+          placeholder={disabled ? t("chat.connectFirst") : t("chat.inputPlaceholder")}
           rows={1}
           disabled={disabled}
           className="flex-1 min-h-[var(--space-5)]"

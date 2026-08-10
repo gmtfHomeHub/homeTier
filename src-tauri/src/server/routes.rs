@@ -47,6 +47,8 @@ pub fn cmd_router(app_state: Arc<AppState>) -> Router {
         .route("/space/{space_id}/apps/share", post(share_app_handler))
         .route("/space/{space_id}/apps/update", post(update_app_handler))
         .route("/space/{space_id}/apps/delete", post(delete_app_handler))
+        // 系统应用
+        .route("/system/apps", get(get_system_apps_handler))
         // 聊天
         .route("/chat/{space_id}/history", get(get_message_history_handler))
         .route("/chat/{space_id}/send", post(send_message_handler))
@@ -1131,6 +1133,12 @@ async fn list_apps_handler(
         Ok(apps) => Json(apps).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
+}
+
+async fn get_system_apps_handler(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    Json(crate::server::system_apps::load_system_apps(&state.data_dir)).into_response()
 }
 
 async fn share_app_handler(
