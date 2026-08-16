@@ -110,6 +110,13 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
 
   const groups = useMemo<NavGroup[]>(() => {
     const userGroups: NavGroup[] = [];
+    const enabledSystem = systemApps.filter((a) => a.enabled !== false);
+    if (enabledSystem.length > 0) {
+      userGroups.push({
+        title: t("appNav.systemGroup"),
+        apps: enabledSystem.map((a) => systemAppToNav(a, t)),
+      });
+    }
     const grouped = apps.reduce<Record<string, SpaceApp[]>>((acc, app) => {
       const cat = app.category || t("appNav.uncategorized");
       if (!acc[cat]) acc[cat] = [];
@@ -120,13 +127,6 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
       userGroups.push({
         title: cat,
         apps: grouped[cat].map(toNavApp),
-      });
-    }
-    const enabledSystem = systemApps.filter((a) => a.enabled !== false);
-    if (enabledSystem.length > 0) {
-      userGroups.push({
-        title: t("appNav.systemGroup"),
-        apps: enabledSystem.map((a) => systemAppToNav(a, t)),
       });
     }
     return userGroups;
@@ -167,6 +167,7 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
         groups={groups}
         mode={editing ? "edit" : "view"}
         canEdit={isOwner}
+        disabled={!isRunning}
         onOpen={handleOpen}
         onEdit={handleEdit}
         onDelete={handleDelete}

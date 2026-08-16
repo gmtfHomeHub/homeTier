@@ -99,13 +99,6 @@ export function SpaceDetail() {
           </Flex>
           <div className="flex-1" />
           <Flex gap="3" align="center">
-            <Button
-              onClick={() => navigate(`/space/${id}/chat`)}
-              variant="ghost"
-              size="2"
-            >
-              <MessageSquare size={16} />
-            </Button>
             <DropdownMenu.Root>
               <DropdownMenu.Trigger>
                 <Button variant="ghost" size="2">

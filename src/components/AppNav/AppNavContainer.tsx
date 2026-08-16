@@ -29,6 +29,7 @@ interface AppNavContainerProps {
   onShare?: (app: NavApp) => void;
   onAdd?: (category?: string) => void;
   emptyText?: string;
+  disabled?: boolean;
 }
 
 export function AppNavContainer({
@@ -41,6 +42,7 @@ export function AppNavContainer({
   onShare,
   onAdd,
   emptyText,
+  disabled,
 }: AppNavContainerProps) {
   const { t } = useTranslation();
   const [deleteTarget, setDeleteTarget] = useState<NavApp | null>(null);
@@ -87,7 +89,7 @@ export function AppNavContainer({
               {group.apps.map((app, i) => (
                 <Fragment key={app.id}>
                   <Box
-                    className="relative group cursor-pointer"
+                    className={`relative cursor-pointer group${disabled ? ' gray': ''}`}
                     onClick={() => onOpen(app)}
                   >
                     <Card>
@@ -102,7 +104,7 @@ export function AppNavContainer({
                         ) : (
                           <div className="w-10 h-10 rounded bg-[var(--color-border)]" />
                         )}
-                        <Box className="min-w-0 flex-1">
+                        <Box className="flex-1 min-w-0">
                           <Text as="div" size="3" weight="bold" className="truncate">
                             {app.name}
                           </Text>
