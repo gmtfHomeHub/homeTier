@@ -338,9 +338,11 @@ function r_ws(u){if(u.indexOf("ws://"+location.host+"?")===0)return u;var m=u.ma
 })()"#
         .to_string();
 if is_mobile {
+        js_content.push_str("\n");
         js_content.push_str(EMULATION_JS);
         inject_viewport_meta(&mut html);
     }
+    js_content.push_str("\n");
     js_content.push_str(NAV_BRIDGE_JS);
 
     let hash = crate::crypto::sha256(js_content.as_bytes());
@@ -421,9 +423,12 @@ function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/
         host_key, proxy_port
     );
     if is_mobile {
+        js_content.push_str("\n");
         js_content.push_str(EMULATION_JS);
         inject_viewport_meta(&mut html);
     }
+    js_content.push_str("\n");
+    js_content.push_str(NAV_BRIDGE_JS);
 
 // function r(l){{var u=l;if(u.match(/hometierproxy/g).length>1){{var u1=u.slice(u.lastIndexOf('hometierproxy'));u = u1;}}if(u.indexOf("hometierproxy://")>= 0) {{u=u.slice(u.indexOf("hometierproxy://"));}} if(u.indexOf("hometierproxy")>=0){{var u2=u.slice(u.indexOf("hometierproxy")); if(u2.indexOf("://"+H)===0) {{return u2;}} if(u2.indexOf(H)<0&&u2.indexOf("://")<0) return u2.replace("hometierproxy","hometierproxy://"+H); return "hometierproxy://"+H+u2.slice(H);}}if(u.charAt(0) === "/") return "hometierproxy://" + H + "/" + u.replace(/^\//, "");var m = u.match(/^https?:\/\/hometierproxy(?::\d+)?(?=\/|\?|#|$)/i);if(m)return u.replace(/^https?:\/\/[^\/]+/, "hometierproxy://" + H); return u.replace(RegExp("^https?://"+H.replace(/\./g,"\\.")+"(?=/|\\?|#|$)","i"),"hometierproxy://"+H);}}
     let hash = crate::crypto::sha256(js_content.as_bytes());
