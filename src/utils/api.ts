@@ -57,6 +57,12 @@ export const parseShareLink = impl.parseShareLink;
 export const connectSpace = impl.connectSpace;
 export const disconnectSpace = impl.disconnectSpace;
 export const listMembers = impl.listMembers;
+export const getProxyUrl = impl.getProxyUrl;
+export const getProxyStatus = impl.getProxyStatus;
+export const registerProxyKey = impl.registerProxyKey;
+export const setProxySource = impl.setProxySource;
+export const setDeviceMode = impl.setDeviceMode;
+export const getPendingDownloads = impl.getPendingDownloads;
 export const syncTrayMenu = impl.syncTrayMenu;
 
 export const getNetworkStats = impl.getNetworkStats;

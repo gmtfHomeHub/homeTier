@@ -152,6 +152,81 @@ impl Database {
         Ok(())
     }
 
+    // --- 代理 Cookie ---
+
+    pub fn list_proxy_cookies(&self) -> Result<Vec<models::ProxyCookieRow>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT host_key, name, value, path, domain, expires_at, http_only, secure, same_site
+                 FROM proxy_cookies",
+            )
+            .map_err(|e| format!("Query error: {}", e))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(models::ProxyCookieRow {
+                    host_key: row.get(0)?,
+                    name: row.get(1)?,
+                    value: row.get(2)?,
+                    path: row.get(3)?,
+                    domain: row.get(4)?,
+                    expires_at: row.get(5)?,
+                    http_only: row.get::<_, i64>(6)? != 0,
+                    secure: row.get::<_, i64>(7)? != 0,
+                    same_site: row.get(8)?,
+                })
+            })
+            .map_err(|e| format!("Query error: {}", e))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| format!("Row error: {}", e))?);
+        }
+        Ok(out)
+    }
+
+    pub fn upsert_proxy_cookie(&self, row: &models::ProxyCookieRow) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT OR REPLACE INTO proxy_cookies
+                (host_key, name, value, path, domain, expires_at, http_only, secure, same_site, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                row.host_key,
+                row.name,
+                row.value,
+                row.path,
+                row.domain,
+                row.expires_at,
+                row.http_only as i64,
+                row.secure as i64,
+                row.same_site,
+                chrono::Utc::now().to_rfc3339(),
+            ],
+        )
+        .map_err(|e| format!("Upsert proxy cookie error: {}", e))?;
+        Ok(())
+    }
+
+    pub fn delete_proxy_cookie(&self, host_key: &str, name: &str, path: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM proxy_cookies WHERE host_key=?1 AND name=?2 AND path=?3",
+            params![host_key, name, path],
+        )
+        .map_err(|e| format!("Delete proxy cookie error: {}", e))?;
+        Ok(())
+    }
+
+    pub fn delete_proxy_cookies(&self, host_key: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM proxy_cookies WHERE host_key=?1",
+            params![host_key],
+        )
+        .map_err(|e| format!("Delete proxy cookies error: {}", e))?;
+        Ok(())
+    }
+
     // --- Users ---
 
     /// 确保本机用户存在（幂等）。首次调用时插入。

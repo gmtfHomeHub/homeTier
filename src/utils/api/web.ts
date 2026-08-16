@@ -320,6 +320,18 @@ export async function setProxySource(url: string): Promise<void> {
   });
 }
 
+export async function setDeviceMode(mode: string): Promise<void> {
+  await request<void>("/proxy/device", {
+    method: "POST",
+    body: JSON.stringify({ mode }),
+  });
+}
+
+export async function getPendingDownloads(): Promise<string[]> {
+  const res = await request<{ files: string[] }>("/proxy/downloads");
+  return res.files ?? [];
+}
+
 // ---- 托盘仅桌面端可用 ----
 export async function syncTrayMenu(_spaces: unknown[], _labels: unknown): Promise<void> {
   return Promise.resolve();

@@ -1,16 +1,25 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ShieldAlert } from "lucide-react";
 import { Button, Flex, Text, Card } from "@radix-ui/themes";
 import { DEVICE_VIEWPORTS, type DeviceMode } from "../../utils/device";
+import * as api from "../../utils/api";
+
+export interface FrameNavState {
+  canBack: boolean;
+  canFwd: boolean;
+  url: string;
+}
 
 interface ProxyFrameProps {
+  tabKey: string;
   proxyUrl: string;
   name: string;
   deviceMode: DeviceMode;
   onOpenBrowser: () => void;
   onBack: () => void;
   onError?: () => void;
+  onNavState?: (state: FrameNavState) => void;
 }
 
 function useContainerSize<T extends HTMLElement>() {
@@ -28,9 +37,25 @@ function useContainerSize<T extends HTMLElement>() {
   return { ref, ...size };
 }
 
-export function ProxyFrame({ proxyUrl, name, deviceMode, onOpenBrowser, onBack, onError }: ProxyFrameProps) {
+export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, onOpenBrowser, onBack, onError, onNavState }: ProxyFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { ref: containerRef, width: cw, height: ch } = useContainerSize<HTMLDivElement>();
+
+  // 监听注入脚本的导航状态上报（__ht_nav），桥接给工具栏
+  useLayoutEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.source !== iframeRef.current?.contentWindow) return;
+      const d = e.data;
+      if (!d || !d.__ht_nav) return;
+      onNavState?.({
+        canBack: d.idx > 0,
+        canFwd: d.idx < d.len - 1,
+        url: typeof d.url === "string" ? d.url : proxyUrl,
+      });
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [onNavState, proxyUrl]);
 
   const viewport = DEVICE_VIEWPORTS[deviceMode];
   const scale = cw > 0 && ch > 0 ? Math.min(cw / viewport.w, ch / viewport.h) : 1;
@@ -52,16 +77,23 @@ export function ProxyFrame({ proxyUrl, name, deviceMode, onOpenBrowser, onBack, 
       >
         <iframe
           ref={iframeRef}
+          id={`ht-frame-${tabKey}`}
           src={proxyUrl}
           className="border-none"
           style={{ width: viewport.w, height: viewport.h }}
           title={name}
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads allow-fullscreen allow-pointer-lock allow-popups-to-escape-sandbox allow-capture allow-top-navigation"
           onError={onError}
         />
       </div>
     </div>
   );
+}
+
+/** 向 iframe 内注入的导航桥发送命令 */
+export function sendFrameNavCmd(tabKey: string, cmd: "back" | "forward" | "go", url?: string) {
+  const el = document.getElementById(`ht-frame-${tabKey}`) as HTMLIFrameElement | null;
+  el?.contentWindow?.postMessage({ __ht_nav_cmd: { cmd, url } }, "*");
 }
 
 function buildProxyUrl(originalUrl: string): string {
@@ -71,6 +103,32 @@ function buildProxyUrl(originalUrl: string): string {
     return `hometierproxy://${hostPort}${u.pathname}${u.search}${u.hash}`;
   } catch {
     return originalUrl;
+  }
+}
+
+export const BROWSER_ENGINE_KEY = "APP_BROWSER_ENGINE";
+
+/** 解析应用 URL 到代理内 URL：优先 localHttp（真实 http origin），失败回退 hometierproxy 自定义协议 */
+export async function resolveProxyUrl(
+  originalUrl: string
+): Promise<{ url: string; engine: "local-http" | "hometierproxy" }> {
+  try {
+    const cfg = await api.getAppConfig();
+    const engine = cfg?.[BROWSER_ENGINE_KEY] === "hometierproxy" ? "hometierproxy" : "local-http";
+    if (engine === "hometierproxy") {
+      return { url: buildProxyUrl(originalUrl), engine };
+    }
+    const proxyUrl = await api.getProxyUrl();
+    const proxy = new URL(proxyUrl);
+    const key = await api.registerProxyKey(originalUrl);
+    const u = new URL(originalUrl);
+    const path = u.pathname === "/" ? "" : u.pathname;
+    return {
+      url: `http://127.0.0.1:${proxy.port}/__proxy__${key}${path}${u.search}${u.hash}`,
+      engine,
+    };
+  } catch {
+    return { url: buildProxyUrl(originalUrl), engine: "hometierproxy" };
   }
 }
 

@@ -109,10 +109,14 @@ async fn connect_upstream(
         .map_err(|e| format!("connect failed: {}: {}", addr, e))?;
 
     if scheme == "wss" {
+        let mut roots = rustls::RootCertStore::from_iter(
+            webpki_roots::TLS_SERVER_ROOTS.iter().cloned(),
+        );
+        for cert in crate::proxy::proxy_ca_der() {
+            let _ = roots.add(cert);
+        }
         let config = rustls::ClientConfig::builder()
-            .with_root_certificates(rustls::RootCertStore::from_iter(
-                webpki_roots::TLS_SERVER_ROOTS.iter().cloned(),
-            ))
+            .with_root_certificates(roots)
             .with_no_client_auth();
         let connector = tokio_rustls::TlsConnector::from(Arc::new(config));
         let domain = rustls::pki_types::ServerName::try_from(target_host.to_string())
@@ -365,7 +369,7 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
         .unwrap()
         .entry(host_key.clone())
         .or_insert_with(hometier_protocol::PerHostCookieJar::new)
-        .build_cookie_header();
+        .build_cookie_header(&target_host, "/");
     if let Some(ref jar_cookie) = jar_cookie {
         crate::log_info!("WS 代理: Cookie 注入来源=jar(持久化), 优先于客户端请求头");
         let _ = write!(upstream_req, "Cookie: {}\r\n", jar_cookie);

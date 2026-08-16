@@ -46,7 +46,11 @@
     "daemonStartFailed": "Daemon start failed: {{reason}}",
     "daemonStartTimeoutReason": "Daemon start timeout: {{reason}}",
     "daemonStartTimeout": "Daemon start timeout (over 30s), please retry",
-    "unknown": "unknown reason"
+    "unknown": "unknown reason",
+    "historyBack": "Back",
+    "historyForward": "Forward",
+    "addressBar": "Type URL and press Enter",
+    "downloadSaved": "Download saved"
   },
   "tray": {
     "show": "Show / Hide",
@@ -335,7 +339,7 @@
     "exitNodes": "Exit Nodes",
     "advancedFlags": "Advanced Flags",
     "flagMtu": "MTU",
-    "instanceRecvBpsLimit":"Instance Receive Limit",
+    "instanceRecvBpsLimit": "Instance Receive Limit",
     "flagLatencyFirst": "Low Latency Priority",
     "flagEnableKcp": "Enable KCP",
     "flagEnableQuic": "Enable QUIC",

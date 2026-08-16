@@ -3,14 +3,35 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::{BodyExt, Full};
 use hyper::body::{Bytes, Incoming};
 use hyper::{Request, Response, StatusCode};
 use hyper::header::{HeaderName, HeaderValue};
 use reqwest;
 
-pub type ResponseBody = Full<Bytes>;
+pub type BodyError = Box<dyn std::error::Error + Send + Sync>;
+pub type ResponseBody = UnsyncBoxBody<Bytes, BodyError>;
 pub type ProxyResponse = Response<ResponseBody>;
+
+/// 构造完整响应体（不可流式的内容使用）
+pub fn full_body(bytes: Bytes) -> ResponseBody {
+    UnsyncBoxBody::new(Full::new(bytes).map_err(|never| -> BodyError { match never {} }))
+}
+
+/// 构造流式响应体（reqwest 字节流 → hyper 分块传输）
+pub fn stream_body<S>(stream: S) -> ResponseBody
+where
+    S: futures_util::Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
+{
+    use futures_util::StreamExt;
+    use hyper::body::Frame;
+    let frames = stream.map(|item| {
+        item.map(Frame::data)
+            .map_err(|e| -> BodyError { Box::new(e) })
+    });
+    UnsyncBoxBody::new(http_body_util::StreamBody::new(frames))
+}
 
 #[derive(Clone)]
 pub struct RequestContext {
@@ -148,7 +169,7 @@ impl PluginChain {
         Response::builder()
             .status(StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR))
             .header("content-type", "text/plain; charset=utf-8")
-            .body(Full::new(Bytes::from(msg.to_string())))
+            .body(full_body(Bytes::from(msg.to_string())))
             .unwrap()
     }
 }
@@ -287,7 +308,7 @@ impl ProxyHandler for HttpReverseProxyHandler {
             .map_err(|e| format!("Failed to read upstream body: {}", e))?;
 
         let resp = resp_builder
-            .body(Full::new(Bytes::from(body_bytes)))
+            .body(full_body(Bytes::from(body_bytes)))
             .map_err(|e| format!("Failed to build response: {}", e))?;
 
         Ok(resp)
@@ -299,7 +320,7 @@ impl HttpReverseProxyHandler {
         Response::builder()
             .status(StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR))
             .header("content-type", "text/plain; charset=utf-8")
-            .body(Full::new(Bytes::from(msg.to_string())))
+            .body(full_body(Bytes::from(msg.to_string())))
             .unwrap()
     }
 }

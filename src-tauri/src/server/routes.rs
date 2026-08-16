@@ -82,6 +82,8 @@ pub fn cmd_router(app_state: Arc<AppState>) -> Router {
         .route("/proxy/status", get(get_proxy_status_handler))
         .route("/proxy/register", post(register_proxy_key_handler))
         .route("/proxy/source", post(set_proxy_source_handler))
+        .route("/proxy/device", post(set_device_mode_handler))
+        .route("/proxy/downloads", get(get_pending_downloads_handler))
         // EasyTier
         .route("/easytier/check-update", get(check_easytier_update_handler))
         .route("/easytier/upgrade", post(upgrade_easytier_handler))
@@ -783,6 +785,27 @@ async fn set_proxy_source_handler(
     }
     state.proxy_server.set_proxy_source(url).await;
     StatusCode::NO_CONTENT.into_response()
+}
+
+// ---- Proxy 设备模式 / 下载 ----
+async fn set_device_mode_handler(
+    State(_state): State<Arc<AppState>>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let mode = body["mode"].as_str().unwrap_or("desktop").to_string();
+    crate::proxy::hometier_protocol::set_device_mode(&mode);
+    StatusCode::NO_CONTENT.into_response()
+}
+
+async fn get_pending_downloads_handler(
+    State(_state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let items = crate::proxy::hometier_protocol::pending_downloads()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .drain(..)
+        .collect::<Vec<_>>();
+    Json(serde_json::json!({ "files": items })).into_response()
 }
 
 // ---- ACL ----

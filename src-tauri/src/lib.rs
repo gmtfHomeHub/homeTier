@@ -100,6 +100,8 @@ pub fn run() -> std::process::ExitCode {
             commands::proxy::get_proxy_status,
             commands::proxy::register_proxy_key,
             commands::proxy::set_proxy_source,
+            commands::proxy::set_device_mode,
+            commands::proxy::get_pending_downloads,
             commands::tray::update_tray_menu,
             commands::daemon::is_daemon_ready,
             commands::daemon::get_daemon_error_reason,
@@ -238,6 +240,17 @@ pub fn run_server(
 
     let db_path = data_dir.join("homeTier.db");
     let db = Arc::new(crate::db::Database::new(&db_path).expect("数据库初始化失败"));
+    crate::proxy::hometier_protocol::set_cookie_db(Arc::clone(&db));
+
+    // 加载自签 CA 证书目录（{data_dir}/ca_certs/*.pem），供内网自签证书应用访问
+    let ca_dir = data_dir.join("ca_certs");
+    let _ = std::fs::create_dir_all(&ca_dir);
+    crate::proxy::load_proxy_ca_certs(&ca_dir);
+
+    // 下载目录（代理下载拦截落盘位置）
+    let dl_dir = data_dir.join("downloads");
+    let _ = std::fs::create_dir_all(&dl_dir);
+    crate::proxy::hometier_protocol::set_download_dir(&dl_dir.to_string_lossy());
 
     let easytier_config_dir = data_dir.join("easytier");
     let easy_tier = Arc::new(crate::easytier::EasyTierManager::new(

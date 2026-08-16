@@ -330,6 +330,34 @@ export async function getSystemApps(): Promise<SystemApp[]> {
   return invoke("get_system_apps");
 }
 
+export async function getProxyUrl(): Promise<string> {
+  return invoke("get_proxy_url");
+}
+
+export async function getProxyStatus(): Promise<{
+  running: boolean;
+  port: number;
+  proxy_url: string;
+}> {
+  return invoke("get_proxy_status");
+}
+
+export async function registerProxyKey(url: string): Promise<string> {
+  return invoke("register_proxy_key", { url });
+}
+
+export async function setProxySource(url: string): Promise<void> {
+  return invoke("set_proxy_source", { url });
+}
+
+export async function setDeviceMode(mode: string): Promise<void> {
+  return invoke("set_device_mode", { mode });
+}
+
+export async function getPendingDownloads(): Promise<string[]> {
+  return invoke("get_pending_downloads");
+}
+
 export async function shareApp(appId: string, targetSpaceId: string): Promise<SpaceApp> {
   return invoke("share_app", { appId, targetSpaceId });
 }

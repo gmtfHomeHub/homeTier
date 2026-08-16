@@ -46,7 +46,11 @@
     "daemonStartFailed": "守護行程啟動失敗: {{reason}}",
     "daemonStartTimeoutReason": "守護行程啟動逾時: {{reason}}",
     "daemonStartTimeout": "守護行程啟動逾時（超過30秒），請重試",
-    "unknown": "未知原因"
+    "unknown": "未知原因",
+    "historyBack": "後退",
+    "historyForward": "前進",
+    "addressBar": "輸入網址後按 Enter 跳轉",
+    "downloadSaved": "下載已儲存"
   },
   "tray": {
     "show": "顯示/隱藏",
@@ -335,7 +339,7 @@
     "exitNodes": "出口節點",
     "advancedFlags": "進階旗標",
     "flagMtu": "MTU",
-    "instanceRecvBpsLimit":"實例接收限速",
+    "instanceRecvBpsLimit": "實例接收限速",
     "flagLatencyFirst": "低延遲優先",
     "flagEnableKcp": "啟用 KCP",
     "flagEnableQuic": "啟用 QUIC",

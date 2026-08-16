@@ -1,12 +1,17 @@
 use async_trait::async_trait;
 use http_body_util::BodyExt;
-use http_body_util::Full;
 use hyper::body::{Bytes, Incoming};
 use hyper::{Method, Request, Response, StatusCode};
 use regex::Regex;
 use std::collections::HashMap;
 
-use crate::proxy::plugin::{ProxyHandler, ProxyResponse, RequestContext, ResponseBody};
+use crate::proxy::hometier_protocol::{
+    cookie_jars, inject_local_http_script, looks_like_html_body, now_epoch, persist_cookie_to_db,
+    relax_csp, PerHostCookieJar,
+};
+use crate::proxy::plugin::{
+    full_body, stream_body, ProxyHandler, ProxyResponse, RequestContext, ResponseBody,
+};
 use crate::proxy::rewriter::{classify_content, detect_charset, rewrite_urls, RewriteTarget};
 use crate::proxy::{ActiveOrigin, ProxyKeyMap};
 
@@ -21,11 +26,14 @@ impl HttpForwardPlugin {
         key_map: ProxyKeyMap,
         active_origin: ActiveOrigin,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let client = reqwest::Client::builder()
+        let mut builder = reqwest::Client::builder()
             .no_proxy()
             .timeout(std::time::Duration::from_secs(30))
-            .connect_timeout(std::time::Duration::from_secs(10))
-            .build()?;
+            .connect_timeout(std::time::Duration::from_secs(10));
+        for cert in crate::proxy::proxy_ca_certs() {
+            builder = builder.add_root_certificate(cert);
+        }
+        let client = builder.build()?;
         Ok(Self { client, key_map, active_origin })
     }
 
@@ -40,6 +48,105 @@ impl HttpForwardPlugin {
         };
         let clean_path = request_path.trim_start_matches('/');
         format!("{}{}", base_dir, clean_path)
+    }
+
+    /// 从 URL 提取 upstream origin（host[:port]）与请求路径
+    fn split_upstream(url: &str) -> (String, String) {
+        let rest = url
+            .split("://")
+            .nth(1)
+            .unwrap_or(url);
+        match rest.find('/') {
+            Some(pos) => (rest[..pos].to_string(), rest[pos..].split('?').next().unwrap_or("/").to_string()),
+            None => (rest.to_string(), "/".to_string()),
+        }
+    }
+
+    /// 改写 3xx Location 头：将上游地址/绝对路径改回代理地址，避免跳转逃逸代理
+    fn rewrite_location(loc: &str, forward_url: &str, key: &str, prefix: &str) -> Option<String> {
+        if key.is_empty() || prefix.is_empty() {
+            return None;
+        }
+        if loc.starts_with('/') {
+            return Some(format!("{}/__proxy__{}{}", prefix, key, loc));
+        }
+        let (origin, _) = Self::split_upstream(forward_url);
+        if origin.is_empty() {
+            return None;
+        }
+        let scheme = if forward_url.starts_with("https://") {
+            "https"
+        } else {
+            "http"
+        };
+        let base = format!("{}://{}", scheme, origin);
+        if let Some(rest) = loc.strip_prefix(&base) {
+            return Some(format!("{}/__proxy__{}{}", prefix, key, rest));
+        }
+        None
+    }
+
+    /// 合并浏览器原生 Cookie 与 jar Cookie（按 name 去重，jar 优先）
+    fn merge_cookie_headers(native: Option<&str>, jar: &str) -> String {
+        let mut pairs: Vec<(String, String)> = Vec::new();
+        if let Some(n) = native {
+            for part in n.split(';') {
+                if let Some(eq) = part.find('=') {
+                    pairs.push((
+                        part[..eq].trim().to_string(),
+                        part[eq + 1..].trim().to_string(),
+                    ));
+                }
+            }
+        }
+        for part in jar.split(';') {
+            if let Some(eq) = part.find('=') {
+                let name = part[..eq].trim();
+                pairs.retain(|(k, _)| k != name);
+                pairs.push((name.to_string(), part[eq + 1..].trim().to_string()));
+            }
+        }
+        pairs
+            .iter()
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect::<Vec<_>>()
+            .join("; ")
+    }
+
+    /// 从 Content-Disposition / URL 提取下载文件名
+    fn extract_filename(cd: &str, url: &str) -> String {
+        let lower = cd.to_lowercase();
+        if let Some(pos) = lower.find("filename*=") {
+            let rest = &cd[pos + "filename*=".len()..];
+            let val = rest.split(';').next().unwrap_or("").trim().trim_matches('"');
+            let decoded = urlencoding::decode(val)
+                .map(|s| s.into_owned())
+                .unwrap_or_else(|_| val.to_string());
+            if let Some(eq) = decoded.find("''") {
+                return decoded[eq + 2..].to_string();
+            }
+            return decoded;
+        }
+        if let Some(pos) = lower.find("filename=") {
+            let rest = &cd[pos + "filename=".len()..];
+            let val = rest.split(';').next().unwrap_or("").trim().trim_matches('"');
+            if !val.is_empty() {
+                return val.to_string();
+            }
+        }
+        let trimmed = url.trim_end_matches('/');
+        trimmed
+            .rsplit('/')
+            .next()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("download")
+            .to_string()
+    }
+
+    fn sanitize_filename(name: &str) -> String {
+        name.chars()
+            .map(|c| if c == '/' || c == '\\' { '_' } else { c })
+            .collect()
     }
 }
 
@@ -228,11 +335,20 @@ impl HttpForwardPlugin {
             Method::PATCH => self.client.patch(target_url).body(body_bytes.clone()),
             Method::DELETE => self.client.delete(target_url),
             Method::HEAD => self.client.head(target_url),
+            Method::OPTIONS => self.client.request(Method::OPTIONS, target_url),
             _ => self.client.get(target_url),
         };
 
         for (key, value) in &headers_to_forward {
             req_builder = req_builder.header(key.as_str(), value.as_str());
+        }
+
+        // 移动仿真：伪装移动端 UA
+        if crate::proxy::hometier_protocol::device_mode() == "mobile" {
+            req_builder = req_builder.header(
+                "user-agent",
+                crate::proxy::hometier_protocol::MOBILE_UA,
+            );
         }
 
         match req_builder.send().await {
@@ -241,19 +357,25 @@ impl HttpForwardPlugin {
                 let mut builder = Response::builder().status(status);
 
                 for (key, value) in upstream.headers() {
+                    let key_lower = key.as_str().to_lowercase();
+                    if key_lower == "content-length"
+                        || key_lower == "transfer-encoding"
+                        || key_lower == "content-encoding"
+                    {
+                        continue;
+                    }
                     builder = builder.header(key, value.clone());
                 }
 
-                let body_bytes = upstream.bytes().await.unwrap_or_default();
-                Ok(builder
-                    .header("content-length", body_bytes.len().to_string())
-                    .body(Full::new(Bytes::from(body_bytes)))
-                    .unwrap())
+                if status == StatusCode::NOT_MODIFIED || status == StatusCode::NO_CONTENT {
+                    return Ok(builder.body(full_body(Bytes::new())).unwrap());
+                }
+                Ok(builder.body(stream_body(upstream.bytes_stream())).unwrap())
             }
             Err(e) => Ok(Response::builder()
                 .status(StatusCode::BAD_GATEWAY)
                 .header("content-type", "text/plain; charset=utf-8")
-                .body(Full::new(Bytes::from(format!(
+                .body(full_body(Bytes::from(format!(
                     "Passthrough request failed: {}",
                     e
                 ))))
@@ -310,9 +432,45 @@ impl HttpForwardPlugin {
             Method::PATCH => self.client.patch(forward_url).body(body_bytes.clone()),
             Method::DELETE => self.client.delete(forward_url),
             Method::HEAD => self.client.head(forward_url),
+            Method::OPTIONS => self.client.request(Method::OPTIONS, forward_url),
             _ => self.client.get(forward_url),
         };
 
+        for (key, value) in &headers_to_forward {
+            req_builder = req_builder.header(key.as_str(), value.as_str());
+        }
+
+        // 移动仿真：伪装移动端 UA
+        if crate::proxy::hometier_protocol::device_mode() == "mobile" {
+            req_builder = req_builder.header(
+                "user-agent",
+                crate::proxy::hometier_protocol::MOBILE_UA,
+            );
+        }
+
+        // 合并 jar Cookie（WebView 原生无法持有的 Secure/HttpOnly/上游域 Cookie）
+        {
+            let (upstream_origin, upstream_path) = Self::split_upstream(forward_url);
+            if !upstream_origin.is_empty() {
+                let jar_cookie = {
+                    let mut jars = cookie_jars().lock().unwrap();
+                    let jar = jars
+                        .entry(upstream_origin.clone())
+                        .or_insert_with(PerHostCookieJar::new);
+                    jar.build_cookie_header(&upstream_origin, &upstream_path)
+                };
+                if let Some(jc) = jar_cookie {
+                    let native = headers_to_forward
+                        .iter()
+                        .find(|(k, _)| k.eq_ignore_ascii_case("cookie"))
+                        .map(|(_, v)| v.as_str());
+                    let merged = Self::merge_cookie_headers(native, &jc);
+                    headers_to_forward
+                        .retain(|(k, _)| !k.eq_ignore_ascii_case("cookie"));
+                    headers_to_forward.push(("cookie".to_string(), merged));
+                }
+            }
+        }
         for (key, value) in &headers_to_forward {
             req_builder = req_builder.header(key.as_str(), value.as_str());
         }
@@ -321,6 +479,25 @@ impl HttpForwardPlugin {
             Ok(upstream) => {
                 let status = upstream.status();
                 let upstream_headers = upstream.headers().clone();
+
+                // 捕获上游 Set-Cookie → 全局 jar + DB（登录态落库持久）
+                let (upstream_origin, _) = Self::split_upstream(forward_url);
+                if !upstream_origin.is_empty() {
+                    for value in upstream_headers.get_all("set-cookie") {
+                        if let Ok(val) = value.to_str() {
+                            let stored = {
+                                let mut jars = cookie_jars().lock().unwrap();
+                                let jar = jars
+                                    .entry(upstream_origin.clone())
+                                    .or_insert_with(PerHostCookieJar::new);
+                                jar.add_set_cookie(val)
+                            };
+                            if let Some(cookie) = stored {
+                                persist_cookie_to_db(&upstream_origin, &cookie, now_epoch());
+                            }
+                        }
+                    }
+                }
 
                 let mut builder = Response::builder().status(status);
 
@@ -346,12 +523,20 @@ impl HttpForwardPlugin {
                         continue;
                     }
 
+                    if key_lower == "location" {
+                        if let Ok(val) = value.to_str() {
+                            if let Some(new_loc) =
+                                Self::rewrite_location(val, forward_url, proxy_key, &proxy_prefix_host)
+                            {
+                                builder = builder.header(key, new_loc.as_str());
+                                continue;
+                            }
+                        }
+                    }
+
                     builder = builder.header(key, value.clone());
                 }
 
-                let body_bytes = upstream.bytes().await.unwrap_or_default();
-
-                // CGI/PHP 脚本 MIME 强制覆盖
                 let forward_url_lower = forward_url.to_lowercase();
                 let is_cgi_or_php = forward_url_lower.contains(".cgi") || forward_url_lower.contains(".php");
                 let content_type = upstream_headers
@@ -359,67 +544,138 @@ impl HttpForwardPlugin {
                     .and_then(|v| v.to_str().ok())
                     .unwrap_or("")
                     .to_lowercase();
-                if is_cgi_or_php && content_type.contains("text/html") {
-                    let looks_like_html = body_bytes.starts_with(b"<") || body_bytes.starts_with(b"<!");
-                    if !looks_like_html {
-                        builder = builder.header("content-type", "application/javascript; charset=utf-8");
+                let is_sse = content_type.contains("text/event-stream");
+
+                let target = classify_content(&content_type);
+                let needs_rewrite = ctx.should_rewrite
+                    && !proxy_prefix_host.is_empty()
+                    && matches!(target, RewriteTarget::Html | RewriteTarget::Css | RewriteTarget::Js)
+                    && !is_sse
+                    && status != StatusCode::NOT_MODIFIED
+                    && !status.is_redirection();
+
+                let mut csp_override: Option<String> = None;
+
+                let is_html_target = matches!(target, RewriteTarget::Html);
+
+                // 下载拦截：Content-Disposition: attachment → 落盘 downloads 目录 + 通知前端
+                let content_disposition = upstream_headers
+                    .get("content-disposition")
+                    .and_then(|v| v.to_str().ok())
+                    .map(|v| v.to_string());
+                let is_download = content_disposition
+                    .as_deref()
+                    .map(|cd| cd.to_lowercase().contains("attachment"))
+                    .unwrap_or(false);
+
+                let body: ResponseBody = if needs_rewrite {
+                    let body_bytes = upstream.bytes().await.unwrap_or_default();
+
+                    // CGI/PHP 脚本 MIME 强制覆盖
+                    if is_cgi_or_php && content_type.contains("text/html") {
+                        let looks_like_html = body_bytes.starts_with(b"<") || body_bytes.starts_with(b"<!");
+                        if !looks_like_html {
+                            builder = builder.header("content-type", "application/javascript; charset=utf-8");
+                        }
                     }
-                }
 
-                let target_url = forward_url.to_string();
-
-                let body: ResponseBody = if ctx.should_rewrite && !proxy_prefix_host.is_empty() {
-                    let target = classify_content(&content_type);
-                    match target {
-                        RewriteTarget::Html | RewriteTarget::Css | RewriteTarget::Js => {
-                            let encoding = detect_charset(&content_type);
-                            let (body_str, _, _) = encoding.decode(&body_bytes);
-                            let proxy_key_owned = proxy_key.to_string();
-                            let target_url_clone = target_url.clone();
-                            let proxy_prefix_clone = proxy_prefix_host.clone();
-                            let rewritten = std::panic::catch_unwind(
-                                std::panic::AssertUnwindSafe(|| {
-                                    rewrite_urls(
-                                        &body_str,
-                                        &target_url_clone,
-                                        &proxy_prefix_clone,
-                                        &proxy_key_owned,
-                                        target,
-                                    )
-                                }),
-                            );
-                            match rewritten {
-                                Ok(cow) => {
-                                    let new_bytes = cow.as_bytes().to_vec();
-                                    builder = builder
-                                        .header("content-length", new_bytes.len().to_string());
-                                    Full::new(Bytes::from(new_bytes))
-                                }
-                                Err(_) => {
-                                    builder = builder
-                                        .header("content-length", body_bytes.len().to_string());
-                                    Full::new(body_bytes)
+                    let target_url = forward_url.to_string();
+                    let encoding = detect_charset(&content_type);
+                    let (body_str, _, _) = encoding.decode(&body_bytes);
+                    let proxy_key_owned = proxy_key.to_string();
+                    let target_url_clone = target_url.clone();
+                    let proxy_prefix_clone = proxy_prefix_host.clone();
+                    let rewritten = std::panic::catch_unwind(
+                        std::panic::AssertUnwindSafe(|| {
+                            rewrite_urls(
+                                &body_str,
+                                &target_url_clone,
+                                &proxy_prefix_clone,
+                                &proxy_key_owned,
+                                target,
+                            )
+                        }),
+                    );
+                    match rewritten {
+                        Ok(cow) => {
+                            let mut new_bytes = cow.as_bytes().to_vec();
+                            // HTML 页面注入本地代理脚本（WS 重写 + 移动仿真）并放宽 CSP
+                            let mut csp_hash = String::new();
+                            if is_html_target && looks_like_html_body(&new_bytes) {
+                                let is_mobile =
+                                    crate::proxy::hometier_protocol::device_mode() == "mobile";
+                                let (injected, hash) =
+                                    inject_local_http_script(new_bytes, is_mobile);
+                                new_bytes = injected;
+                                csp_hash = hash;
+                            }
+                            if !csp_hash.is_empty() {
+                                let proxy_port = crate::proxy::hometier_protocol::proxy_port();
+                                if let Some(csp) = upstream_headers
+                                    .get("content-security-policy")
+                                    .and_then(|v| v.to_str().ok())
+                                {
+                                    let sources = [format!("ws://127.0.0.1:{}", proxy_port)];
+                                    csp_override = relax_csp(csp, &csp_hash, &sources);
                                 }
                             }
+                            builder = builder
+                                .header("content-length", new_bytes.len().to_string());
+                            full_body(Bytes::from(new_bytes))
                         }
-                        _ => {
+                        Err(_) => {
                             builder = builder
                                 .header("content-length", body_bytes.len().to_string());
-                            Full::new(body_bytes)
+                            full_body(body_bytes)
                         }
                     }
+                } else if status == StatusCode::NOT_MODIFIED || status == StatusCode::NO_CONTENT {
+                    full_body(Bytes::new())
+                } else if is_download {
+                    // 附件：完整收集 → 保存到下载目录 → 同时原样返回给 iframe
+                    let bytes = upstream.bytes().await.unwrap_or_default();
+                    let dl_dir = crate::proxy::hometier_protocol::download_dir();
+                    if let Some(dir) = dl_dir {
+                        let raw_name = content_disposition
+                            .as_deref()
+                            .map(|cd| Self::extract_filename(cd, forward_url))
+                            .unwrap_or_else(|| forward_url.to_string());
+                        let safe_name = Self::sanitize_filename(&raw_name);
+                        let saved_path = format!("{}/{}", dir, safe_name);
+                        let path_buf = saved_path.clone();
+                        let bytes_clone = bytes.clone();
+                        tokio::spawn(async move {
+                            let _ = tokio::fs::write(&path_buf, &bytes_clone).await;
+                        });
+                        {
+                            let mut queue =
+                                crate::proxy::hometier_protocol::pending_downloads()
+                                    .lock()
+                                    .unwrap();
+                            queue.push(saved_path.clone());
+                        }
+                    }
+                    builder = builder.header("content-length", bytes.len().to_string());
+                    full_body(bytes)
                 } else {
-                    builder = builder
-                        .header("content-length", body_bytes.len().to_string());
-                    Full::new(body_bytes)
+                    stream_body(upstream.bytes_stream())
                 };
 
-                Ok(builder.body(body).unwrap())
+                let mut resp = builder.body(body).unwrap();
+                if let Some(csp_override) = csp_override {
+                    if csp_override.is_empty() {
+                        resp.headers_mut().remove("content-security-policy");
+                    } else if let Ok(hv) = csp_override.parse() {
+                        resp.headers_mut()
+                            .insert("content-security-policy", hv);
+                    }
+                }
+                Ok(resp)
             }
             Err(e) => Ok(Response::builder()
                 .status(StatusCode::BAD_GATEWAY)
                 .header("content-type", "text/plain; charset=utf-8")
-                .body(Full::new(Bytes::from(format!(
+                .body(full_body(Bytes::from(format!(
                     "Proxy request failed: {}",
                     e
                 ))))

@@ -46,7 +46,11 @@
     "daemonStartFailed": "daemon 启动失败: {{reason}}",
     "daemonStartTimeoutReason": "daemon 启动超时: {{reason}}",
     "daemonStartTimeout": "daemon 启动超时（超过30秒），请重试",
-    "unknown": "未知原因"
+    "unknown": "未知原因",
+    "historyBack": "后退",
+    "historyForward": "前进",
+    "addressBar": "输入地址后回车跳转",
+    "downloadSaved": "下载已保存"
   },
   "tray": {
     "show": "显示/隐藏",
@@ -335,7 +339,7 @@
     "exitNodes": "出口节点",
     "advancedFlags": "高级标志",
     "flagMtu": "MTU",
-    "instanceRecvBpsLimit":"实例接收限速",
+    "instanceRecvBpsLimit": "实例接收限速",
     "flagLatencyFirst": "低延迟优先",
     "flagEnableKcp": "启用 KCP",
     "flagEnableQuic": "启用 QUIC",

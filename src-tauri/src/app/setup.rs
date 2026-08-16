@@ -36,6 +36,19 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         crate::db::Database::new(&db_path).map_err(|e| format!("初始化数据库失败: {}", e))?,
     );
     app.manage(db.clone());
+    crate::proxy::hometier_protocol::set_cookie_db(db.clone());
+
+    // 加载自签 CA 证书目录（{app_data_dir}/ca_certs/*.pem），供内网自签证书应用访问
+    if let Ok(app_data) = app.path().app_data_dir() {
+        let ca_dir = app_data.join("ca_certs");
+        let _ = std::fs::create_dir_all(&ca_dir);
+        crate::proxy::load_proxy_ca_certs(&ca_dir);
+
+        // 下载目录（代理下载拦截落盘位置）
+        let dl_dir = app_data.join("downloads");
+        let _ = std::fs::create_dir_all(&dl_dir);
+        crate::proxy::hometier_protocol::set_download_dir(&dl_dir.to_string_lossy());
+    }
 
     // 确保本机用户存在（单行 users 表，id=machine_id）
     let hostname = gethostname::gethostname().to_string_lossy().to_string();
