@@ -100,6 +100,8 @@ pub fn init_proxy_server() -> Arc<ProxyServer> {
             Arc::new(IframeBypassPlugin),
         ],
         handlers,
+        key_map,
+        active_origin,
     ).map_err(|e| format!("启动代理服务器失败: {}", e))
         .expect("代理服务器启动失败");
     crate::log_info!(format!("服务器模式代理已启动: port={}", proxy_server.port()));

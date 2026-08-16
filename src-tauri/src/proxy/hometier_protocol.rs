@@ -301,7 +301,7 @@ const EMULATION_JS: &str = r#"
 try{Object.defineProperty(window,"devicePixelRatio",{value:3})}catch(e){}
 try{Object.defineProperty(navigator,"maxTouchPoints",{value:5})}catch(e){}
 try{window.ontouchstart=null;window.ontouchend=null}catch(e){}
-var OM=window.matchMedia.bind(window);
+var OM=window.matchMedia?window.matchMedia.bind(window):function(q){return mq(String(q),false)};
 function mq(q,m){var l={media:q,matches:m,addListener:function(){},removeListener:function(){},addEventListener:function(){},removeEventListener:function(){},onchange:null,dispatchEvent:function(){return false}};return l}
 var MM={"pointer: coarse":true,"pointer: fine":false,"hover: hover":false,"hover: none":true,"any-pointer: coarse":true,"any-pointer: fine":false,"any-hover: none":true,"any-hover: hover":false};
 window.matchMedia=function(q){q=String(q).replace(/\s+/g," ");for(var k in MM){if(q.indexOf(k)>=0)return mq(q,MM[k])}return OM(q)};
@@ -357,11 +357,11 @@ pub fn inject_local_http_script(
         r#"(function(){{
 var K="{}",O="{}",F=location.origin;
 function R(u){{if(typeof u!=="string"||!u)return u;if(u.indexOf("/__proxy__")>=0)return u;if(O&&u.indexOf(O)===0)return F+"/__proxy__"+K+u.slice(O.length);if(u.indexOf(F)===0)return F+"/__proxy__"+K+u.slice(F.length);if(u.charAt(0)==="/")return F+"/__proxy__"+K+u;return u}}
-var _f=window.fetch;window.fetch=function(u,i){{if(typeof u==="string"){{u=R(u)}}else if(u&&u.url){{var n=R(u.url);if(n!==u.url)u=new Request(n,u)}}return _f.call(this,u,i)}};
+var _f=window.fetch;if(_f)window.fetch=function(u,i){{if(typeof u==="string"){{u=R(u)}}else if(u&&u.url){{var n=R(u.url);if(n!==u.url)u=new Request(n,u)}}return _f.call(this,u,i)}};
 var _xo=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){{if(typeof u==="string"){{arguments[1]=R(u)}}return _xo.apply(this,arguments)}};
 var _sa=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){{if(typeof n==="string"&&(n==="src"||n==="href"||n==="srcset"||n==="poster"||n==="data-src"||n==="data-href"||n==="data-url")){{v=R(String(v))}}return _sa.call(this,n,v)}};
 ["src","href","srcset"].forEach(function(a){{"HTMLLinkElement,HTMLScriptElement,HTMLImageElement,HTMLIFrameElement,HTMLSourceElement,HTMLVideoElement,HTMLAudioElement".split(",").forEach(function(T){{try{{var P=window[T]&&window[T].prototype;if(!P)return;var d=Object.getOwnPropertyDescriptor(P,a);if(!d||!d.set)return;Object.defineProperty(P,a,{{get:d.get,set:function(v){{v=R(String(v));d.set.call(this,v)}},configurable:true}})}}catch(e){{}}}})}});
-var _WS=window.WebSocket;window.WebSocket=function(u,p){{if(typeof u=="string"){{u=r_ws(u)}}return new _WS(u,p)}};window.WebSocket.prototype=_WS.prototype;window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;
+var _WS=window.WebSocket;if(_WS)window.WebSocket=function(u,p){{if(typeof u=="string"){{u=r_ws(u)}}return new _WS(u,p)}};window.WebSocket.prototype=_WS.prototype;window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;
 function r_ws(u){{if(typeof u!=="string")return u;if(u.indexOf("/__proxy__")>=0)return u;var m=u.match(/^(wss?):\/\/([^\/?#]*)(.*)$/i);if(!m)return u;var h=m[2],rest=m[3]||"/",oh="";if(O){{var oo=O.split("://")[1]||"";oh=oo.split("/")[0]}}if(h===location.host||(oh&&h===oh))return "ws://"+location.host+"/__proxy__"+K+"?"+m[1].toLowerCase()+"="+encodeURIComponent(h+rest);return "ws://"+location.host+"?"+m[1].toLowerCase()+"="+encodeURIComponent(h+rest)}}
 }})()"#,
         proxy_key, source_origin
@@ -448,9 +448,9 @@ fn inject_proxy_script(html_bytes: Vec<u8>, host_key: &str, is_mobile: bool) -> 
     let mut js_content = format!(
         r#"(function(){{
 var H="{}",P="{}";
-var _f=window.fetch;window.fetch=function(u,i){{if(typeof u=="string"){{u=r(u)}}else if(u&&u.url){{var nu=r(u.url);if(nu!==u.url)u=new Request(nu,u)}};return _f.call(this,u,i)}};
+var _f=window.fetch;if(_f)window.fetch=function(u,i){{if(typeof u=="string"){{u=r(u)}}else if(u&&u.url){{var nu=r(u.url);if(nu!==u.url)u=new Request(nu,u)}};return _f.call(this,u,i)}};
 var _o=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){{if(typeof u=="string"){{arguments[1]=r(u)}}return _o.apply(this,arguments)}};
-var _WS=window.WebSocket;window.WebSocket=function(u,p){{if(typeof u=="string"){{u=r_ws(u)}}return new _WS(u,p)}};window.WebSocket.prototype=_WS.prototype;window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;
+var _WS=window.WebSocket;if(_WS)window.WebSocket=function(u,p){{if(typeof u=="string"){{u=r_ws(u)}}return new _WS(u,p)}};window.WebSocket.prototype=_WS.prototype;window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;
 function r_ws(u){{if(typeof u!=="string")return u;if(u.indexOf("/__proxy__")>=0)return u;var m=u.match(/^(wss?):\/\/([^\/?#]*)(.*)$/i);if(!m)return u;var h=m[2],rest=m[3]||"/";if(h==="127.0.0.1:"+P||h===H||h.indexOf("hometierproxy")===0){{return "ws://127.0.0.1:"+P+"?"+m[1].toLowerCase()+"="+encodeURIComponent(H+rest)}}return "ws://127.0.0.1:"+P+"?"+m[1].toLowerCase()+"="+encodeURIComponent(m[2].replace('hometierproxy',H)+rest)}};
 function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/')return "hometierproxy://"+H+"/"+u.replace(/^\/+/,"");var m=u.match(/^https?:\/\/hometierproxy(?::\d+)?(?=\/|\?|#|$)/i);if(m)return u.replace(/^https?:\/\/[^\/]+/,"hometierproxy://"+H);return u.replace(RegExp("^https?://"+H.replace(/\./g,"\\.")+"(?=/|\\?|#|$)","i"),"hometierproxy://"+H)}};
 }})()"#,

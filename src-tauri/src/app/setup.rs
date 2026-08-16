@@ -345,6 +345,8 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             Arc::new(IframeBypassPlugin),
         ],
         handlers,
+        key_map.clone(),
+        active_origin.clone(),
     ).map_err(|e| format!("启动代理服务器失败: {}", e))?);
     log_info!(format!("代理服务器已启动: port={}", proxy_server.port));
     crate::proxy::hometier_protocol::set_proxy_port(proxy_server.port);

@@ -1,7 +1,6 @@
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::sync::Arc;
-use std::collections::HashMap;
 
 use hex;
 use hyper::body::Incoming;
@@ -14,6 +13,7 @@ use tokio::net::TcpStream;
 use tokio::sync::{oneshot, Mutex};
 
 use super::plugin::{PluginChain, ProxyHandler, ProxyPlugin, RequestContext};
+use super::{ActiveOrigin, ProxyKeyMap};
 use super::ws_proxy;
 
 pub struct ProxyServer {
@@ -22,8 +22,8 @@ pub struct ProxyServer {
     _runtime: tokio::runtime::Runtime,
     shutdown_tx: Option<oneshot::Sender<()>>,
     shutdown_flag: Arc<Mutex<bool>>,
-    key_map: Arc<Mutex<HashMap<String, String>>>,
-    active_origin: Arc<Mutex<Option<String>>>,
+    key_map: ProxyKeyMap,
+    active_origin: ActiveOrigin,
 }
 
 /// 包装 TcpStream，将预先读取的字节「放回」读取流前面，
@@ -87,6 +87,8 @@ impl ProxyServer {
     pub fn start(
         plugins: Vec<Arc<dyn ProxyPlugin>>,
         handlers: Vec<Arc<dyn ProxyHandler>>,
+        key_map: ProxyKeyMap,
+        active_origin: ActiveOrigin,
     ) -> Result<Self, String> {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
@@ -94,7 +96,7 @@ impl ProxyServer {
             .build()
             .map_err(|e| format!("Failed to create tokio runtime: {}", e))?;
 
-        let (shutdown_tx, port, proxy_prefix, key_map) = rt.block_on(async {
+        let (shutdown_tx, port, proxy_prefix) = rt.block_on(async {
             let addr: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
             let socket = tokio::net::TcpSocket::new_v4()
                 .map_err(|e| format!("Failed to create socket: {}", e))?;
@@ -115,8 +117,8 @@ impl ProxyServer {
             let shutdown_flag_clone = shutdown_flag.clone();
 
             let chain = Arc::new(PluginChain::new(plugins, handlers));
-            let key_map = Arc::new(Mutex::new(std::collections::HashMap::new()));
             let key_map_for_loop = key_map.clone();
+            let active_origin_for_loop = active_origin.clone();
             let front_port = port;
 
             tokio::spawn(async move {
@@ -131,6 +133,7 @@ impl ProxyServer {
                                     let chain = chain.clone();
                                     let shutdown_flag = shutdown_flag_clone.clone();
                                     let key_map = key_map_for_loop.clone();
+                                    let _active_origin = active_origin_for_loop.clone();
                                     let front_port = front_port;
                                     tokio::spawn(async move {
                                         // 尝试读取初始字节，判断是否为 WS upgrade
@@ -183,7 +186,7 @@ impl ProxyServer {
                 }
             });
 
-            Ok::<_, String>((shutdown_tx, port, proxy_prefix, key_map))
+            Ok::<_, String>((shutdown_tx, port, proxy_prefix))
         })?;
 
         Ok(Self {
@@ -193,7 +196,7 @@ impl ProxyServer {
             shutdown_tx: Some(shutdown_tx),
             shutdown_flag: Arc::new(Mutex::new(false)),
             key_map,
-            active_origin: Arc::new(Mutex::new(None)),
+            active_origin,
         })
     }
 
@@ -223,12 +226,12 @@ impl ProxyServer {
         hasher.update(url.as_bytes());
         let hash = hasher.finalize();
         let key = hex::encode(&hash[..6]);
-        self.key_map.lock().await.insert(key.clone(), url.to_string());
+        self.key_map.write().await.insert(key.clone(), url.to_string());
         Ok(key)
     }
 
     pub async fn set_proxy_source(&self, url: String) {
-        *self.active_origin.lock().await = Some(url);
+        *self.active_origin.write().await = Some(url);
     }
 
     pub async fn shutdown(&mut self) {

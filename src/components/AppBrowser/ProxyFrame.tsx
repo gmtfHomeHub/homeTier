@@ -83,7 +83,7 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, onOpenBrowser, 
           style={{ width: viewport.w, height: viewport.h }}
           title={name}
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-pointer-lock allow-popups-to-escape-sandbox allow-top-navigation"
-          allow="fullscreen; camera; microphone; display-capture"
+          allow="fullscreen; camera; microphone; display-capture; focus"
           onError={onError}
         />
       </div>

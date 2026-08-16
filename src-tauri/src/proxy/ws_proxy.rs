@@ -1,12 +1,10 @@
-use std::collections::HashMap;
 use std::fmt::Write;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use tokio::sync::Mutex;
-
 use crate::proxy::hometier_protocol;  // 用于共享 CookieJar
+use crate::proxy::ProxyKeyMap;
 
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -159,7 +157,7 @@ async fn send_error(client: &mut TcpStream, status_line: &str, message: &str) {
 pub async fn handle_raw_upgrade(
     mut client: TcpStream,
     initial_data: Vec<u8>,
-    key_map: Arc<Mutex<HashMap<String, String>>>,
+    key_map: ProxyKeyMap,
     front_port: u16,
 ) {
     // 1. 使用外部传入的初始数据解析 HTTP 请求（数据由 server.rs 预读传入）
@@ -203,7 +201,7 @@ pub async fn handle_raw_upgrade(
         if let Some(rest) = path_noq.strip_prefix("/__proxy__") {
             let key = rest.split('/').next().unwrap_or("");
             if !key.is_empty() {
-                key_map.lock().await.get(key).cloned()
+                key_map.read().await.get(key).cloned()
             } else {
                 None
             }
