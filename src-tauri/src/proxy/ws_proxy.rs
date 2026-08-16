@@ -1,7 +1,10 @@
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+
+use tokio::sync::Mutex;
 
 use crate::proxy::hometier_protocol;  // 用于共享 CookieJar
 
@@ -151,7 +154,14 @@ async fn send_error(client: &mut TcpStream, status_line: &str, message: &str) {
 
 /// 直接从 TcpStream 处理 WebSocket 升级请求（无需 hyper upgrade 机制）。
 /// 接收原始 TCP 流和已预读的请求数据，解析 HTTP 请求，连接上游，发送 101 响应，然后双向转发数据。
-pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
+/// `key_map`: __proxy__{key} → 源 URL 映射（用于站点 JS 用 location 拼出的“自身”WS 地址解析真实上游）
+/// `front_port`: 本代理前置端口（禁止作为上游连接，防止自环递归）
+pub async fn handle_raw_upgrade(
+    mut client: TcpStream,
+    initial_data: Vec<u8>,
+    key_map: Arc<Mutex<HashMap<String, String>>>,
+    front_port: u16,
+) {
     // 1. 使用外部传入的初始数据解析 HTTP 请求（数据由 server.rs 预读传入）
     let data = &initial_data[..];
 
@@ -186,8 +196,24 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
     }
     let path = parts[1];
 
+    // 解析 __proxy__{key} 前缀：站点 JS 基于 location 拼接的自引用地址，
+    // 目标可能指向前置端口自身，需用 key 还原真实上游（见下方步骤 5）。
+    let key_origin: Option<String> = {
+        let path_noq = path.split('?').next().unwrap_or(path);
+        if let Some(rest) = path_noq.strip_prefix("/__proxy__") {
+            let key = rest.split('/').next().unwrap_or("");
+            if !key.is_empty() {
+                key_map.lock().await.get(key).cloned()
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+
     // 3. 从查询参数解析 scheme 和目标地址 (格式: ?ws=encoded_target 或 ?wss=encoded_target)
-    let (scheme, encoded_target) = if let Some(qs) = path.split('?').nth(1) {
+    let (mut scheme, encoded_target) = if let Some(qs) = path.split('?').nth(1) {
         if let Some(val) = qs.strip_prefix("ws=") {
             ("ws", val)
         } else if let Some(val) = qs.strip_prefix("wss=") {
@@ -293,7 +319,54 @@ pub async fn handle_raw_upgrade(mut client: TcpStream, initial_data: Vec<u8>) {
 
     crate::log_info!(format!("WS 代理请求: {}://{}:{}{}", scheme, target_host, target_port, tpath));
 
-    // 5. 连接上游
+    // 5. 自引用目标还原：若目标解析为代理前置自身（站点 JS 用 location 拼接），
+    // 通过 __proxy__{key} 映射的源 URL 还原真实上游 host（path 保持不变）。
+    if let Some(origin) = key_origin {
+        let is_self = matches!(target_host.as_str(), "127.0.0.1" | "localhost" | "::1" | "[::1]")
+            && target_port == front_port;
+        if is_self || !target_host_port_valid {
+            let origin_rest = origin
+                .split_once("://")
+                .map(|(_, rest)| rest)
+                .unwrap_or(origin.as_str());
+            let authority = origin_rest.split('/').next().unwrap_or(origin_rest);
+            match authority.rfind(':') {
+                Some(colon) => {
+                    if let Ok(port) = authority[colon + 1..].parse::<u16>() {
+                        crate::log_info!(format!(
+                            "WS 代理: 自引用目标由 key 还原 → {}:{} (path 保持 {})",
+                            &authority[..colon], port, tpath
+                        ));
+                        target_host = authority[..colon].to_string();
+                        target_port = port;
+                        if origin.starts_with("https://") {
+                            scheme = "wss";
+                        }
+                    }
+                }
+                None => {
+                    target_host = authority.to_string();
+                    if origin.starts_with("https://") {
+                        target_port = 443;
+                        scheme = "wss";
+                    } else {
+                        target_port = 80;
+                    }
+                }
+            }
+        }
+    }
+
+    // 硬性防自环：任何情况下都禁止把前置端口自身作为上游连接。
+    if matches!(target_host.as_str(), "127.0.0.1" | "localhost" | "::1" | "[::1]")
+        && target_port == front_port
+    {
+        crate::log_error!(format!("WS 代理: 阻止自环连接 {}:{}", target_host, target_port));
+        send_error(&mut client, "502 Bad Gateway", "self-connect blocked").await;
+        return;
+    }
+
+    // 6. 连接上游
     crate::log_info!(format!("WS 代理: 开始连接上游 {}:{} ({})", target_host, target_port, scheme));
     let mut upstream = match connect_upstream(&target_host, target_port, scheme).await {
         Ok(u) => {

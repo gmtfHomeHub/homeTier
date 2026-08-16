@@ -210,7 +210,17 @@ impl ProxyHandler for HttpForwardPlugin {
         }
 
         // 路由 ③：fallthrough → 直通模式（无代理转换，替换 proxy 地址为源地址直接请求）
-        let target = self.resolve_target(&req).await?;
+        let target = match self.resolve_target(&req).await {
+            Ok(t) => t,
+            Err(e) => {
+                crate::log_error!(format!("直通模式: 无法解析上游目标: {}", e));
+                return Ok(Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .header("content-type", "text/plain; charset=utf-8")
+                    .body(full_body(Bytes::from(format!("no upstream target: {}", e))))
+                    .unwrap());
+            }
+        };
         *self.active_origin.write().await = Some(target.clone());
         self.passthrough(req, &target).await
     }
@@ -301,6 +311,7 @@ impl HttpForwardPlugin {
         target_url: &str,
     ) -> Result<ProxyResponse, Box<dyn std::error::Error + Send + Sync>> {
         let method = req.method().clone();
+        let req_path = req.uri().path().to_lowercase();
 
         let hop_by_hop = [
             "host",
@@ -370,6 +381,34 @@ impl HttpForwardPlugin {
                 if status == StatusCode::NOT_MODIFIED || status == StatusCode::NO_CONTENT {
                     return Ok(builder.body(full_body(Bytes::new())).unwrap());
                 }
+                // 静态资源（.css/.js/.mjs）若上游返回 HTML，说明目标解析错误（实际为 404 页等），
+                // 浏览器 strict-mode 会拒绝并报「非 CSS MIME 类型」错误；改为返回 502 + text/plain，
+                // 保留原始 content-type 到日志，避免触发页面级阻断。
+                let is_static_asset = req_path.ends_with(".css")
+                    || req_path.ends_with(".js")
+                    || req_path.ends_with(".mjs");
+                if is_static_asset {
+                    if let Some(ct) = upstream
+                        .headers()
+                        .get("content-type")
+                        .and_then(|v| v.to_str().ok())
+                    {
+                        if ct.contains("text/html") {
+                            crate::log_error!(format!(
+                                "直通模式: 静态资源 {}, 上游返回 HTML (status={}, ct={}), 改返 502",
+                                req_path, status.as_u16(), ct
+                            ));
+                            return Ok(Response::builder()
+                                .status(StatusCode::BAD_GATEWAY)
+                                .header("content-type", "text/plain; charset=utf-8")
+                                .body(full_body(Bytes::from(format!(
+                                    "Upstream returned HTML for static asset {} (status {})",
+                                    req_path, status.as_u16()
+                                ))))
+                                .unwrap());
+                        }
+                    }
+                }
                 Ok(builder.body(stream_body(upstream.bytes_stream())).unwrap())
             }
             Err(e) => Ok(Response::builder()
@@ -387,7 +426,7 @@ impl HttpForwardPlugin {
         &self,
         req: Request<Incoming>,
         forward_url: &str,
-        _source_url: &str,
+        source_url: &str,
         proxy_key: &str,
         ctx: &RequestContext,
     ) -> Result<ProxyResponse, Box<dyn std::error::Error + Send + Sync>> {
@@ -605,7 +644,7 @@ impl HttpForwardPlugin {
                                 let is_mobile =
                                     crate::proxy::hometier_protocol::device_mode() == "mobile";
                                 let (injected, hash) =
-                                    inject_local_http_script(new_bytes, is_mobile);
+                                    inject_local_http_script(new_bytes, is_mobile, proxy_key, source_url);
                                 new_bytes = injected;
                                 csp_hash = hash;
                             }

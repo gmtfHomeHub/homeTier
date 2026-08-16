@@ -94,7 +94,7 @@ impl ProxyServer {
             .build()
             .map_err(|e| format!("Failed to create tokio runtime: {}", e))?;
 
-        let (shutdown_tx, port, proxy_prefix) = rt.block_on(async {
+        let (shutdown_tx, port, proxy_prefix, key_map) = rt.block_on(async {
             let addr: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
             let socket = tokio::net::TcpSocket::new_v4()
                 .map_err(|e| format!("Failed to create socket: {}", e))?;
@@ -115,6 +115,9 @@ impl ProxyServer {
             let shutdown_flag_clone = shutdown_flag.clone();
 
             let chain = Arc::new(PluginChain::new(plugins, handlers));
+            let key_map = Arc::new(Mutex::new(std::collections::HashMap::new()));
+            let key_map_for_loop = key_map.clone();
+            let front_port = port;
 
             tokio::spawn(async move {
                 let shutdown_fut = async { shutdown_rx.await.ok() };
@@ -127,6 +130,8 @@ impl ProxyServer {
                                 Ok((stream, _)) => {
                                     let chain = chain.clone();
                                     let shutdown_flag = shutdown_flag_clone.clone();
+                                    let key_map = key_map_for_loop.clone();
+                                    let front_port = front_port;
                                     tokio::spawn(async move {
                                         // 尝试读取初始字节，判断是否为 WS upgrade
                                         let mut peek_buf = vec![0u8; 8192];
@@ -156,7 +161,7 @@ impl ProxyServer {
 
                                         if ws_proxy::is_raw_ws_upgrade(peek_data) {
                                             // WS 请求：直接使用原始 TcpStream，不经过 hyper
-                                            ws_proxy::handle_raw_upgrade(stream, peek_data.to_vec()).await;
+                                            ws_proxy::handle_raw_upgrade(stream, peek_data.to_vec(), key_map, front_port).await;
                                         } else {
                                             // 非 WS 请求：将预读数据包装回 stream，传给 hyper
                                             let prepend = PrependStream::new(stream, peek_data.to_vec());
@@ -178,7 +183,7 @@ impl ProxyServer {
                 }
             });
 
-            Ok::<_, String>((shutdown_tx, port, proxy_prefix))
+            Ok::<_, String>((shutdown_tx, port, proxy_prefix, key_map))
         })?;
 
         Ok(Self {
@@ -187,7 +192,7 @@ impl ProxyServer {
             _runtime: rt,
             shutdown_tx: Some(shutdown_tx),
             shutdown_flag: Arc::new(Mutex::new(false)),
-            key_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            key_map,
             active_origin: Arc::new(Mutex::new(None)),
         })
     }

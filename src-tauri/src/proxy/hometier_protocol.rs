@@ -281,7 +281,8 @@ pub fn relax_csp(csp: &str, script_hash: &str, added_sources: &[String]) -> Opti
 /// 导航桥接 JS：iframe 内自维护会话历史栈，通过 postMessage 与宿主工具栏通信。
 /// 宿主发 {__ht_nav_cmd:{cmd:"back"|"forward"|"go",url}}，本脚本回发 {__ht_nav:{idx,len,url}}。
 /// 用 location.replace 在栈内跳转，避免生成会“逃逸”代理的浏览器历史条目。
-const NAV_BRIDGE_JS: &str = r#"(function(){
+const NAV_BRIDGE_JS: &str = r#"
+(function(){
 var st=[],ix=-1;
 function push(){var u=location.href;if(st.length&&st[ix]===u)return;st=st.slice(0,ix+1);st.push(u);ix=st.length-1;notify()}
 function notify(){try{parent.postMessage({__ht_nav:1,idx:ix,len:st.length,url:location.href},"*")}catch(e){}}
@@ -295,7 +296,8 @@ window.addEventListener("message",function(e){var d=e.data;if(!d||!d.__ht_nav_cm
 /// 移动仿真 JS 片段：DPR=3、触摸能力、matchMedia 误报。
 /// 在当前架构下（页面运行在 WebView 的 iframe 内，非真实浏览器），
 /// 站点通过 JS 探测设备特性的结果由本脚本覆盖，注入位置在页面最早执行。
-const EMULATION_JS: &str = r#"(function(){
+const EMULATION_JS: &str = r#"
+(function(){
 try{Object.defineProperty(window,"devicePixelRatio",{value:3})}catch(e){}
 try{Object.defineProperty(navigator,"maxTouchPoints",{value:5})}catch(e){}
 try{window.ontouchstart=null;window.ontouchend=null}catch(e){}
@@ -323,20 +325,47 @@ fn inject_viewport_meta(html: &mut String) {
     }
 }
 
-/// 本地 HTTP 代理（local-http）模式的页面注入脚本：动态 WebSocket 重写 + 可选移动仿真。
-/// 页面 origin 已是 http://127.0.0.1:{proxy_port}，fetch/XHR 由 <base> + 静态改写覆盖，
-/// 仅需拦截带变量的动态 WebSocket 连接。返回 (注入后 HTML, CSP script hash)
-pub fn inject_local_http_script(html_bytes: Vec<u8>, is_mobile: bool) -> (Vec<u8>, String) {
+/// 从 URL 提取 origin（scheme://host[:port]）
+fn extract_origin(url: &str) -> &str {
+    let Some(pos) = url.find("://") else {
+        return url.trim_end_matches('/');
+    };
+    let after = &url[pos + 3..];
+    match after.find('/') {
+        Some(slash) => &url[..pos + 3 + slash],
+        None => url,
+    }
+}
+
+/// 本地 HTTP 代理（local-http）模式的页面注入脚本：动态 URL 重写（fetch/XHR/元素属性/WS）。
+/// 页面 origin 已是 http://127.0.0.1:{proxy_port}，静态改写覆盖 HTML 属性/CSS/JS 字面量；
+/// 本脚本兜底拦截站点 JS **运行时**用 location/source origin 拼出的绝对 URL（CasaOS 类 SPA 必现）。
+/// 返回 (注入后 HTML, CSP script hash)
+pub fn inject_local_http_script(
+    html_bytes: Vec<u8>,
+    is_mobile: bool,
+    proxy_key: &str,
+    source_url: &str,
+) -> (Vec<u8>, String) {
     let mut html = match String::from_utf8(html_bytes.clone()) {
         Ok(h) => h,
         Err(_) => return (html_bytes, String::new()),
     };
 
-    let mut js_content = r#"(function(){
-var _WS=window.WebSocket;window.WebSocket=function(u,p){if(typeof u=="string"){u=r_ws(u)}return new _WS(u,p)};window.WebSocket.prototype=_WS.prototype;window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;
-function r_ws(u){if(u.indexOf("ws://"+location.host+"?")===0)return u;var m=u.match(/^(wss?):\/\/(.*)/i);if(!m)return u;var out="ws://"+location.host+"?"+m[1].toLowerCase()+"="+encodeURIComponent(m[2]);return out}
-})()"#
-        .to_string();
+    let source_origin = extract_origin(source_url).to_string();
+    let mut js_content = format!(
+        r#"(function(){{
+var K="{}",O="{}",F=location.origin;
+function R(u){{if(typeof u!=="string"||!u)return u;if(u.indexOf("/__proxy__")>=0)return u;if(O&&u.indexOf(O)===0)return F+"/__proxy__"+K+u.slice(O.length);if(u.indexOf(F)===0)return F+"/__proxy__"+K+u.slice(F.length);if(u.charAt(0)==="/")return F+"/__proxy__"+K+u;return u}}
+var _f=window.fetch;window.fetch=function(u,i){{if(typeof u==="string"){{u=R(u)}}else if(u&&u.url){{var n=R(u.url);if(n!==u.url)u=new Request(n,u)}}return _f.call(this,u,i)}};
+var _xo=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){{if(typeof u==="string"){{arguments[1]=R(u)}}return _xo.apply(this,arguments)}};
+var _sa=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){{if(typeof n==="string"&&(n==="src"||n==="href"||n==="srcset"||n==="poster"||n==="data-src"||n==="data-href"||n==="data-url")){{v=R(String(v))}}return _sa.call(this,n,v)}};
+["src","href","srcset"].forEach(function(a){{"HTMLLinkElement,HTMLScriptElement,HTMLImageElement,HTMLIFrameElement,HTMLSourceElement,HTMLVideoElement,HTMLAudioElement".split(",").forEach(function(T){{try{{var P=window[T]&&window[T].prototype;if(!P)return;var d=Object.getOwnPropertyDescriptor(P,a);if(!d||!d.set)return;Object.defineProperty(P,a,{{get:d.get,set:function(v){{v=R(String(v));d.set.call(this,v)}},configurable:true}})}}catch(e){{}}}})}});
+var _WS=window.WebSocket;window.WebSocket=function(u,p){{if(typeof u=="string"){{u=r_ws(u)}}return new _WS(u,p)}};window.WebSocket.prototype=_WS.prototype;window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;
+function r_ws(u){{if(typeof u!=="string")return u;if(u.indexOf("/__proxy__")>=0)return u;var m=u.match(/^(wss?):\/\/([^\/?#]*)(.*)$/i);if(!m)return u;var h=m[2],rest=m[3]||"/",oh="";if(O){{var oo=O.split("://")[1]||"";oh=oo.split("/")[0]}}if(h===location.host||(oh&&h===oh))return "ws://"+location.host+"/__proxy__"+K+"?"+m[1].toLowerCase()+"="+encodeURIComponent(h+rest);return "ws://"+location.host+"?"+m[1].toLowerCase()+"="+encodeURIComponent(h+rest)}}
+}})()"#,
+        proxy_key, source_origin
+    );
 if is_mobile {
         js_content.push_str("\n");
         js_content.push_str(EMULATION_JS);
@@ -344,6 +373,11 @@ if is_mobile {
     }
     js_content.push_str("\n");
     js_content.push_str(NAV_BRIDGE_JS);
+
+    debug_assert!(
+        !js_content.contains("})()(function"),
+        "JS 拼接缺少分隔符，会产生语法错误"
+    );
 
     let hash = crate::crypto::sha256(js_content.as_bytes());
     let encoded = base64::engine::general_purpose::STANDARD.encode(hash);
@@ -417,7 +451,7 @@ var H="{}",P="{}";
 var _f=window.fetch;window.fetch=function(u,i){{if(typeof u=="string"){{u=r(u)}}else if(u&&u.url){{var nu=r(u.url);if(nu!==u.url)u=new Request(nu,u)}};return _f.call(this,u,i)}};
 var _o=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){{if(typeof u=="string"){{arguments[1]=r(u)}}return _o.apply(this,arguments)}};
 var _WS=window.WebSocket;window.WebSocket=function(u,p){{if(typeof u=="string"){{u=r_ws(u)}}return new _WS(u,p)}};window.WebSocket.prototype=_WS.prototype;window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;
-function r_ws(u){{if(u.indexOf("ws://127.0.0.1:"+P+"?")===0){{return u}}var m=u.match(/^(wss?):\/\/(.*)/i);if(!m){{return u}}var out="ws://127.0.0.1:"+P+"?"+m[1].toLowerCase()+"="+encodeURIComponent(m[2].replace('hometierproxy', H));return out}};
+function r_ws(u){{if(typeof u!=="string")return u;if(u.indexOf("/__proxy__")>=0)return u;var m=u.match(/^(wss?):\/\/([^\/?#]*)(.*)$/i);if(!m)return u;var h=m[2],rest=m[3]||"/";if(h==="127.0.0.1:"+P||h===H||h.indexOf("hometierproxy")===0){{return "ws://127.0.0.1:"+P+"?"+m[1].toLowerCase()+"="+encodeURIComponent(H+rest)}}return "ws://127.0.0.1:"+P+"?"+m[1].toLowerCase()+"="+encodeURIComponent(m[2].replace('hometierproxy',H)+rest)}};
 function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/')return "hometierproxy://"+H+"/"+u.replace(/^\/+/,"");var m=u.match(/^https?:\/\/hometierproxy(?::\d+)?(?=\/|\?|#|$)/i);if(m)return u.replace(/^https?:\/\/[^\/]+/,"hometierproxy://"+H);return u.replace(RegExp("^https?://"+H.replace(/\./g,"\\.")+"(?=/|\\?|#|$)","i"),"hometierproxy://"+H)}};
 }})()"#,
         host_key, proxy_port
@@ -431,6 +465,10 @@ function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/
     js_content.push_str(NAV_BRIDGE_JS);
 
 // function r(l){{var u=l;if(u.match(/hometierproxy/g).length>1){{var u1=u.slice(u.lastIndexOf('hometierproxy'));u = u1;}}if(u.indexOf("hometierproxy://")>= 0) {{u=u.slice(u.indexOf("hometierproxy://"));}} if(u.indexOf("hometierproxy")>=0){{var u2=u.slice(u.indexOf("hometierproxy")); if(u2.indexOf("://"+H)===0) {{return u2;}} if(u2.indexOf(H)<0&&u2.indexOf("://")<0) return u2.replace("hometierproxy","hometierproxy://"+H); return "hometierproxy://"+H+u2.slice(H);}}if(u.charAt(0) === "/") return "hometierproxy://" + H + "/" + u.replace(/^\//, "");var m = u.match(/^https?:\/\/hometierproxy(?::\d+)?(?=\/|\?|#|$)/i);if(m)return u.replace(/^https?:\/\/[^\/]+/, "hometierproxy://" + H); return u.replace(RegExp("^https?://"+H.replace(/\./g,"\\.")+"(?=/|\\?|#|$)","i"),"hometierproxy://"+H);}}
+    debug_assert!(
+        !js_content.contains("})()(function"),
+        "JS 拼接缺少分隔符，会产生语法错误"
+    );
     let hash = crate::crypto::sha256(js_content.as_bytes());
     let encoded = base64::engine::general_purpose::STANDARD.encode(hash);
     let csp_hash = format!("'sha256-{}'", encoded);
