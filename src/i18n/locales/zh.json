@@ -38,6 +38,7 @@
     "done": "完成",
     "confirmDeleteAppMessage": "确定要删除「{{name}}」吗？",
     "initializing": "服务初始化中...",
+    "starting": "启动中...",
     "startupFailed": "服务启动失败：{{message}}",
     "retry": "重试",
     "collapseSidebar": "收起侧栏",
@@ -231,7 +232,8 @@
     "unmuteMic": "取消静音",
     "muteSpeaker": "静音扬声器",
     "unmuteSpeaker": "取消静音",
-    "vadHint": "不讲话时自动静音 · 内置回声消除"
+    "vadHint": "不讲话时自动静音 · 内置回声消除",
+    "unsupported": "当前环境不支持麦克风采集（mediaDevices 不可用）"
   },
   "screen": {
     "title": "屏幕共享",
@@ -251,10 +253,14 @@
     "stopShare": "停止共享",
     "viewers": "人查看",
     "sharingActive": "正在共享屏幕",
+    "sharing": "正在共享",
     "exitView": "退出查看",
     "shareEnded": "共享已结束",
     "waitingShare": "等待共享开始...",
-    "notWatching": "当前没有正在进行的屏幕共享"
+    "notWatching": "当前没有正在进行的屏幕共享",
+    "unsupported": "当前环境不支持屏幕采集（getDisplayMedia 不可用）",
+    "captureCancelled": "屏幕采集被取消或失败",
+    "noTrack": "未获取到屏幕视频轨道"
   },
   "file": {
     "title": "文件共享",
@@ -547,13 +553,5 @@
     "justNow": "刚刚",
     "minutesAgo": "{{count}}分钟前",
     "hoursAgo": "{{count}}小时前"
-  },
-  "screen": {
-    "unsupported": "当前环境不支持屏幕采集（getDisplayMedia 不可用）",
-    "captureCancelled": "屏幕采集被取消或失败",
-    "noTrack": "未获取到屏幕视频轨道"
-  },
-  "voice": {
-    "unsupported": "当前环境不支持麦克风采集（mediaDevices 不可用）"
   }
 }

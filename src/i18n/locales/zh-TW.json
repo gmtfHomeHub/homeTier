@@ -38,6 +38,7 @@
     "done": "完成",
     "confirmDeleteAppMessage": "確定要刪除「{{name}}」嗎？",
     "initializing": "服務初始化中...",
+    "starting": "啟動中...",
     "startupFailed": "服務啟動失敗：{{message}}",
     "retry": "重試",
     "collapseSidebar": "收起側欄",
@@ -231,7 +232,8 @@
     "unmuteMic": "取消靜音",
     "muteSpeaker": "靜音揚聲器",
     "unmuteSpeaker": "取消靜音",
-    "vadHint": "不說話時自動靜音 · 內建回音消除"
+    "vadHint": "不說話時自動靜音 · 內建回音消除",
+    "unsupported": "當前環境不支援麥克風（mediaDevices 不可用）"
   },
   "screen": {
     "title": "螢幕分享",
@@ -251,10 +253,14 @@
     "stopShare": "停止分享",
     "viewers": "人檢視",
     "sharingActive": "正在分享螢幕",
+    "sharing": "正在分享",
     "exitView": "結束檢視",
     "shareEnded": "分享已結束",
     "waitingShare": "等待分享開始...",
-    "notWatching": "目前沒有正在進行的螢幕分享"
+    "notWatching": "目前沒有正在進行的螢幕分享",
+    "unsupported": "當前環境不支援螢幕擷取（getDisplayMedia 不可用）",
+    "captureCancelled": "螢幕擷取被取消或失敗",
+    "noTrack": "未取得螢幕視訊軌"
   },
   "file": {
     "title": "檔案分享",
@@ -547,13 +553,5 @@
     "justNow": "剛剛",
     "minutesAgo": "{{count}}分鐘前",
     "hoursAgo": "{{count}}小時前"
-  },
-  "screen": {
-    "unsupported": "當前環境不支援螢幕擷取（getDisplayMedia 不可用）",
-    "captureCancelled": "螢幕擷取被取消或失敗",
-    "noTrack": "未取得螢幕視訊軌"
-  },
-  "voice": {
-    "unsupported": "當前環境不支援麥克風（mediaDevices 不可用）"
   }
 }

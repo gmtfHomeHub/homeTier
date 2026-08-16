@@ -38,6 +38,7 @@
     "done": "Done",
     "confirmDeleteAppMessage": "Delete \"{{name}}\"?",
     "initializing": "Initializing service...",
+    "starting": "Starting...",
     "startupFailed": "Service startup failed: {{message}}",
     "retry": "Retry",
     "collapseSidebar": "Collapse sidebar",
@@ -231,7 +232,8 @@
     "unmuteMic": "Unmute mic",
     "muteSpeaker": "Mute speaker",
     "unmuteSpeaker": "Unmute speaker",
-    "vadHint": "Auto-mutes when silent · built-in echo cancellation"
+    "vadHint": "Auto-mutes when silent · built-in echo cancellation",
+    "unsupported": "Microphone is not supported in this environment (mediaDevices unavailable)"
   },
   "screen": {
     "title": "Screen Sharing",
@@ -251,10 +253,14 @@
     "stopShare": "Stop sharing",
     "viewers": "viewers",
     "sharingActive": "Sharing screen",
+    "sharing": "Sharing",
     "exitView": "Exit view",
     "shareEnded": "Sharing ended",
     "waitingShare": "Waiting for sharing to start...",
-    "notWatching": "No screen sharing is currently active"
+    "notWatching": "No screen sharing is currently active",
+    "unsupported": "Screen capture is not supported in this environment (getDisplayMedia unavailable)",
+    "captureCancelled": "Screen capture was cancelled or failed",
+    "noTrack": "No screen video track obtained"
   },
   "file": {
     "title": "File Sharing",
@@ -547,13 +553,5 @@
     "justNow": "just now",
     "minutesAgo": "{{count}}min ago",
     "hoursAgo": "{{count}}h ago"
-  },
-  "screen": {
-    "unsupported": "Screen capture is not supported in this environment (getDisplayMedia unavailable)",
-    "captureCancelled": "Screen capture was cancelled or failed",
-    "noTrack": "No screen video track obtained"
-  },
-  "voice": {
-    "unsupported": "Microphone is not supported in this environment (mediaDevices unavailable)"
   }
 }

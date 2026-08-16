@@ -83,7 +83,7 @@ export function MessageList({ messages }: MessageListProps) {
               {msg.msg_type === "image" ? (
                 <img
                   src={msg.content}
-                  alt={t("chat.imageAlt")}
+                  alt={t("chat.image")}
                   className="max-w-sm rounded-lg mt-1 cursor-pointer hover:opacity-90"
                   onClick={() => window.open(msg.content)}
                 />

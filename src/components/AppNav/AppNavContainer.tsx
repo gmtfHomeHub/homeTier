@@ -124,7 +124,7 @@ export function AppNavContainer({
                             </Button>
                           )}
                           {onShare && (
-                            <Button onClick={(e) => { e.stopPropagation(); onShare(app); }} variant="ghost" size="1" title={t("common.shareApp")}>
+                            <Button onClick={(e) => { e.stopPropagation(); onShare(app); }} variant="ghost" size="1" title={t("appNav.shareApp")}>
                               <Share2 size={12} />
                             </Button>
                           )}
