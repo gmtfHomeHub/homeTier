@@ -343,7 +343,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
           value={categoryFilter.length ? categoryFilter.join(",") : "all"}
           onValueChange={(v) => setCategoryFilter(v === "all" ? [] : v.split(","))}
         >
-          <Select.Trigger className="text-xs w-32" />
+          <Select.Trigger className="w-32 text-xs" />
           <Select.Content>
             <Select.Item value="all">{t("log.allCategories")}</Select.Item>
             {CATEGORIES.map((cat) => (
@@ -371,7 +371,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
           value={moduleFilter.length ? moduleFilter.join(",") : "all"}
           onValueChange={(v) => setModuleFilter(v === "all" ? [] : v.split(","))}
         >
-          <Select.Trigger className="text-xs w-32" />
+          <Select.Trigger className="w-32 text-xs" />
           <Select.Content>
             <Select.Item value="all">{t("log.allModules")}</Select.Item>
                 {modules.map((mod) => (
@@ -480,9 +480,9 @@ export function LogViewer({ spaceId }: LogViewerProps) {
                   {filtered.length === totalCount ? "" : ` ${t("log.clearCount", { total: totalCount, count: filtered.length })}`}
                   {t("log.clearWarning")}
                 </Dialog.Description>
-                <Flex gap="2" justify="end" style={{ marginTop: 16 }}>
+                <Flex gap="2" align="center" justify="end" style={{ marginTop: 16 }}>
                   <Button variant="ghost" onClick={() => setShowClearDialog(false)}>{t("common.cancel")}</Button>
-                  <Button onClick={handleClear} color="red" disabled={clearing}>
+                  <Button onClick={handleClear} size="1" color="red" disabled={clearing}>
                     {clearing ? t("log.clearing") : t("log.confirmClearBtn")}
                   </Button>
                 </Flex>
@@ -513,12 +513,12 @@ export function LogViewer({ spaceId }: LogViewerProps) {
               <div className="max-h-[300px] overflow-y-auto text-xs text-[var(--color-text)] whitespace-pre-wrap break-all p-2 bg-[var(--color-background)] border border-[var(--color-border)] rounded">
                 {detailEntry.message}
               </div>
-              <Flex gap="2" justify="end" style={{ marginTop: 16 }}>
-                <Button variant="ghost" size="2" onClick={() => copyText(detailEntry.message)}>
+              <Flex gap="2" align="center" justify="end" style={{ marginTop: 16 }}>
+                <Button variant="ghost" size="1" onClick={() => copyText(detailEntry.message)}>
                   <Copy size={14} />
                   {t("log.copyMessage")}
                 </Button>
-                <Button size="2" onClick={() => setDetailEntry(null)}>{t("common.close")}</Button>
+                <Button size="1" onClick={() => setDetailEntry(null)}>{t("common.close")}</Button>
               </Flex>
             </>
           )}
@@ -534,7 +534,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
               <code className="flex-1 min-w-0 text-xs font-mono bg-[var(--color-background)] border border-[var(--color-border)] rounded px-2 py-1 break-all">
                 {exportPath}
               </code>
-              <Button variant="ghost" size="2" onClick={() => copyText(exportPath)} title={t("log.copyPath")}>
+              <Button variant="ghost" size="1" onClick={() => copyText(exportPath)} title={t("log.copyPath")}>
                 <Copy size={14} />
               </Button>
             </Flex>
