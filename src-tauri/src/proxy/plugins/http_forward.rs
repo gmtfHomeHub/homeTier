@@ -300,9 +300,21 @@ impl HttpForwardPlugin {
             }
         }
 
-        // 回退 active_origin
-        self.active_origin.read().await.clone()
-            .ok_or_else(|| "No target found (no Referer and no active origin)".to_string().into())
+        // 回退 active_origin：无 Referer（字体/图片等跨域或原生请求）时，
+        // 用请求路径相对 active_origin 解析，避免返回裸 origin 导致目标路径丢失
+        if let Some(origin) = self.active_origin.read().await.clone() {
+            let request_path = req.uri().path();
+            let full_path = match req.uri().query() {
+                Some(query) => format!("{}?{}", request_path, query),
+                None => request_path.to_string(),
+            };
+            let upstream = Self::resolve_relative_path(&origin, &full_path);
+            if upstream.starts_with("http://") || upstream.starts_with("https://") {
+                return Ok(upstream);
+            }
+            return Ok(origin);
+        }
+        Err("No target found (no Referer and no active origin)".to_string().into())
     }
 
     async fn passthrough(
@@ -381,12 +393,23 @@ impl HttpForwardPlugin {
                 if status == StatusCode::NOT_MODIFIED || status == StatusCode::NO_CONTENT {
                     return Ok(builder.body(full_body(Bytes::new())).unwrap());
                 }
-                // 静态资源（.css/.js/.mjs）若上游返回 HTML，说明目标解析错误（实际为 404 页等），
-                // 浏览器 strict-mode 会拒绝并报「非 CSS MIME 类型」错误；改为返回 502 + text/plain，
+                // 静态资源（.css/.js/.mjs 及字体/图片）若上游返回 HTML，说明目标解析错误（实际为 404 页等），
+                // 浏览器 strict-mode 会拒绝并报「非 CSS MIME 类型」错误 / 图标字体失效（□□）；改为返回 502 + text/plain，
                 // 保留原始 content-type 到日志，避免触发页面级阻断。
                 let is_static_asset = req_path.ends_with(".css")
                     || req_path.ends_with(".js")
-                    || req_path.ends_with(".mjs");
+                    || req_path.ends_with(".mjs")
+                    || req_path.ends_with(".woff")
+                    || req_path.ends_with(".woff2")
+                    || req_path.ends_with(".ttf")
+                    || req_path.ends_with(".eot")
+                    || req_path.ends_with(".svg")
+                    || req_path.ends_with(".png")
+                    || req_path.ends_with(".jpg")
+                    || req_path.ends_with(".jpeg")
+                    || req_path.ends_with(".gif")
+                    || req_path.ends_with(".webp")
+                    || req_path.ends_with(".ico");
                 if is_static_asset {
                     if let Some(ct) = upstream
                         .headers()

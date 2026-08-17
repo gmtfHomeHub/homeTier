@@ -282,7 +282,7 @@ pub fn relax_csp(csp: &str, script_hash: &str, added_sources: &[String]) -> Opti
 /// 宿主发 {__ht_nav_cmd:{cmd:"back"|"forward"|"go",url}}，本脚本回发 {__ht_nav:{idx,len,url}}。
 /// 用 location.replace 在栈内跳转，避免生成会“逃逸”代理的浏览器历史条目。
 const NAV_BRIDGE_JS: &str = r#"
-(function(){
+;(function(){
 var st=[],ix=-1;
 function push(){var u=location.href;if(st.length&&st[ix]===u)return;st=st.slice(0,ix+1);st.push(u);ix=st.length-1;notify()}
 function notify(){try{parent.postMessage({__ht_nav:1,idx:ix,len:st.length,url:location.href},"*")}catch(e){}}
@@ -297,7 +297,7 @@ window.addEventListener("message",function(e){var d=e.data;if(!d||!d.__ht_nav_cm
 /// 在当前架构下（页面运行在 WebView 的 iframe 内，非真实浏览器），
 /// 站点通过 JS 探测设备特性的结果由本脚本覆盖，注入位置在页面最早执行。
 const EMULATION_JS: &str = r#"
-(function(){
+;(function(){
 try{Object.defineProperty(window,"devicePixelRatio",{value:3})}catch(e){}
 try{Object.defineProperty(navigator,"maxTouchPoints",{value:5})}catch(e){}
 try{window.ontouchstart=null;window.ontouchend=null}catch(e){}
@@ -305,6 +305,18 @@ var OM=window.matchMedia?window.matchMedia.bind(window):function(q){return mq(St
 function mq(q,m){var l={media:q,matches:m,addListener:function(){},removeListener:function(){},addEventListener:function(){},removeEventListener:function(){},onchange:null,dispatchEvent:function(){return false}};return l}
 var MM={"pointer: coarse":true,"pointer: fine":false,"hover: hover":false,"hover: none":true,"any-pointer: coarse":true,"any-pointer: fine":false,"any-hover: none":true,"any-hover: hover":false};
 window.matchMedia=function(q){q=String(q).replace(/\s+/g," ");for(var k in MM){if(q.indexOf(k)>=0)return mq(q,MM[k])}return OM(q)};
+})()"#;
+
+/// 跨源 iframe autofocus 抑制：删除 autofocus 属性并拦截无手势的 focus()，
+/// 消除 WebKitGTK「Blocked autofocusing on a form control in a cross-origin subframe.」报错。
+/// 用户主动 click/mousedown 后放行真实 focus（保持表单可用）。
+const AUTOFOCUS_JS: &str = r#"
+;(function(){
+function allow(){window.__ht_gesture=1;window.removeEventListener("mousedown",allow,true);window.removeEventListener("keydown",allow,true);window.removeEventListener("touchstart",allow,true)}
+window.addEventListener("mousedown",allow,true);window.addEventListener("keydown",allow,true);window.addEventListener("touchstart",allow,true);
+var _focus=HTMLElement.prototype.focus;HTMLElement.prototype.focus=function(o){try{if(window.__ht_gesture||document.hasFocus()){return _focus.call(this,o)}}catch(e){}};
+function strip(){try{var a=document.querySelectorAll("[autofocus],input[autofocus],textarea[autofocus],select[autofocus],button[autofocus]");for(var i=0;i<a.length;i++){a[i].removeAttribute("autofocus")}}catch(e){}}
+if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",strip,false)}else{strip()}
 })()"#;
 
 /// 注入移动端 viewport meta（缺失时）
@@ -357,10 +369,12 @@ pub fn inject_local_http_script(
         r#"(function(){{
 var K="{}",O="{}",F=location.origin;
 function R(u){{if(typeof u!=="string"||!u)return u;if(u.indexOf("/__proxy__")>=0)return u;if(O&&u.indexOf(O)===0)return F+"/__proxy__"+K+u.slice(O.length);if(u.indexOf(F)===0)return F+"/__proxy__"+K+u.slice(F.length);if(u.charAt(0)==="/")return F+"/__proxy__"+K+u;return u}}
+function RS(u){{if(typeof u!=="string"||!u)return u;return u.replace(/url\(\s*["']?([^"')]+)["']?\s*\)/g,function(m,s){{return "url("+R(s)+")"}})}}
 var _f=window.fetch;if(_f)window.fetch=function(u,i){{if(typeof u==="string"){{u=R(u)}}else if(u&&u.url){{var n=R(u.url);if(n!==u.url)u=new Request(n,u)}}return _f.call(this,u,i)}};
 var _xo=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){{if(typeof u==="string"){{arguments[1]=R(u)}}return _xo.apply(this,arguments)}};
-var _sa=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){{if(typeof n==="string"&&(n==="src"||n==="href"||n==="srcset"||n==="poster"||n==="data-src"||n==="data-href"||n==="data-url")){{v=R(String(v))}}return _sa.call(this,n,v)}};
+var _sa=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){{if(typeof n==="string"&&(n==="src"||n==="href"||n==="srcset"||n==="poster"||n==="data-src"||n==="data-href"||n==="data-url")){{v=R(String(v))}}else if(typeof n==="string"&&(n==="style"||n==="cssText")){{v=RS(String(v))}}return _sa.call(this,n,v)}};
 ["src","href","srcset"].forEach(function(a){{"HTMLLinkElement,HTMLScriptElement,HTMLImageElement,HTMLIFrameElement,HTMLSourceElement,HTMLVideoElement,HTMLAudioElement".split(",").forEach(function(T){{try{{var P=window[T]&&window[T].prototype;if(!P)return;var d=Object.getOwnPropertyDescriptor(P,a);if(!d||!d.set)return;Object.defineProperty(P,a,{{get:d.get,set:function(v){{v=R(String(v));d.set.call(this,v)}},configurable:true}})}}catch(e){{}}}})}});
+(function(){{try{{var P=window.CSSStyleDeclaration&&window.CSSStyleDeclaration.prototype;if(!P)return;["background","backgroundImage","listStyleImage","cursor","borderImage"].forEach(function(a){{var d=Object.getOwnPropertyDescriptor(P,a);if(!d||!d.set)return;Object.defineProperty(P,a,{{get:d.get,set:function(v){{d.set.call(this,RS(String(v)))}},configurable:true}})}})}}catch(e){{}}}})();
 var _WS=window.WebSocket;if(_WS)window.WebSocket=function(u,p){{if(typeof u=="string"){{u=r_ws(u)}}return new _WS(u,p)}};window.WebSocket.prototype=_WS.prototype;window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;
 function r_ws(u){{if(typeof u!=="string")return u;if(u.indexOf("/__proxy__")>=0)return u;var m=u.match(/^(wss?):\/\/([^\/?#]*)(.*)$/i);if(!m)return u;var h=m[2],rest=m[3]||"/",oh="";if(O){{var oo=O.split("://")[1]||"";oh=oo.split("/")[0]}}if(h===location.host||(oh&&h===oh))return "ws://"+location.host+"/__proxy__"+K+"?"+m[1].toLowerCase()+"="+encodeURIComponent(h+rest);return "ws://"+location.host+"?"+m[1].toLowerCase()+"="+encodeURIComponent(h+rest)}}
 }})()"#,
@@ -373,11 +387,14 @@ if is_mobile {
     }
     js_content.push_str("\n");
     js_content.push_str(NAV_BRIDGE_JS);
+    js_content.push_str("\n");
+    js_content.push_str(AUTOFOCUS_JS);
 
-    debug_assert!(
-        !js_content.contains("})()(function"),
-        "JS 拼接缺少分隔符，会产生语法错误"
-    );
+    debug_assert!(!regex::Regex::new(r"\}\)\s*\(\s*function")
+            .unwrap()
+            .is_match(&js_content),
+            "JS concatenation missing semicolon separator, IIFE adjacency causes syntax error"
+        );
 
     let hash = crate::crypto::sha256(js_content.as_bytes());
     let encoded = base64::engine::general_purpose::STANDARD.encode(hash);
@@ -450,9 +467,13 @@ fn inject_proxy_script(html_bytes: Vec<u8>, host_key: &str, is_mobile: bool) -> 
 var H="{}",P="{}";
 var _f=window.fetch;if(_f)window.fetch=function(u,i){{if(typeof u=="string"){{u=r(u)}}else if(u&&u.url){{var nu=r(u.url);if(nu!==u.url)u=new Request(nu,u)}};return _f.call(this,u,i)}};
 var _o=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){{if(typeof u=="string"){{arguments[1]=r(u)}}return _o.apply(this,arguments)}};
+var _sa=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){{if(typeof n=="string"&&(n=="src"||n=="href"||n=="srcset"||n=="poster"||n=="data-src"||n=="data-href"||n=="data-url")){{v=r(String(v))}}else if(typeof n=="string"&&(n=="style"||n=="cssText")){{v=RS(String(v))}}return _sa.call(this,n,v)}};
+["src","href","srcset"].forEach(function(a){{"HTMLLinkElement,HTMLScriptElement,HTMLImageElement,HTMLIFrameElement,HTMLSourceElement,HTMLVideoElement,HTMLAudioElement".split(",").forEach(function(T){{try{{var P=window[T]&&window[T].prototype;if(!P)return;var d=Object.getOwnPropertyDescriptor(P,a);if(!d||!d.set)return;Object.defineProperty(P,a,{{get:d.get,set:function(v){{v=r(String(v));d.set.call(this,v)}},configurable:true}})}}catch(e){{}}}})}});
+(function(){{try{{var P=window.CSSStyleDeclaration&&window.CSSStyleDeclaration.prototype;if(!P)return;["background","backgroundImage","listStyleImage","cursor","borderImage"].forEach(function(a){{var d=Object.getOwnPropertyDescriptor(P,a);if(!d||!d.set)return;Object.defineProperty(P,a,{{get:d.get,set:function(v){{d.set.call(this,RS(String(v)))}},configurable:true}})}})}}catch(e){{}}}})();
 var _WS=window.WebSocket;if(_WS)window.WebSocket=function(u,p){{if(typeof u=="string"){{u=r_ws(u)}}return new _WS(u,p)}};window.WebSocket.prototype=_WS.prototype;window.WebSocket.CONNECTING=0;window.WebSocket.OPEN=1;window.WebSocket.CLOSING=2;window.WebSocket.CLOSED=3;
 function r_ws(u){{if(typeof u!=="string")return u;if(u.indexOf("/__proxy__")>=0)return u;var m=u.match(/^(wss?):\/\/([^\/?#]*)(.*)$/i);if(!m)return u;var h=m[2],rest=m[3]||"/";if(h==="127.0.0.1:"+P||h===H||h.indexOf("hometierproxy")===0){{return "ws://127.0.0.1:"+P+"?"+m[1].toLowerCase()+"="+encodeURIComponent(H+rest)}}return "ws://127.0.0.1:"+P+"?"+m[1].toLowerCase()+"="+encodeURIComponent(m[2].replace('hometierproxy',H)+rest)}};
 function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/')return "hometierproxy://"+H+"/"+u.replace(/^\/+/,"");var m=u.match(/^https?:\/\/hometierproxy(?::\d+)?(?=\/|\?|#|$)/i);if(m)return u.replace(/^https?:\/\/[^\/]+/,"hometierproxy://"+H);return u.replace(RegExp("^https?://"+H.replace(/\./g,"\\.")+"(?=/|\\?|#|$)","i"),"hometierproxy://"+H)}};
+function RS(u){{if(typeof u!=="string"||!u)return u;return u.replace(/url\(\s*["']?([^"')]+)["']?\s*\)/g,function(m,s){{return "url("+r(s)+")"}})}};
 }})()"#,
         host_key, proxy_port
     );
@@ -463,11 +484,15 @@ function r(u){{if(u.indexOf("hometierproxy://")===0)return u;if(u.charAt(0)==='/
     }
     js_content.push_str("\n");
     js_content.push_str(NAV_BRIDGE_JS);
+    js_content.push_str("\n");
+    js_content.push_str(AUTOFOCUS_JS);
 
 // function r(l){{var u=l;if(u.match(/hometierproxy/g).length>1){{var u1=u.slice(u.lastIndexOf('hometierproxy'));u = u1;}}if(u.indexOf("hometierproxy://")>= 0) {{u=u.slice(u.indexOf("hometierproxy://"));}} if(u.indexOf("hometierproxy")>=0){{var u2=u.slice(u.indexOf("hometierproxy")); if(u2.indexOf("://"+H)===0) {{return u2;}} if(u2.indexOf(H)<0&&u2.indexOf("://")<0) return u2.replace("hometierproxy","hometierproxy://"+H); return "hometierproxy://"+H+u2.slice(H);}}if(u.charAt(0) === "/") return "hometierproxy://" + H + "/" + u.replace(/^\//, "");var m = u.match(/^https?:\/\/hometierproxy(?::\d+)?(?=\/|\?|#|$)/i);if(m)return u.replace(/^https?:\/\/[^\/]+/, "hometierproxy://" + H); return u.replace(RegExp("^https?://"+H.replace(/\./g,"\\.")+"(?=/|\\?|#|$)","i"),"hometierproxy://"+H);}}
     debug_assert!(
-        !js_content.contains("})()(function"),
-        "JS 拼接缺少分隔符，会产生语法错误"
+        !regex::Regex::new(r"\}\)\s*\(\s*function")
+            .unwrap()
+            .is_match(&js_content),
+        "JS concatenation missing semicolon separator, IIFE adjacency causes syntax error"
     );
     let hash = crate::crypto::sha256(js_content.as_bytes());
     let encoded = base64::engine::general_purpose::STANDARD.encode(hash);
