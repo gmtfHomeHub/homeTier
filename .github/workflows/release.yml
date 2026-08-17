@@ -35,6 +35,20 @@ jobs:
           done
           ls -la src-tauri/resources/bin/
 
+      - name: Verify checksums (sha256 from GitHub Release API)
+        run: |
+          set -e
+          curl -s "https://api.github.com/repos/EasyTier/EasyTier/releases/tags/${EASYTIER_CORE_VERSION}" -o /tmp/easytier-release.json
+          for f in src-tauri/resources/bin/*.zip; do
+            name=$(basename "$f")
+            expected=$(jq -r --arg n "$name" '.assets[] | select(.name==$n) | .digest' /tmp/easytier-release.json | sed 's/sha256://')
+            actual=$(sha256sum "$f" | cut -d' ' -f1)
+            if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
+              echo "CHECKSUM MISMATCH: $name"; exit 1
+            fi
+            echo "verified: $name"
+          done
+
       - uses: actions/upload-artifact@v4
         with:
           name: easytier-bin
@@ -78,6 +92,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -88,6 +104,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
 
       - uses: actions/download-artifact@v4
         with:
@@ -103,9 +123,6 @@ jobs:
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
-
-      - name: Build frontend
-        run: pnpm build
 
       - name: Build Tauri bundle
         run: |
@@ -137,10 +154,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
       - uses: pnpm/action-setup@v4
         with:
           version: 9
       - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
       - uses: actions/download-artifact@v4
         with:
           name: easytier-bin
@@ -171,12 +193,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
       - uses: pnpm/action-setup@v4
         with:
           version: 9
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
       - uses: actions/download-artifact@v4
         with:
           name: easytier-bin
@@ -214,12 +241,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
       - uses: pnpm/action-setup@v4
         with:
           version: 9
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
       - uses: actions/download-artifact@v4
         with:
           name: easytier-bin

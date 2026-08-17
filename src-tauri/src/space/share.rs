@@ -171,6 +171,7 @@ mod tests {
             host_hint: Some("192.168.1.100".to_string()),
             virtual_ip: Some("10.144.144.10".to_string()),
             dhcp: Some(true),
+            name: None,
             peer_urls: vec![
                 "tcp://public.example.com:11010".to_string(),
                 "tcp://public.example.com:11011".to_string(),
