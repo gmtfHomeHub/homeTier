@@ -270,10 +270,12 @@ impl HttpForwardPlugin {
             let params: HashMap<_, _> = url::form_urlencoded::parse(qs.as_bytes()).collect();
             params.get("url").map(|v| v.to_string()).unwrap_or(source_url.clone())
         } else if let Some(spos) = rest[key_end..].find('/') {
-            // 同域：__proxy__{key}/path
+            // 同域：__proxy__{key}/path[?query]
+            // remaining 可能已含 query（请求行 query 与 req.uri().query() 重复），先拆路径再拼一次 query
             let remaining = &rest[key_end + spos..];
+            let path_part = remaining.split('?').next().unwrap_or(remaining);
             let query = req.uri().query().map(|q| format!("?{}", q)).unwrap_or_default();
-            format!("{}{}{}", source_url.trim_end_matches('/'), remaining, query)
+            format!("{}{}{}", source_url.trim_end_matches('/'), path_part, query)
         } else {
             source_url.clone()
         };
