@@ -110,7 +110,7 @@ mod tests {
 
     #[tokio::test]
     async fn queue_dedup() {
-        let store = Arc::new(ConfigStore::new(PathBuf::from("/tmp/homeTier-cs-test")));
+        let _store = Arc::new(ConfigStore::new(PathBuf::from("/tmp/homeTier-cs-test")));
         let (queue, _receiver) = queue::StoreQueue::new();
         let f1 = ConfigFile {
             name: "space_settings".into(),
