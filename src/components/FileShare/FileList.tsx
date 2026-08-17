@@ -220,7 +220,7 @@ export function FileList() {
           className="hidden"
           onChange={handleFileInputChange}
         />
-        <Button onClick={handleFileSelect} variant="ghost" size="2">
+        <Button onClick={handleFileSelect} variant="ghost" size="1">
           <Upload size={16} />
           {t('file.batchSend')}
         </Button>

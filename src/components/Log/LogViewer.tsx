@@ -75,16 +75,16 @@ const LogRow = ({ index, style, logs, onRowClick, keyword }: RowComponentProps<L
       onClick={() => onRowClick?.(entry)}
       className="flex gap-2 px-2 py-0.5 items-start border-b border-[var(--color-border)] hover:bg-[var(--color-accent)]/5 cursor-pointer"
     >
-      <span className={`text-[var(--color-text-secondary)] whitespace-nowrap ${cls} w-28 shrink-0`}>
+      <span className={`text-[var(--color-text-secondary)] whitespace-nowrap ${cls} w-24 shrink-0`}>
         {entry.timestamp.slice(11, 24)}
       </span>
       <Badge className="px-0.5 rounded mt-0.5 w-14 shrink-0" color={LEVEL_COLORS[entry.level]}>
         <span className="w-full text-center uppercase text-[10px]">{entry.level}</span>
       </Badge>
-      <Badge className="px-0.5 rounded mt-0.5 w-16 shrink-0" color="violet">
+      <Badge className="px-0.5 rounded mt-0.5 w-14 shrink-0" color="violet">
         <span className="w-full text-center text-[10px] capitalize">{entry.category}</span>
       </Badge>
-      <span className={`text-[var(--color-text-secondary)] whitespace-nowrap ${cls} w-20 shrink-0`}>
+      <span className={`text-[var(--color-text-secondary)] whitespace-nowrap ${cls} min-w-14 shrink-0`}>
         {(entry.module || "").replace("home_tier_lib::", "").replace("easytier::", "et::")}
       </span>
       <span className={`text-[var(--color-text)] break-all ${cls} flex-1 min-w-0`}>
@@ -352,7 +352,6 @@ export function LogViewer({ spaceId }: LogViewerProps) {
                 value={categoryFilter.filter((c) => c !== cat).concat(cat).join(",") || "all"}
               >
                 <Flex align="center" gap="2">
-                  <Checkbox checked={categoryFilter.includes(cat)} onCheckedChange={() => {}} />
                   <span>{t(CATEGORY_I18N_KEYS[cat] || capitalize(cat))}</span>
                 </Flex>
               </Select.Item>
@@ -380,7 +379,6 @@ export function LogViewer({ spaceId }: LogViewerProps) {
                     value={moduleFilter.filter((m) => m !== mod).concat(mod).join(",") || "all"}
                   >
                     <Flex align="center" gap="2">
-                      <Checkbox checked={moduleFilter.includes(mod)} onCheckedChange={() => {}} />
                       <span className="truncate max-w-[160px]">{mod.replace("home_tier_lib::", "").replace("easytier::", "et::")}</span>
                     </Flex>
                   </Select.Item>
@@ -480,7 +478,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
                   {filtered.length === totalCount ? "" : ` ${t("log.clearCount", { total: totalCount, count: filtered.length })}`}
                   {t("log.clearWarning")}
                 </Dialog.Description>
-                <Flex gap="2" align="center" justify="end" style={{ marginTop: 16 }}>
+                <Flex gap="3" align="center" justify="end" style={{ marginTop: 16 }}>
                   <Button variant="ghost" onClick={() => setShowClearDialog(false)}>{t("common.cancel")}</Button>
                   <Button onClick={handleClear} size="1" color="red" disabled={clearing}>
                     {clearing ? t("log.clearing") : t("log.confirmClearBtn")}
@@ -513,7 +511,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
               <div className="max-h-[300px] overflow-y-auto text-xs text-[var(--color-text)] whitespace-pre-wrap break-all p-2 bg-[var(--color-background)] border border-[var(--color-border)] rounded">
                 {detailEntry.message}
               </div>
-              <Flex gap="2" align="center" justify="end" style={{ marginTop: 16 }}>
+              <Flex gap="4" align="center" justify="end" style={{ marginTop: 16 }}>
                 <Button variant="ghost" size="1" onClick={() => copyText(detailEntry.message)}>
                   <Copy size={14} />
                   {t("log.copyMessage")}
