@@ -363,7 +363,7 @@ impl HttpForwardPlugin {
         let mut headers_to_forward: Vec<(String, String)> = Vec::new();
         for (key, value) in req.headers() {
             let key_lower = key.as_str().to_lowercase();
-            if !hop_by_hop.contains(&key_lower.as_str()) {
+            if !hop_by_hop.contains(&key_lower.as_str()) && key_lower != "content-length" {
                 if let Ok(v) = value.to_str() {
                     headers_to_forward.push((key.as_str().to_string(), v.to_string()));
                 }
@@ -499,7 +499,7 @@ impl HttpForwardPlugin {
         let mut headers_to_forward: Vec<(String, String)> = Vec::new();
         for (key, value) in req.headers() {
             let key_lower = key.as_str().to_lowercase();
-            if !hop_by_hop.contains(&key_lower.as_str()) {
+            if !hop_by_hop.contains(&key_lower.as_str()) && key_lower != "content-length" {
                 if let Ok(v) = value.to_str() {
                     headers_to_forward.push((key.as_str().to_string(), v.to_string()));
                 }
