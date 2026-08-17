@@ -12,6 +12,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Button, Badge, TextField } from "@radix-ui/themes";
+import { listen } from "@tauri-apps/api/event";
 import { useAppTabsStore } from "../../stores/appTabsStore";
 import { open } from "@tauri-apps/plugin-shell";
 import * as api from "../../utils/api";
@@ -91,20 +92,17 @@ export function AppWorkspace() {
     setNavStates({});
   }, [deviceMode, setDeviceMode, openApps]);
 
-  // 轮询后端下载队列，提示文件保存位置
+  // 监听后端下载完成事件，提示文件保存位置（替代轮询，避免误报）
   useEffect(() => {
     if (!visible) return;
-    const timer = setInterval(async () => {
-      try {
-        const files = await api.getPendingDownloads();
-        for (const f of files) {
-          toastInfo(`${t("common.downloadSaved")}: ${f.split("/").pop() ?? f}`);
-        }
-      } catch {
-        // 轮询失败静默
-      }
-    }, 3000);
-    return () => clearInterval(timer);
+    const unlisten = listen<string>("proxy-download", (e) => {
+      const path = e.payload ?? "";
+      const name = path.split("/").pop() ?? path;
+      if (name) toastInfo(`${t("common.downloadSaved")}: ${name}`);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, [visible, t]);
 
   const handleNavState = useCallback((key: string, state: FrameNavState) => {
@@ -214,9 +212,9 @@ export function AppWorkspace() {
         </Button>
       </div>
 
-      {/* 地址栏 */}
+      {/* 地址栏（hidden：CSS 隐藏但保留 DOM，供导航桥/未来启用） */}
       {activeTab && (
-        <div className="flex items-center gap-2 px-4 py-1.5 border-b border-[var(--color-border)] bg-[var(--color-bg)] shrink-0">
+        <div className="hidden flex items-center gap-2 px-4 py-1.5 border-b border-[var(--color-border)] bg-[var(--color-bg)] shrink-0">
           <TextField.Root
             // value 由导航状态上报驱动，非受控展示
             value={addrInput || navStates[activeTab.key]?.url || activeTab.proxyUrl}

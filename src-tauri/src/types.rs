@@ -130,6 +130,8 @@ pub struct NetworkStats {
 /// 分享链接信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShareInfo {
+    /// 分享者的空间显示名（旧链接无此字段，兼容为 None）
+    pub name: Option<String>,
     pub network_name: String,
     pub network_secret: String,
     pub host_hint: Option<String>,

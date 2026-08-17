@@ -35,12 +35,13 @@ pub async fn create_space(
 #[tauri::command]
 pub async fn join_space(
     config_json: String,
+    name: Option<String>,
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<Space, String> {
     crate::log_info!("命令: join_space");
     let config = serde_json::from_str::<crate::easytier::config::NetworkConfig>(&config_json)
         .map_err(|e| format!("配置 json 解析失败: {}", e))?;
-    space_manager.join(config).await
+    space_manager.join(config, name).await
 }
 
 #[tauri::command]

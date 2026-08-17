@@ -84,7 +84,7 @@ pub fn init_proxy_server() -> Arc<ProxyServer> {
 
     let active_origin: crate::proxy::ActiveOrigin = Arc::new(RwLock::new(None));
     let key_map: crate::proxy::ProxyKeyMap = Arc::new(RwLock::new(HashMap::new()));
-    let http_forward = HttpForwardPlugin::new(key_map.clone(), active_origin.clone())
+    let http_forward = HttpForwardPlugin::new(key_map.clone(), active_origin.clone(), None)
         .map_err(|e| format!("创建 HttpForwardPlugin 失败: {}", e))
         .expect("HttpForwardPlugin 初始化失败");
     let handlers: Vec<Arc<dyn ProxyHandler>> = vec![

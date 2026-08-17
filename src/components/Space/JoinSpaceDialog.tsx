@@ -70,7 +70,7 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
     setLoading(true);
     setError(null);
     try {
-      await joinSpace(buildConfigJson(pendingShare));
+      await joinSpace(buildConfigJson(pendingShare), pendingShare.name);
       onClose();
     } catch (e) {
       setError(String(e));
@@ -191,7 +191,7 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
                   {t("settings.networkName")}
                 </div>
                 <div className="text-sm font-medium break-all">
-                  {pendingShare.network_name}
+                  {pendingShare.name || pendingShare.network_name}
                 </div>
               </div>
               <div>

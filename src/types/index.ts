@@ -17,6 +17,7 @@ export interface Space {
 
 /** 分享链接信息（后端解密后返回） */
 export interface ShareInfo {
+  name?: string;
   network_name: string;
   network_secret: string;
   host_hint?: string;

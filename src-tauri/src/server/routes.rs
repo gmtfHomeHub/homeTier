@@ -139,18 +139,22 @@ async fn join_space_handler(
     State(state): State<Arc<AppState>>,
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let name = body["network_name"].as_str().unwrap_or("").to_string();
+    let network_name = body["network_name"].as_str().unwrap_or("").to_string();
     let secret = body["network_secret"].as_str().unwrap_or("").to_string();
-    if name.is_empty() || secret.is_empty() {
+    if network_name.is_empty() || secret.is_empty() {
         return (StatusCode::BAD_REQUEST, "缺少 network_name 或 network_secret").into_response();
     }
     let mut config = NetworkConfig::default();
-    config.network_name = name;
+    config.network_name = network_name;
     config.network_secret = secret;
     if let Some(ip) = body["virtual_ipv4"].as_str() {
         config.virtual_ipv4 = ip.to_string();
     }
-    match state.space_manager.join(config).await {
+    let display_name = body["name"]
+        .as_str()
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty());
+    match state.space_manager.join(config, display_name).await {
         Ok(space) => Json(space).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }

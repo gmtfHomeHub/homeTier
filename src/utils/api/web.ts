@@ -62,11 +62,11 @@ export async function createSpace(
   });
 }
 
-export async function joinSpace(configJson: string): Promise<Space> {
+export async function joinSpace(configJson: string, name?: string): Promise<Space> {
   const config = JSON.parse(configJson) as Record<string, unknown>;
   return request<Space>("/space/join", {
     method: "POST",
-    body: JSON.stringify(config),
+    body: JSON.stringify({ ...config, ...(name ? { name } : {}) }),
   });
 }
 

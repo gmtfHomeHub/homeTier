@@ -331,6 +331,7 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let http_forward = Arc::new(HttpForwardPlugin::new(
         key_map.clone(),
         active_origin.clone(),
+        Some(app.handle().clone()),
     ).map_err(|e| format!("创建 HttpForwardPlugin 失败: {}", e))?);
     let handlers: Vec<Arc<dyn ProxyHandler>> = vec![
         Arc::new(HttpsTunnelPlugin),

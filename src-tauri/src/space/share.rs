@@ -148,6 +148,7 @@ fn decrypt_v1(url: &url::Url) -> Result<ShareInfo, String> {
         .filter(|s| !s.is_empty())
         .ok_or_else(|| "分享链接缺少网络密钥".to_string())?;
     Ok(ShareInfo {
+        name: None,
         network_name,
         network_secret,
         host_hint: None,

@@ -92,14 +92,15 @@ Self {
     pub async fn create(&self, name: String, network_secret: String, description: Option<String>) -> Result<Space, String> {
         let space_id = Uuid::new_v4();
         let owner_uuid = self.db.get_user_id()?.unwrap_or_else(|| "local-user".to_string());
-        let network_name = name.clone();
-
+        let prefix =
+            crate::config::get_str(crate::config::KEY_RELAY_NETWORK_PREFIX, crate::config::DEFAULT_RELAY_NETWORK_PREFIX);
+        let network_name = format!("{}{}", prefix, name);
         let space = Space {
             id: space_id,
             name,
             description,
             owner_id: Some(owner_uuid.clone()),
-            network_name: network_name.clone(),
+            network_name: network_name,
             network_secret: network_secret.clone(),
             created_at: chrono::Local::now(),
             last_connected_at: None,
@@ -133,15 +134,15 @@ Self {
     /// 加入空间
     /// config 为前端传入的 easytier 配置 json 反序列化结果，缺省字段已由 serde(default) 补全，
     /// 完整配置序列化后写入 config_json 落库
-    pub async fn join(&self, config: NetworkConfig) -> Result<Space, String> {
+    pub async fn join(&self, config: NetworkConfig, name: Option<String>) -> Result<Space, String> {
         let network_name = config.network_name.clone();
         let network_secret = config.network_secret.clone();
         let space = Space {
             id: Uuid::new_v4(),
-            name: network_name.clone(),
+            name: name.clone().unwrap_or_else(|| network_name.clone()),
             description: None,
             owner_id: None,
-            network_name: network_name.clone(),
+            network_name: network_name,
             network_secret: network_secret.clone(),
             created_at: chrono::Local::now(),
             last_connected_at: None,
@@ -280,6 +281,7 @@ Self {
             .ok_or_else(|| "Space not found".to_string())?;
         let network_name = space.network_name.clone();
         let network_secret = space.network_secret.clone();
+        let space_name = space.name.clone();
         drop(spaces);
 
         let effective = self.get_effective_config(space_id).await?;
@@ -294,6 +296,7 @@ Self {
             host_hint: None,
             virtual_ip,
             dhcp,
+            name: Some(space_name),
             peer_urls: effective.peer_urls.clone(),
             listener_urls: effective.listener_urls.clone(),
         };
@@ -790,14 +793,16 @@ impl SpaceManager {
     pub async fn create(&self, name: String, network_secret: String, description: Option<String>) -> Result<Space, String> {
         let space_id = Uuid::new_v4();
         let owner_uuid = self.db.get_user_id()?.unwrap_or_else(|| "local-user".to_string());
-        let network_name = name.clone();
+        let prefix =
+            crate::config::get_str(crate::config::KEY_RELAY_NETWORK_PREFIX, crate::config::DEFAULT_RELAY_NETWORK_PREFIX);
+        let network_name = format!("{}{}", prefix, name);
 
         let space = Space {
             id: space_id,
             name,
             description,
             owner_id: Some(owner_uuid.clone()),
-            network_name: network_name.clone(),
+            network_name: network_name,
             network_secret: network_secret.clone(),
             created_at: chrono::Local::now(),
             last_connected_at: None,
@@ -830,15 +835,15 @@ impl SpaceManager {
     /// 加入空间
     /// config 为前端传入的 easytier 配置 json 反序列化结果，缺省字段已由 serde(default) 补全，
     /// 完整配置序列化后写入 config_json 落库
-    pub async fn join(&self, config: NetworkConfig) -> Result<Space, String> {
+    pub async fn join(&self, config: NetworkConfig, name: Option<String>) -> Result<Space, String> {
         let network_name = config.network_name.clone();
         let network_secret = config.network_secret.clone();
         let space = Space {
             id: Uuid::new_v4(),
-            name: network_name.clone(),
+            name: name.clone().unwrap_or_else(|| network_name.clone()),
             description: None,
             owner_id: None,
-            network_name: network_name.clone(),
+            network_name: network_name,
             network_secret: network_secret.clone(),
             created_at: chrono::Local::now(),
             last_connected_at: None,
@@ -957,6 +962,7 @@ impl SpaceManager {
             host_hint: None,
             virtual_ip,
             dhcp: Some(virtual_ip.is_none()),
+            name: Some(space.name.clone()),
             peer_urls: Vec::new(),
             listener_urls: Vec::new(),
         };

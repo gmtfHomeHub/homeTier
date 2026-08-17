@@ -28,8 +28,8 @@ export async function createSpace(
   return invoke("create_space", { name, networkSecret, description });
 }
 
-export async function joinSpace(configJson: string): Promise<Space> {
-  return invoke("join_space", { configJson });
+export async function joinSpace(configJson: string, name?: string): Promise<Space> {
+  return invoke("join_space", { configJson, name });
 }
 
 export async function leaveSpace(spaceId: string): Promise<void> {

@@ -4,6 +4,7 @@ use hyper::body::{Bytes, Incoming};
 use hyper::{Method, Request, Response, StatusCode};
 use regex::Regex;
 use std::collections::HashMap;
+use tauri::Emitter;
 
 use crate::proxy::hometier_protocol::{
     cookie_jars, inject_local_http_script, looks_like_html_body, now_epoch, persist_cookie_to_db,
@@ -19,12 +20,14 @@ pub struct HttpForwardPlugin {
     client: reqwest::Client,
     key_map: ProxyKeyMap,
     active_origin: ActiveOrigin,
+    app_handle: Option<tauri::AppHandle>,
 }
 
 impl HttpForwardPlugin {
     pub fn new(
         key_map: ProxyKeyMap,
         active_origin: ActiveOrigin,
+        app_handle: Option<tauri::AppHandle>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let mut builder = reqwest::Client::builder()
             .no_proxy()
@@ -34,7 +37,7 @@ impl HttpForwardPlugin {
             builder = builder.add_root_certificate(cert);
         }
         let client = builder.build()?;
-        Ok(Self { client, key_map, active_origin })
+        Ok(Self { client, key_map, active_origin, app_handle })
     }
 
     fn build_proxy_prefix(host: &str) -> String {
@@ -652,15 +655,41 @@ let body_bytes = BodyExt::collect(req.into_body())
 
                 let is_html_target = matches!(target, RewriteTarget::Html);
 
-                // 下载拦截：Content-Disposition: attachment → 落盘 downloads 目录 + 通知前端
+                // 下载拦截：Content-Disposition: attachment 且非可显示内容 → 落盘 downloads 目录 + 事件通知前端
                 let content_disposition = upstream_headers
                     .get("content-disposition")
                     .and_then(|v| v.to_str().ok())
                     .map(|v| v.to_string());
-                let is_download = content_disposition
+                let cd_lower = content_disposition
                     .as_deref()
-                    .map(|cd| cd.to_lowercase().contains("attachment"))
-                    .unwrap_or(false);
+                    .map(|cd| cd.to_lowercase())
+                    .unwrap_or_default();
+                // 可显示内容类（页面资源会被带 attachment 误报，排除）
+                let is_displayable = content_type.contains("text/html")
+                    || content_type.contains("text/css")
+                    || content_type.contains("application/javascript")
+                    || content_type.contains("application/json")
+                    || content_type.contains("application/xml")
+                    || content_type.contains("text/xml")
+                    || content_type.contains("font/")
+                    || content_type.contains("image/")
+                    || content_type.contains("audio/")
+                    || content_type.contains("video/");
+                // 下载类 Content-Type（无 CD 头时按类型判定）
+                let is_download_mime = content_type.contains("application/octet-stream")
+                    || content_type.contains("application/zip")
+                    || content_type.contains("application/x-zip")
+                    || content_type.contains("application/pdf")
+                    || content_type.contains("application/vnd.")
+                    || content_type.contains("application/x-msdownload")
+                    || content_type.contains("application/x-7z")
+                    || content_type.contains("application/x-rar")
+                    || content_type.contains("application/x-tar")
+                    || content_type.contains("application/gzip");
+                let is_download = cd_lower.contains("attachment")
+                    && !cd_lower.contains("inline")
+                    && !is_displayable
+                    || is_download_mime;
 
                 let body: ResponseBody = if needs_rewrite {
                     let body_bytes = upstream.bytes().await.unwrap_or_default();
@@ -742,8 +771,14 @@ let body_bytes = BodyExt::collect(req.into_body())
                         let saved_path = format!("{}/{}", dir, safe_name);
                         let path_buf = saved_path.clone();
                         let bytes_clone = bytes.clone();
+                        let emit_path = saved_path.clone();
+                        let emit_handle = self.app_handle.clone();
                         tokio::spawn(async move {
-                            let _ = tokio::fs::write(&path_buf, &bytes_clone).await;
+                            if tokio::fs::write(&path_buf, &bytes_clone).await.is_ok() {
+                                if let Some(app) = emit_handle {
+                                    let _ = app.emit("proxy-download", emit_path);
+                                }
+                            }
                         });
                         {
                             let mut queue =
