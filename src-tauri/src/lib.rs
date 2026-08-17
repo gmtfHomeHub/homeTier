@@ -36,8 +36,6 @@ pub fn run() -> std::process::ExitCode {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build());
 
-    let builder = crate::proxy::hometier_protocol::register_protocol(builder);
-
     let builder = builder.setup(|app| crate::app::setup::setup(app))
         .invoke_handler(tauri::generate_handler![
             commands::space::create_space,

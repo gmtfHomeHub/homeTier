@@ -107,7 +107,7 @@
 | `chat/` | P2P 聊天：每空间 HTTP 服务器 + 向 peer 广播，消息 HMAC 签名校验 |
 | `voice/` `screen/` | WebRTC 语音/屏幕共享引擎 + 信令服务器（端口 18100+ / 18200） |
 | `file/` | P2P 文件传输：zstd 压缩 + 可选 AES 加密、流式收发带进度、HTTP 文件服务器（19000 + space_id % 1000） |
-| `proxy/` | 内嵌 HTTP 代理（127.0.0.1 随机端口）：CORS / iframe 绕过 / HTTPS 隧道 / URL 重写 / WebSocket 隧道 / `hometierproxy://` 自定义协议 |
+| `proxy/` | 内嵌 HTTP 代理（127.0.0.1 随机端口）：CORS / iframe 绕过 / HTTPS 隧道 / URL 重写 / WebSocket 隧道 / `__proxy__` 本地 HTTP 代理 |
 | `server/` | 服务器模式：axum 路由（`/api/cmd/*` 约 60 条）、WebSocket、静态资源（内嵌 dist）、Cookie 鉴权、TLS、事件总线 |
 | `config_store/` | P2P 分布式配置存储（TCP 9877）：版本化文件 + 校验和 + 去重写队列 |
 | `db/` | SQLite 持久化（8 张表），启动自动迁移 |
@@ -356,7 +356,7 @@ homeTier/
 - **WebRTC 语音**：全网格直连，RMS 语音活动检测（150ms 采样、1.2s 静音自动闭麦）、每 peer 音量条、全局快捷键 `Ctrl+M`/`Ctrl+T`（带 OSD）。
 - **屏幕共享**：邀请制 ACL、质量切换（smooth/standard/hd，maxBitrate 控制）。
 - **文件传输**：zstd 压缩 + 可选密码加密，流式收发带进度，断点续传进度恢复。
-- **应用浏览器**：内嵌 iframe 访问空间内任意 HTTP 应用（最多 10 个 LRU 标签页），经内嵌代理（hyper）绕过 CSP/X-Frame-Options，`hometierproxy://` 自定义协议注入 fetch/XHR/WebSocket shim 统一重写 URL；桌面/移动视口缩放。
+- **应用浏览器**：内嵌 iframe 访问空间内任意 HTTP 应用（最多 10 个 LRU 标签页），经内嵌代理（hyper）绕过 CSP/X-Frame-Options，注入 fetch/XHR/WebSocket shim 统一重写 URL；桌面/移动视口缩放。
 - **分布式配置存储**：TCP 9877 P2P 版本化配置同步，防版本回滚。
 - **安全**：分享链接 AES-256-GCM 加密 + zstd；聊天 HMAC 校验；文件 PBKDF2(210k) 派生密钥；机器标识防重放。
 - **国际化**：中/繁/英三语，托盘菜单随语言热同步。

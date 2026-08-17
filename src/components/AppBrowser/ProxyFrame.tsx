@@ -97,43 +97,15 @@ export function sendFrameNavCmd(tabKey: string, cmd: "back" | "forward" | "go", 
   el?.contentWindow?.postMessage({ __ht_nav_cmd: { cmd, url } }, "*");
 }
 
-function buildProxyUrl(originalUrl: string): string {
-  try {
-    const u = new URL(originalUrl);
-    const hostPort = u.port ? `${u.hostname}:${u.port}` : u.hostname;
-    return `hometierproxy://${hostPort}${u.pathname}${u.search}${u.hash}`;
-  } catch {
-    return originalUrl;
-  }
+/** 解析应用 URL 到本地 HTTP 代理 URL（local-http 引擎，唯一代理方案） */
+export async function resolveProxyUrl(originalUrl: string): Promise<string> {
+  const proxyUrl = await api.getProxyUrl();
+  const proxy = new URL(proxyUrl);
+  const key = await api.registerProxyKey(originalUrl);
+  const u = new URL(originalUrl);
+  const path = u.pathname === "/" ? "" : u.pathname;
+  return `http://127.0.0.1:${proxy.port}/__proxy__${key}${path}${u.search}${u.hash}`;
 }
-
-export const BROWSER_ENGINE_KEY = "APP_BROWSER_ENGINE";
-
-/** 解析应用 URL 到代理内 URL：优先 localHttp（真实 http origin），失败回退 hometierproxy 自定义协议 */
-export async function resolveProxyUrl(
-  originalUrl: string
-): Promise<{ url: string; engine: "local-http" | "hometierproxy" }> {
-  try {
-    const cfg = await api.getAppConfig();
-    const engine = cfg?.[BROWSER_ENGINE_KEY] === "hometierproxy" ? "hometierproxy" : "local-http";
-    if (engine === "hometierproxy") {
-      return { url: buildProxyUrl(originalUrl), engine };
-    }
-    const proxyUrl = await api.getProxyUrl();
-    const proxy = new URL(proxyUrl);
-    const key = await api.registerProxyKey(originalUrl);
-    const u = new URL(originalUrl);
-    const path = u.pathname === "/" ? "" : u.pathname;
-    return {
-      url: `http://127.0.0.1:${proxy.port}/__proxy__${key}${path}${u.search}${u.hash}`,
-      engine,
-    };
-  } catch {
-    return { url: buildProxyUrl(originalUrl), engine: "hometierproxy" };
-  }
-}
-
-export { buildProxyUrl };
 
 interface ErrorFallbackProps {
   onOpenBrowser: () => void;

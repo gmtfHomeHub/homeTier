@@ -30,26 +30,6 @@ pub async fn register_proxy_key(
     let hash = crate::crypto::sha256(url.as_bytes());
     let key = hex::encode(&hash[..6]);
 
-    // 记录上游协议（http/https），供 hometierproxy 转发与 WSS 注入使用
-    if let Some((scheme_end, rest)) = url.find("://").map(|p| (p + 3, &url[p + 3..])) {
-        let host_key = rest
-            .split('/')
-            .next()
-            .unwrap_or(rest)
-            .to_string();
-        if !host_key.is_empty() {
-            let scheme = if url[..scheme_end - 3].eq_ignore_ascii_case("https") {
-                "https"
-            } else {
-                "http"
-            };
-            crate::proxy::hometier_protocol::upstream_schemes()
-                .lock()
-                .unwrap()
-                .insert(host_key, scheme.to_string());
-        }
-    }
-
     key_map.write().await.insert(key.clone(), url);
     Ok(key)
 }

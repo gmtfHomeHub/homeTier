@@ -282,8 +282,8 @@ pub async fn handle_raw_upgrade(
                 // WebSocket 帧透传代理无法参与扩展协商，主动丢弃最稳妥。
                 "sec-websocket-extensions" => {}
                 // 以下 WebSocket 无关头透传到上游可能导致服务端(如 Getv/String)
-                // 误用 origin-ish header 构建路径/namespacename——在共享页返回错误的
-                // 例如 CasaOS 的 socket.io 会根据 Referer 生成 40//hometierproxy://host...
+                // 误用 origin-ish header 构建路径/namespace——在共享页返回错误的
+                // 具体示例：CasaOS 的 socket.io 会根据 Referer 生成 40//host... 损坏路径
                 // 纯转发 WS 要求：这些头完全不应上传
                 // accept-encoding: 剥离后上游(CasaOS Go gzip 中间件等)不会对 101 升级
                 // 响应错误启用 gzip——WS 帧传输与 HTTP 压缩无关(permessage-deflate 已剥离)
@@ -380,19 +380,9 @@ pub async fn handle_raw_upgrade(
 
     // 6. 发送 WS upgrade 请求到上游（包含所有转发头 + cookie）
     let host_header = format!("{}:{}", target_host, target_port);
-    let upstream_base = format!("http://{}", host_header);
-    // Origin 只发一次：优先使用客户端 Origin（hometierproxy:// 重写为 http://），
-    // 缺失时使用默认值。避免上游收到重复 Origin 头被拒绝（如 nginx 400）。
+    // Origin 只发一次：优先使用客户端 Origin，缺失时使用默认值。
+    // 避免上游收到重复 Origin 头被拒绝（如 nginx 400）。
     let upstream_origin = match client_origin.as_deref() {
-        Some(o) if o.starts_with("hometierproxy://") => {
-            // 精确去掉协议前缀，剩余 host[:port][/path]；find('/') 直接定位路径起始，
-            // 避免从第二个斜杠开始切导致 "http://host:port//host:port" 的损坏 Origin
-            let rest = &o["hometierproxy://".len()..];
-            match rest.find('/') {
-                Some(slash_pos) => format!("{}{}", upstream_base, &rest[slash_pos..]),
-                None => upstream_base.clone(),
-            }
-        }
         Some(o) => o.to_string(),
         None => format!("{}://{}", if scheme == "wss" { "https" } else { "http" }, host_header),
     };
@@ -411,7 +401,7 @@ pub async fn handle_raw_upgrade(
         tpath, host_header, ws_key, ws_version, upstream_origin,
     );
 
-    // 添加收集到的额外请求头（含 Referer 的 hometierproxy:// → http:// 重写）
+    // 添加收集到的额外请求头
     for (key, value) in &extra_headers {
         let key_lower = key.to_lowercase();
         // 不重复添加已存在的头
@@ -420,17 +410,7 @@ pub async fn handle_raw_upgrade(
         {
             continue;
         }
-        // 重写 Referer 中的 hometierproxy:// 为 http://
-        let rewritten = if key_lower == "referer" && value.starts_with("hometierproxy://") {
-            let rest = &value["hometierproxy://".len()..];
-            match rest.find('/') {
-                Some(slash_pos) => format!("{}: {}", key, format!("{}{}", upstream_base, &rest[slash_pos..])),
-                None => format!("{}: {}", key, upstream_base),
-            }
-        } else {
-            format!("{}: {}", key, value)
-        };
-        let _ = write!(upstream_req, "{}\r\n", rewritten);
+        let _ = write!(upstream_req, "{}: {}\r\n", key, value);
     }
 
     // 注入 Cookie（使用 cookie jar 中的持久化 cookie，其次使用 client 提供的）
