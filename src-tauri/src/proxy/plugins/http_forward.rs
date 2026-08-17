@@ -4,10 +4,6 @@ use hyper::body::{Bytes, Incoming};
 use hyper::{Method, Request, Response, StatusCode};
 use regex::Regex;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-/// 代理请求序号（排查日志关联：同一请求的所有日志带相同 req#）
-static REQ_SEQ: AtomicU64 = AtomicU64::new(0);
 
 use crate::proxy::hometier_protocol::{
     cookie_jars, inject_local_http_script, looks_like_html_body, now_epoch, persist_cookie_to_db,
@@ -38,44 +34,7 @@ impl HttpForwardPlugin {
             builder = builder.add_root_certificate(cert);
         }
         let client = builder.build()?;
-        crate::log_info!(
-            "[DBG-PROXY] reqwest 客户端构建完成: features=gzip+brotli (未显式设置 Accept-Encoding 时自动注入 'gzip, br', 自动解压并剥除 content-encoding)"
-        );
         Ok(Self { client, key_map, active_origin })
-    }
-
-    fn rid_of(ctx: &RequestContext) -> String {
-        ctx.plugin_data.get("req_id").cloned().unwrap_or_default()
-    }
-
-    fn hdr_str(headers: &hyper::header::HeaderMap, name: &str) -> String {
-        headers
-            .get(name)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .to_string()
-    }
-
-    fn cookie_name_list(v: &str) -> String {
-        v.split(';')
-            .filter_map(|p| p.split('=').next())
-            .map(|n| n.trim())
-            .collect::<Vec<_>>()
-            .join(",")
-    }
-
-    /// 出站头打印（Cookie 值打码：仅列 name）
-    fn masked_headers(list: &[(String, String)]) -> String {
-        list.iter()
-            .map(|(k, v)| {
-                if k.eq_ignore_ascii_case("cookie") {
-                    format!("{}:[{}]", k, Self::cookie_name_list(v))
-                } else {
-                    format!("{}={}", k, v)
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" ")
     }
 
     fn build_proxy_prefix(host: &str) -> String {
@@ -250,38 +209,12 @@ impl ProxyHandler for HttpForwardPlugin {
     async fn handle(
         &self,
         req: Request<Incoming>,
-        mut ctx: RequestContext,
+        ctx: RequestContext,
     ) -> Result<ProxyResponse, Box<dyn std::error::Error + Send + Sync>> {
-        ctx.plugin_data
-            .insert("req_id".into(), REQ_SEQ.fetch_add(1, Ordering::Relaxed).to_string());
-        let rid = Self::rid_of(&ctx);
         let path = req.uri().path().to_string();
-        let path_query = match req.uri().query() {
-            Some(q) => format!("{}?{}", path, q),
-            None => path.clone(),
-        };
-        let cookie_raw = Self::hdr_str(req.headers(), "cookie");
-        let cookie_list = Self::cookie_name_list(&cookie_raw);
-        crate::log_info!(format!(
-            "[DBG-PROXY][req#{}] 入站 {} {} | CT={} | Cookie=[{}] | INM={} IMS={} | AE={} | UA={}",
-            rid,
-            req.method(),
-            path_query,
-            Self::hdr_str(req.headers(), "content-type"),
-            if cookie_raw.is_empty() { "无" } else { &cookie_list },
-            Self::hdr_str(req.headers(), "if-none-match"),
-            Self::hdr_str(req.headers(), "if-modified-since"),
-            Self::hdr_str(req.headers(), "accept-encoding"),
-            Self::hdr_str(req.headers(), "user-agent"),
-        ));
 
         // 路由 ①：__proxy__{key} 路径
         if let Some(rest) = path.strip_prefix("/__proxy__") {
-            let key_end = rest.find('/').or_else(|| rest.find('?')).unwrap_or(rest.len());
-            crate::log_info!(format!(
-                "[DBG-PROXY][req#{}] 路由① __proxy__ key={} rest={}",
-                rid, &rest[..key_end], rest
-            ));
             return self.handle_proxy_request(req, rest, ctx).await;
         }
 
@@ -290,10 +223,6 @@ impl ProxyHandler for HttpForwardPlugin {
         let params: HashMap<_, _> = url::form_urlencoded::parse(query.as_bytes()).collect();
         if let Some(target_url) = params.get("url") {
             let target_url = target_url.to_string();
-            crate::log_info!(format!(
-                "[DBG-PROXY][req#{}] 路由② ?url= target={}",
-                rid, target_url
-            ));
             *self.active_origin.write().await = Some(target_url.clone());
             return self.forward(req, &target_url, &target_url, "", &ctx).await;
         }
@@ -311,11 +240,7 @@ impl ProxyHandler for HttpForwardPlugin {
             }
         };
         *self.active_origin.write().await = Some(target.clone());
-        crate::log_info!(format!(
-            "[DBG-PROXY][req#{}] 路由③ 直通 target={}",
-            rid, target
-        ));
-        self.passthrough(req, &target, &ctx).await
+        self.passthrough(req, &target).await
     }
 }
 
@@ -339,34 +264,19 @@ impl HttpForwardPlugin {
 
         // 4. 构造转发目标 URL
         // 注：必须用 starts_with('?') 而非 find('?')，因为同域路径也可能含 ?（如 key/path?query）
-        let rid = Self::rid_of(&ctx);
         let forward_url: String = if rest[key_end..].starts_with('?') {
             // 跨域：__proxy__{key}?url=xxx
             let qs = &rest[key_end + 1..];
             let params: HashMap<_, _> = url::form_urlencoded::parse(qs.as_bytes()).collect();
-            let u = params.get("url").map(|v| v.to_string()).unwrap_or(source_url.clone());
-            crate::log_info!(format!(
-                "[DBG-PROXY][req#{}] 跨域转发: ?url={} (回退 source={})",
-                rid, u, source_url
-            ));
-            u
+            params.get("url").map(|v| v.to_string()).unwrap_or(source_url.clone())
         } else if let Some(spos) = rest[key_end..].find('/') {
             // 同域：__proxy__{key}/path[?query]
             // remaining 可能已含 query（请求行 query 与 req.uri().query() 重复），先拆路径再拼一次 query
             let remaining = &rest[key_end + spos..];
             let path_part = remaining.split('?').next().unwrap_or(remaining);
             let query = req.uri().query().map(|q| format!("?{}", q)).unwrap_or_default();
-            let u = format!("{}{}{}", source_url.trim_end_matches('/'), path_part, query);
-            crate::log_info!(format!(
-                "[DBG-PROXY][req#{}] 同域转发: source={} path={} query={} → {}",
-                rid, source_url, path_part, query, u
-            ));
-            u
+            format!("{}{}{}", source_url.trim_end_matches('/'), path_part, query)
         } else {
-            crate::log_info!(format!(
-                "[DBG-PROXY][req#{}] 无路径回退: source={}",
-                rid, source_url
-            ));
             source_url.clone()
         };
 
@@ -435,19 +345,9 @@ impl HttpForwardPlugin {
         &self,
         req: Request<Incoming>,
         target_url: &str,
-        ctx: &RequestContext,
     ) -> Result<ProxyResponse, Box<dyn std::error::Error + Send + Sync>> {
         let method = req.method().clone();
         let req_path = req.uri().path().to_lowercase();
-        let rid = Self::rid_of(ctx);
-        crate::log_debug!(format!(
-            "[DBG-PROXY][req#{}] 直通出站 {} {} | 头 {} 项: {}",
-            rid,
-            method,
-            target_url,
-            req.headers().len(),
-            "见入站摘要 (直通不改造请求头)"
-        ));
 
         let hop_by_hop = [
             "host",
@@ -501,21 +401,6 @@ impl HttpForwardPlugin {
         match req_builder.send().await {
             Ok(upstream) => {
                 let status = upstream.status();
-                let rid = Self::rid_of(ctx);
-                crate::log_info!(format!(
-                    "[DBG-PROXY][req#{}] 直通上游 {status} {} | CT={} CL={} CE={}",
-                    rid,
-                    target_url,
-                    Self::hdr_str(upstream.headers(), "content-type"),
-                    Self::hdr_str(upstream.headers(), "content-length"),
-                    Self::hdr_str(upstream.headers(), "content-encoding"),
-                ));
-                if status.as_u16() >= 400 {
-                    crate::log_warn!(format!(
-                        "[DBG-PROXY][req#{}] 直通上游响应异常状态 {status} for {}",
-                        rid, target_url
-                    ));
-                }
                 let mut builder = Response::builder().status(status);
 
                 for (key, value) in upstream.headers() {
@@ -574,12 +459,7 @@ impl HttpForwardPlugin {
                 Ok(builder.body(stream_body(upstream.bytes_stream())).unwrap())
             }
             Err(e) => {
-                crate::log_error!(format!(
-                    "[DBG-PROXY][req#{}] 直通上游请求失败 {} {}",
-                    Self::rid_of(ctx),
-                    target_url,
-                    e
-                ));
+                crate::log_error!(format!("直通上游请求失败 {} {}", target_url, e));
                 Ok(Response::builder()
                     .status(StatusCode::BAD_GATEWAY)
                     .header("content-type", "text/plain; charset=utf-8")
@@ -628,14 +508,7 @@ impl HttpForwardPlugin {
                 }
             }
         }
-        crate::log_debug!(format!(
-            "[DBG-PROXY][req#{}] 出站头(合并 jar 前, {} 项): {}",
-            Self::rid_of(ctx),
-            headers_to_forward.len(),
-            Self::masked_headers(&headers_to_forward)
-        ));
-
-        let body_bytes = BodyExt::collect(req.into_body())
+let body_bytes = BodyExt::collect(req.into_body())
             .await
             .map(|b| b.to_bytes())
             .unwrap_or_default();
@@ -651,22 +524,27 @@ impl HttpForwardPlugin {
             _ => self.client.get(forward_url),
         };
 
-        for (key, value) in &headers_to_forward {
-            req_builder = req_builder.header(key.as_str(), value.as_str());
-        }
-
-        // 移动仿真：伪装移动端 UA
+        // 移动仿真：伪装移动端 UA（替换浏览器 UA 条目，避免出站双份头）
         if crate::proxy::hometier_protocol::device_mode() == "mobile" {
-            req_builder = req_builder.header(
-                "user-agent",
-                crate::proxy::hometier_protocol::MOBILE_UA,
-            );
+            let mut replaced = false;
+            for (k, v) in &mut headers_to_forward {
+                if k.eq_ignore_ascii_case("user-agent") {
+                    v.clear();
+                    v.push_str(crate::proxy::hometier_protocol::MOBILE_UA);
+                    replaced = true;
+                }
+            }
+            if !replaced {
+                headers_to_forward.push((
+                    "user-agent".to_string(),
+                    crate::proxy::hometier_protocol::MOBILE_UA.to_string(),
+                ));
+            }
         }
 
         // 合并 jar Cookie（WebView 原生无法持有的 Secure/HttpOnly/上游域 Cookie）
         {
             let (upstream_origin, upstream_path) = Self::split_upstream(forward_url);
-            let rid = Self::rid_of(ctx);
             if !upstream_origin.is_empty() {
                 let jar_cookie = {
                     let mut jars = cookie_jars().lock().unwrap();
@@ -684,63 +562,17 @@ impl HttpForwardPlugin {
                     headers_to_forward
                         .retain(|(k, _)| !k.eq_ignore_ascii_case("cookie"));
                     headers_to_forward.push(("cookie".to_string(), merged.clone()));
-                    crate::log_info!(format!(
-                        "[DBG-PROXY][req#{}] jar Cookie 注入: origin={} native={} jar=[{}] → cookie=[{}]",
-                        rid,
-                        upstream_origin,
-                        if native_owned.is_some() { "有" } else { "无" },
-                        Self::cookie_name_list(&jc),
-                        Self::cookie_name_list(&merged),
-                    ));
-                } else {
-                    crate::log_info!(format!(
-                        "[DBG-PROXY][req#{}] jar Cookie: 无匹配(origin={}) 不注入",
-                        rid, upstream_origin
-                    ));
                 }
             }
         }
-        crate::log_debug!(format!(
-            "[DBG-PROXY][req#{}] 出站头(合并 jar 后, {} 项): {}",
-            Self::rid_of(ctx),
-            headers_to_forward.len(),
-            Self::masked_headers(&headers_to_forward)
-        ));
         for (key, value) in &headers_to_forward {
             req_builder = req_builder.header(key.as_str(), value.as_str());
         }
 
-        let send_started = std::time::Instant::now();
         match req_builder.send().await {
             Ok(upstream) => {
                 let status = upstream.status();
-                let elapsed_ms = send_started.elapsed().as_millis();
                 let upstream_headers = upstream.headers().clone();
-                let rid = Self::rid_of(ctx);
-                crate::log_info!(format!(
-                    "[DBG-PROXY][req#{}] 上游 {status} {} 耗时{elapsed_ms}ms | CT={} CL={} CE={} ETag={} Vary={} xreq={} Set-Cookie=[{}]",
-                    rid,
-                    forward_url,
-                    Self::hdr_str(upstream.headers(), "content-type"),
-                    Self::hdr_str(upstream.headers(), "content-length"),
-                    Self::hdr_str(upstream.headers(), "content-encoding"),
-                    Self::hdr_str(upstream.headers(), "etag"),
-                    Self::hdr_str(upstream.headers(), "vary"),
-                    Self::hdr_str(upstream.headers(), "x-request-error"),
-                    upstream_headers
-                        .get_all("set-cookie")
-                        .iter()
-                        .filter_map(|v| v.to_str().ok())
-                        .map(Self::cookie_name_list)
-                        .collect::<Vec<_>>()
-                        .join(";"),
-                ));
-                if status.as_u16() >= 400 {
-                    crate::log_warn!(format!(
-                        "[DBG-PROXY][req#{}] 上游响应异常状态 {status} for {}",
-                        rid, forward_url
-                    ));
-                }
 
                 // 捕获上游 Set-Cookie → 全局 jar + DB（登录态落库持久）
                 let (upstream_origin, _) = Self::split_upstream(forward_url);
@@ -815,16 +647,6 @@ impl HttpForwardPlugin {
                     && !is_sse
                     && status != StatusCode::NOT_MODIFIED
                     && !status.is_redirection();
-                crate::log_debug!(format!(
-                    "[DBG-PROXY][req#{}] rewrite 决策: status={} target={:?} should_rewrite={} prefix='{}' is_sse={} → {}",
-                    Self::rid_of(ctx),
-                    status.as_u16(),
-                    target,
-                    ctx.should_rewrite,
-                    proxy_prefix_host,
-                    is_sse,
-                    if needs_rewrite { "重写" } else { "跳过" }
-                ));
 
                 let mut csp_override: Option<String> = None;
 
@@ -842,15 +664,6 @@ impl HttpForwardPlugin {
 
                 let body: ResponseBody = if needs_rewrite {
                     let body_bytes = upstream.bytes().await.unwrap_or_default();
-                    if status.as_u16() >= 400 {
-                        let preview =
-                            String::from_utf8_lossy(&body_bytes[..body_bytes.len().min(512)]);
-                        crate::log_warn!(format!(
-                            "[DBG-PROXY][req#{}] 上游 {status} 响应体前512B: {}",
-                            Self::rid_of(ctx),
-                            preview.replace('\n', "\\n")
-                        ));
-                    }
 
                     // CGI/PHP 脚本 MIME 强制覆盖
                     if is_cgi_or_php && content_type.contains("text/html") {
@@ -880,12 +693,6 @@ impl HttpForwardPlugin {
                     match rewritten {
                         Ok(cow) => {
                             let mut new_bytes = cow.as_bytes().to_vec();
-                            crate::log_debug!(format!(
-                                "[DBG-PROXY][req#{}] rewrite 完成: {}B → {}B",
-                                Self::rid_of(ctx),
-                                body_bytes.len(),
-                                new_bytes.len()
-                            ));
                             // HTML 页面注入本地代理脚本（WS 重写 + 移动仿真）并放宽 CSP
                             let mut csp_hash = String::new();
                             if is_html_target && looks_like_html_body(&new_bytes) {
@@ -912,8 +719,7 @@ impl HttpForwardPlugin {
                         }
                         Err(_) => {
                             crate::log_error!(format!(
-                                "[DBG-PROXY][req#{}] rewrite_urls panic (catch_unwind), 透传原体 {}B",
-                                Self::rid_of(ctx),
+                                "rewrite_urls panic (catch_unwind), 透传原体 {}B",
                                 body_bytes.len()
                             ));
                             builder = builder
@@ -922,10 +728,6 @@ impl HttpForwardPlugin {
                         }
                     }
                 } else if status == StatusCode::NOT_MODIFIED || status == StatusCode::NO_CONTENT {
-                    crate::log_debug!(format!(
-                        "[DBG-PROXY][req#{}] {status} 透传空 body",
-                        Self::rid_of(ctx)
-                    ));
                     full_body(Bytes::new())
                 } else if is_download {
                     // 附件：完整收集 → 保存到下载目录 → 同时原样返回给 iframe
@@ -969,12 +771,7 @@ impl HttpForwardPlugin {
                 Ok(resp)
             }
             Err(e) => {
-                crate::log_error!(format!(
-                    "[DBG-PROXY][req#{}] 上游请求失败 {} {}",
-                    Self::rid_of(ctx),
-                    forward_url,
-                    e
-                ));
+                crate::log_error!(format!("上游请求失败 {} {}", forward_url, e));
                 Ok(Response::builder()
                     .status(StatusCode::BAD_GATEWAY)
                     .header("content-type", "text/plain; charset=utf-8")

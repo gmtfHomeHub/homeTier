@@ -2,7 +2,6 @@ use encoding_rs::Encoding;
 use regex::Regex;
 use std::borrow::Cow;
 
-#[derive(Debug)]
 pub enum RewriteTarget {
     Html,
     Css,

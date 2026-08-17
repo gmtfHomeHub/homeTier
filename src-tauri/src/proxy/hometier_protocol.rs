@@ -638,7 +638,6 @@ impl PerHostCookieJar {
             return None;
         }
 
-        let mut debug_unmatched: Vec<String> = Vec::new();
         let matched: Vec<String> = self
             .0
             .iter()
@@ -652,10 +651,6 @@ impl PerHostCookieJar {
                     None => true,
                 };
                 if !domain_ok {
-                    debug_unmatched.push(format!(
-                        "{}: domain={:?} 不匹配 host={}",
-                        c.name, c.domain, host
-                    ));
                     return false;
                 }
                 // Path 匹配（RFC 6265 5.1.4）
@@ -666,24 +661,11 @@ impl PerHostCookieJar {
                     let rest = &request_path[cp.len()..];
                     rest.is_empty() || rest.starts_with('/')
                 } else {
-                    debug_unmatched.push(format!(
-                        "{}: path={} 不匹配请求路径 {}",
-                        c.name, c.path, request_path
-                    ));
                     false
                 }
             })
             .map(|c| format!("{}={}", c.name, c.value))
             .collect();
-
-        crate::log_debug!(format!(
-            "[DBG-PROXY] jar 匹配: host={} path={} jar_cookies={} 命中={} 未匹配=[{}]",
-            host,
-            request_path,
-            self.0.len(),
-            matched.len(),
-            debug_unmatched.join("; ")
-        ));
 
         if matched.is_empty() {
             None
