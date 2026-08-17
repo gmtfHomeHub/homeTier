@@ -17,7 +17,6 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 # 系统依赖（webkit2gtk 等，与 GitHub Actions ubuntu 一致）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libwebkit2gtk-4.1-dev \
-    libappindicator3-dev \
     librsvg2-dev \
     patchelf \
     libssl-dev \
