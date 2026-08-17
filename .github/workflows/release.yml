@@ -119,7 +119,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
-          sudo apt-get install -y libssl-dev libxdo-dev
+          sudo apt-get install -y libssl-dev libxdo-dev protobuf-compiler
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
@@ -170,7 +170,7 @@ jobs:
       - name: Install Linux deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev libxdo-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev libxdo-dev protobuf-compiler
       - name: Install deps
         run: pnpm install --frozen-lockfile
       - name: Build

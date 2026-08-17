@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     libxdo-dev \
     libayatana-appindicator3-dev \
+    protobuf-compiler \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
