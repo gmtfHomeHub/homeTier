@@ -14,6 +14,8 @@ import type {
   ShareInfo,
   SendFileResult,
   FileTransferProgress,
+  CheckAppUpdate,
+  AppUpdateOutcome,
 } from "./core";
 
 // API 基础路径：REST 统一前缀 /api/cmd
@@ -622,6 +624,20 @@ export async function upgradeEasyTierWithProgress(
   return request<void>("/easytier/upgrade", {
     method: "POST",
     body: JSON.stringify({ version, useProxy }),
+  });
+}
+
+export async function checkAppUpdate(): Promise<CheckAppUpdate> {
+  return request<CheckAppUpdate>("/system/check-update");
+}
+
+export async function upgradeApp(
+  useProxy: boolean,
+  _onProgress: (pct: number) => void,
+): Promise<AppUpdateOutcome> {
+  return request<AppUpdateOutcome>("/system/upgrade-app", {
+    method: "POST",
+    body: JSON.stringify({ useProxy }),
   });
 }
 

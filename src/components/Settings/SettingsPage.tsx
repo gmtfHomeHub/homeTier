@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { LogViewer } from "../Log/LogViewer";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { EasyTierVersionManager } from "./EasyTierVersionManager";
+import { AppVersionManager } from "./AppVersionManager";
 import { AppConfigEditor } from "./AppConfigEditor";
 import { Terminal, Palette, Languages, HelpCircle, Keyboard, FileCog, Network } from "lucide-react";
 import { getSystemConfig, setSystemConfig, getLogEnabled, setLogEnabled as setLogEnabledApi } from "../../utils/api";
@@ -170,9 +171,16 @@ export function SettingsPage() {
                 </Flex>
               </Card>
 
-              {/* EasyTier 引擎版本 */}
+              {/* EasyTier 引擎 / 当前应用（左右两栏） */}
               <Card size="3">
-                <EasyTierVersionManager />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:border-r md:border-[var(--color-border)] md:pr-4">
+                    <EasyTierVersionManager />
+                  </div>
+                  <div>
+                    <AppVersionManager />
+                  </div>
+                </div>
               </Card>
               </div>
 

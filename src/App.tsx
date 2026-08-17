@@ -15,6 +15,7 @@ import { NotFoundPage } from "./components/Common/NotFoundPage";
 import { AppLoadingScreen, AppErrorScreen } from "./components/Common/AppLoadingScreen";
 import { useSpaceStore } from "./stores/spaceStore";
 import { useSettingsStore } from "./stores/settingsStore";
+import { useUpdateStore } from "./stores/updateStore";
 import { useEffect, useState } from "react";
 import { Theme } from "@radix-ui/themes";
 import { isDaemonReady, getDaemonErrorReason } from "./utils/api";
@@ -125,6 +126,9 @@ export default function App() {
     if (!appReady) return;
     let cancelled = false;
     let unlisten: (() => void) | null = null;
+
+    // 启动时检查一次应用更新（失败静默）
+    useUpdateStore.getState().checkAppUpdate();
 
     initRealtime()
       .then((fn) => {

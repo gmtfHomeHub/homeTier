@@ -73,6 +73,8 @@ pub fn run() -> std::process::ExitCode {
             commands::screen::is_screen_sharing,
             commands::screen::get_screen_share_viewers,
             commands::util::get_app_version,
+            commands::update_app::check_app_update_cmd,
+            commands::update_app::upgrade_app_cmd,
             commands::util::get_system_config,
             commands::util::set_system_config,
             commands::util::get_log_enabled,

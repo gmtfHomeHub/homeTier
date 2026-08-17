@@ -77,6 +77,8 @@ pub fn cmd_router(app_state: Arc<AppState>) -> Router {
         // 系统信息
         .route("/system/version", get(get_app_version_handler))
         .route("/system/binary-check", get(check_easytier_binary_handler))
+        .route("/system/check-update", get(check_app_update_handler))
+        .route("/system/upgrade-app", post(upgrade_app_handler))
         // Proxy
         .route("/proxy/url", get(get_proxy_url_handler))
         .route("/proxy/status", get(get_proxy_status_handler))
@@ -1541,6 +1543,19 @@ async fn upgrade_easytier_handler(
     }
     match state.easy_tier.upgrade(&version, None).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    }
+}
+
+// ---- 应用更新 ----
+async fn check_app_update_handler() -> impl IntoResponse {
+    Json(crate::commands::update_app::check_app_update().await).into_response()
+}
+
+async fn upgrade_app_handler(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
+    let use_proxy = body["useProxy"].as_bool().unwrap_or(false);
+    match crate::commands::update_app::upgrade_app_inner(use_proxy, |_| {}).await {
+        Ok(outcome) => Json(outcome).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
 }

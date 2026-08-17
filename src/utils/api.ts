@@ -124,6 +124,9 @@ export const getEasyTierVersion = impl.getEasyTierVersion;
 export const checkEasyTierUpdate = impl.checkEasyTierUpdate;
 export const upgradeEasyTierWithProgress = impl.upgradeEasyTierWithProgress;
 
+export const checkAppUpdate = impl.checkAppUpdate;
+export const upgradeApp = impl.upgradeApp;
+
 export const getAclRules = impl.getAclRules;
 export const createAclRule = impl.createAclRule;
 export const updateAclRule = impl.updateAclRule;

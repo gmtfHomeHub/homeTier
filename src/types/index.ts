@@ -191,3 +191,15 @@ export interface PortForwardRule {
 
 
 
+
+// 应用更新检查结果
+export interface CheckAppUpdate {
+  current: string;
+  latest: string | null;
+  has_update: boolean;
+}
+
+// 应用更新执行结果
+export interface AppUpdateOutcome {
+  action: "installed" | "open_release";
+}

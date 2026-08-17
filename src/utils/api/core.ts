@@ -15,6 +15,8 @@ export type {
   AclRule,
   PortForwardRule,
   ShareInfo,
+  CheckAppUpdate,
+  AppUpdateOutcome,
 } from "../../types";
 
 export type { NetworkConfig } from "../../types/network";

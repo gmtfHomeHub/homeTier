@@ -14,5 +14,6 @@ pub mod screen;
 pub mod signal;
 pub mod space;
 pub mod tray;
+pub mod update_app;
 pub mod util;
 pub mod voice;

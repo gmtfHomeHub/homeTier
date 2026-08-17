@@ -18,8 +18,9 @@ import type {
   TrayLabels,
   SendFileResult,
   FileTransferProgress,
+  CheckAppUpdate,
+  AppUpdateOutcome,
 } from "./core";
-
 export async function createSpace(
   name: string,
   networkSecret: string,
@@ -388,6 +389,24 @@ export async function upgradeEasyTierWithProgress(
   });
   try {
     await invoke("upgrade_easytier_with_progress", { version, useProxy });
+  } finally {
+    unlisten();
+  }
+}
+
+export async function checkAppUpdate(): Promise<CheckAppUpdate> {
+  return invoke("check_app_update_cmd");
+}
+
+export async function upgradeApp(
+  useProxy: boolean,
+  onProgress: (pct: number) => void,
+): Promise<AppUpdateOutcome> {
+  const unlisten = await listen<number>("app-download-progress", (event) => {
+    onProgress(event.payload);
+  });
+  try {
+    return await invoke("upgrade_app_cmd", { useProxy });
   } finally {
     unlisten();
   }

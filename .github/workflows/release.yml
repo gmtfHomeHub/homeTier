@@ -317,6 +317,9 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+      - name: Generate checksums
+        run: |
+          cd artifacts && sha256sum * > checksums.txt && cat checksums.txt
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
