@@ -41,12 +41,30 @@ impl HttpForwardPlugin {
         format!("http://{}", host)
     }
 
+    /// 将请求路径相对 original_url 解析为上游 URL：
+    /// - 根相对路径（/ 开头）：按 HTML 规范基于 origin（scheme://host[:port]）解析
+    /// - 相对路径：基于文档目录（原 base_dir 逻辑）
     fn resolve_relative_path(original_url: &str, request_path: &str) -> String {
+        let clean_path = request_path.trim_start_matches('/');
+        if request_path.starts_with('/') {
+            let scheme = if original_url.starts_with("https://") {
+                "https"
+            } else {
+                "http"
+            };
+            let origin = match original_url.split("://").nth(1) {
+                Some(rest) => match rest.find('/') {
+                    Some(pos) => format!("{}://{}", scheme, &rest[..pos]),
+                    None => format!("{}://{}", scheme, rest),
+                },
+                None => original_url.to_string(),
+            };
+            return format!("{}/{}", origin.trim_end_matches('/'), clean_path);
+        }
         let base_dir = match original_url.rfind('/') {
             Some(pos) => original_url[..=pos].to_string(),
             None => format!("{}/", original_url),
         };
-        let clean_path = request_path.trim_start_matches('/');
         format!("{}{}", base_dir, clean_path)
     }
 
@@ -287,12 +305,16 @@ impl HttpForwardPlugin {
                 }
             }
             if let Some(pos) = referer.find("/__proxy__") {
-                let href = &referer[pos..];
-                let key_end = href.find('/').or_else(|| href.find('?')).unwrap_or(href.len());
-                let key = &href[..key_end];
+                let rest = &referer[pos + "/__proxy__".len()..];
+                let key_end = rest.find('/').or_else(|| rest.find('?')).unwrap_or(rest.len());
+                let key = &rest[..key_end];
                 if let Some(source) = self.key_map.read().await.get(key).cloned() {
                     let request_path = req.uri().path();
-                    let upstream = Self::resolve_relative_path(&source, request_path);
+                    let full_path = match req.uri().query() {
+                        Some(query) => format!("{}?{}", request_path, query),
+                        None => request_path.to_string(),
+                    };
+                    let upstream = Self::resolve_relative_path(&source, &full_path);
                     if upstream.starts_with("http://") || upstream.starts_with("https://") {
                         return Ok(upstream);
                     }
