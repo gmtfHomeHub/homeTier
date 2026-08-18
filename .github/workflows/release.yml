@@ -121,6 +121,10 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
           sudo apt-get install -y libssl-dev libxdo-dev protobuf-compiler
 
+      - name: Install macOS deps
+        if: startsWith(matrix.os, 'macos')
+        run: brew install protobuf
+
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
@@ -215,6 +219,8 @@ jobs:
           java-version: 17
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+      - name: Install protoc
+        run: sudo apt-get install -y protobuf-compiler
       - name: Install deps
         run: pnpm install --frozen-lockfile
       - name: Init Android project
@@ -262,6 +268,8 @@ jobs:
         run: pnpm tauri ios init
       - name: Inject camera permissions
         run: bash scripts/mobile-permissions.sh
+      - name: Install protoc
+        run: brew install protobuf
       - name: Build iOS (no sign)
         run: pnpm tauri ios build --no-sign
       - name: Upload iOS app
@@ -276,6 +284,7 @@ jobs:
   # ---------------------------------------------------------------
   build-docker:
     needs: fetch-easytier
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -286,6 +295,9 @@ jobs:
         with:
           name: easytier-bin
           path: src-tauri/resources/bin/
+      - name: Compute lowercase image repo
+        id: repo
+        run: echo "image_repo=ghcr.io/$(echo ${{ github.repository }} | tr 'A-Z' 'a-z')" >> "$GITHUB_OUTPUT"
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -298,8 +310,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ${{ steps.repo.outputs.image_repo }}:latest
+            ${{ steps.repo.outputs.image_repo }}:${{ github.ref_name }}
           build-args: |
             EASYTIER_CORE_VERSION=${{ env.EASYTIER_CORE_VERSION }}
 
