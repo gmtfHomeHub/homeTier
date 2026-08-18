@@ -382,11 +382,15 @@ jobs:
       - name: Configure bindgen for Android NDK
         shell: bash
         run: |
-          SYSROOT="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
-          echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64-linux-android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
-          echo "BINDGEN_EXTRA_CLANG_ARGS_armv7-linux-androideabi=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
-          echo "BINDGEN_EXTRA_CLANG_ARGS_x86_64-linux-android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
-          echo "BINDGEN_EXTRA_CLANG_ARGS_i686-linux-android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
+          NDK_HOME="${ANDROID_NDK_HOME:-}"
+          if [ -z "$NDK_HOME" ] || [ ! -d "$NDK_HOME" ]; then
+            NDK_HOME="$(ls -d /usr/local/lib/android/sdk/ndk/*/ 2>/dev/null | sort -V | tail -1 | sed 's:/*$::')"
+          fi
+          SYSROOT="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+          echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
+          echo "BINDGEN_EXTRA_CLANG_ARGS_armv7_linux_androideabi=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
+          echo "BINDGEN_EXTRA_CLANG_ARGS_x86_64_linux_android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
+          echo "BINDGEN_EXTRA_CLANG_ARGS_i686_linux_android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
           echo "[bindgen] NDK sysroot: $SYSROOT"
       - name: Install deps
         run: pnpm install --frozen-lockfile
