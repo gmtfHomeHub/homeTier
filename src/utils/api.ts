@@ -56,6 +56,7 @@ export const generateShareLink = impl.generateShareLink;
 export const parseShareLink = impl.parseShareLink;
 export const connectSpace = impl.connectSpace;
 export const disconnectSpace = impl.disconnectSpace;
+export const setTunFd = impl.setTunFd;
 export const listMembers = impl.listMembers;
 export const getProxyUrl = impl.getProxyUrl;
 export const getProxyStatus = impl.getProxyStatus;
