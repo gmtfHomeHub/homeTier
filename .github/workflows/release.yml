@@ -2,6 +2,12 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      skip_ios:
+        description: '跳过 iOS 构建（iOS 代码尚未完成平台隔离，默认跳过）'
+        required: false
+        default: true
+        type: boolean
   push:
     tags:
       - 'v*'
@@ -125,6 +131,11 @@ jobs:
         if: startsWith(matrix.os, 'macos')
         run: brew install protobuf
 
+      - name: Install Windows deps
+        if: startsWith(matrix.os, 'windows')
+        shell: pwsh
+        run: choco install protobuf --yes --no-progress
+
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
@@ -219,8 +230,12 @@ jobs:
           java-version: 17
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-      - name: Install protoc
-        run: sudo apt-get install -y protobuf-compiler
+        with:
+          ndk: 25.2.9519653
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler libclang-dev
       - name: Install deps
         run: pnpm install --frozen-lockfile
       - name: Init Android project
@@ -241,6 +256,7 @@ jobs:
   # ---------------------------------------------------------------
   build-ios:
     needs: fetch-easytier
+    if: startsWith(github.ref, 'refs/tags/') || !inputs.skip_ios
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
