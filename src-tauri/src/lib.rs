@@ -36,7 +36,7 @@ pub fn run() -> std::process::ExitCode {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init());
 
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
 
     let builder = builder.setup(|app| crate::app::setup::setup(app))
