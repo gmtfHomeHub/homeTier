@@ -134,7 +134,7 @@ jobs:
       - name: Install Windows deps
         if: startsWith(matrix.os, 'windows')
         shell: pwsh
-        run: choco install protobuf --yes --no-progress
+        run: choco install protoc --yes --no-progress
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
@@ -236,6 +236,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler libclang-dev
+      - name: Configure bindgen for Android NDK
+        shell: bash
+        run: |
+          SYSROOT="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+          echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64-linux-android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
+          echo "BINDGEN_EXTRA_CLANG_ARGS_armv7-linux-androideabi=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
+          echo "BINDGEN_EXTRA_CLANG_ARGS_x86_64-linux-android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
+          echo "BINDGEN_EXTRA_CLANG_ARGS_i686-linux-android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
+          echo "[bindgen] NDK sysroot: $SYSROOT"
       - name: Install deps
         run: pnpm install --frozen-lockfile
       - name: Init Android project
