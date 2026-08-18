@@ -204,6 +204,21 @@ jobs:
         shell: pwsh
         run: choco install protoc --yes --no-progress
 
+      - name: Install WinPcap dev pack (Packet.lib for pnet crate)
+        shell: pwsh
+        run: |
+          $url = "https://www.winpcap.org/install/bin/WpdPack_4_1_2.zip"
+          $out = "$env:TEMP/WpdPack.zip"
+          Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+          Expand-Archive -Path $out -DestinationPath "C:/WpdPack" -Force
+          # x64 lib: C:/WpdPack/WpdPack/Lib/x64/Packet.lib
+          # x86 lib: C:/WpdPack/WpdPack/Lib/Packet.lib
+          # Add to LIB so linker finds Packet.lib
+          $libPath = "C:/WpdPack/WpdPack/Lib/x64"
+          echo "LIB=$libPath;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "INCLUDE=C:/WpdPack/WpdPack/Include;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "[winpcap] Packet.lib at $libPath"
+
       - name: Configure WinDivert (compile from vendored source)
         shell: bash
         run: |
