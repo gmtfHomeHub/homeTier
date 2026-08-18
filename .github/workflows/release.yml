@@ -3,10 +3,35 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      skip_ios:
-        description: '跳过 iOS 构建（iOS 代码尚未完成平台隔离，默认跳过）'
+      build_macos:
+        description: '打包 macOS（dmg，aarch64 + x86_64）'
         required: false
         default: true
+        type: boolean
+      build_windows:
+        description: '打包 Windows（msi，x86_64）'
+        required: false
+        default: true
+        type: boolean
+      build_linux:
+        description: '打包 Linux（deb，x86_64 + aarch64）'
+        required: false
+        default: true
+        type: boolean
+      build_appimage:
+        description: '打包 Linux AppImage'
+        required: false
+        default: true
+        type: boolean
+      build_android:
+        description: '打包 Android（apk）'
+        required: false
+        default: true
+        type: boolean
+      build_ios:
+        description: '打包 iOS（无签名构建，未完成平台隔离，默认跳过）'
+        required: false
+        default: false
         type: boolean
   push:
     tags:
@@ -62,10 +87,11 @@ jobs:
           retention-days: 1
 
   # ---------------------------------------------------------------
-  # 2. 桌面端打包矩阵
+  # 2. 桌面端打包（tag 发布全量打包；手动触发按平台开关选择）
   # ---------------------------------------------------------------
-  build-desktop:
+  build-desktop-macos:
     needs: fetch-easytier
+    if: startsWith(github.ref, 'refs/tags/') || inputs.build_macos
     strategy:
       fail-fast: false
       matrix:
@@ -78,10 +104,135 @@ jobs:
             target: x86_64-apple-darwin
             bundle: dmg
             artifact: homeTier-x86_64.dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: easytier-bin
+          path: src-tauri/resources/bin/
+
+      - name: Install macOS deps
+        run: brew install protobuf
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Tauri bundle
+        run: |
+          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+
+      - name: Locate artifacts
+        id: locate
+        shell: bash
+        run: |
+          find src-tauri/target -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.deb' -o -name '*.AppImage' \) | head -20
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/${{ matrix.bundle }}/*
+            src-tauri/target/release/bundle/${{ matrix.bundle }}/*
+          if-no-files-found: warn
+
+  build-desktop-windows:
+    needs: fetch-easytier
+    if: startsWith(github.ref, 'refs/tags/') || inputs.build_windows
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             bundle: msi
             artifact: homeTier-x86_64.msi
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: easytier-bin
+          path: src-tauri/resources/bin/
+
+      - name: Install Windows deps
+        shell: pwsh
+        run: choco install protoc --yes --no-progress
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Tauri bundle
+        run: |
+          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+
+      - name: Locate artifacts
+        id: locate
+        shell: bash
+        run: |
+          find src-tauri/target -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.deb' -o -name '*.AppImage' \) | head -20
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/${{ matrix.bundle }}/*
+            src-tauri/target/release/bundle/${{ matrix.bundle }}/*
+          if-no-files-found: warn
+
+  build-desktop-linux:
+    needs: fetch-easytier
+    if: startsWith(github.ref, 'refs/tags/') || inputs.build_linux
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             bundle: deb
@@ -121,20 +272,10 @@ jobs:
           path: src-tauri/resources/bin/
 
       - name: Install Linux deps
-        if: startsWith(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
           sudo apt-get install -y libssl-dev libxdo-dev protobuf-compiler
-
-      - name: Install macOS deps
-        if: startsWith(matrix.os, 'macos')
-        run: brew install protobuf
-
-      - name: Install Windows deps
-        if: startsWith(matrix.os, 'windows')
-        shell: pwsh
-        run: choco install protoc --yes --no-progress
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
@@ -163,6 +304,7 @@ jobs:
   # ---------------------------------------------------------------
   build-appimage:
     needs: fetch-easytier
+    if: startsWith(github.ref, 'refs/tags/') || inputs.build_appimage
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -202,6 +344,7 @@ jobs:
   # ---------------------------------------------------------------
   build-android:
     needs: fetch-easytier
+    if: startsWith(github.ref, 'refs/tags/') || inputs.build_android
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -265,7 +408,7 @@ jobs:
   # ---------------------------------------------------------------
   build-ios:
     needs: fetch-easytier
-    if: startsWith(github.ref, 'refs/tags/') || !inputs.skip_ios
+    if: startsWith(github.ref, 'refs/tags/') || inputs.build_ios
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -305,7 +448,7 @@ jobs:
           if-no-files-found: warn
 
   # ---------------------------------------------------------------
-  # 6. Docker 镜像
+  # 6. Docker 镜像（仅 tag 触发，随版本发布）
   # ---------------------------------------------------------------
   build-docker:
     needs: fetch-easytier
@@ -341,10 +484,10 @@ jobs:
             EASYTIER_CORE_VERSION=${{ env.EASYTIER_CORE_VERSION }}
 
   # ---------------------------------------------------------------
-  # 7. 汇总发布到 GitHub Release
+  # 7. 汇总发布到 GitHub Release（仅 tag 触发）
   # ---------------------------------------------------------------
   release:
-    needs: [build-desktop, build-appimage, build-android, build-ios]
+    needs: [build-desktop-macos, build-desktop-windows, build-desktop-linux, build-appimage, build-android, build-ios]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
