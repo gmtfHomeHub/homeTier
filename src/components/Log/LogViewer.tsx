@@ -6,6 +6,7 @@ import { RefreshCw, Trash2, Filter, Search, Download, Copy, Clock } from "lucide
 import { Button, Select, Checkbox, Text, Flex, Badge, Dialog, DropdownMenu, ButtonProps } from "@radix-ui/themes";
 import { List, useDynamicRowHeight, type RowComponentProps } from "react-window";
 import { toastSuccess, toastError } from "../../utils/toast";
+import { isMobile } from "../../utils/platform";
 
 interface LogViewerProps {
   spaceId?: string;
@@ -135,6 +136,12 @@ function computeTimeFilter(range: TimeRange, from?: string, to?: string) {
 export function LogViewer({ spaceId }: LogViewerProps) {
   const { t } = useTranslation();
   const [source, setSource] = useState<"gui" | "daemon">("gui");
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    isMobile().then((m) => { if (alive) setMobile(m); });
+    return () => { alive = false; };
+  }, []);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const lastSeqRef = useRef(0);
   const fetchingRef = useRef(false);
@@ -309,7 +316,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
-        {isTauri() && (
+        {isTauri() && !mobile && (
           <Select.Root size="1" value={source} onValueChange={(v) => setSource(v as "gui" | "daemon")}>
             <Select.Trigger className="text-xs w-28" />
             <Select.Content>

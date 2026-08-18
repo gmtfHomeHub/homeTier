@@ -25,6 +25,7 @@ import { applyGlobalShortcuts, handleShortcutPress } from "./services/shortcuts"
 import { registerSignalHandler, resolveMember } from "./services/signal";
 import * as api from "./utils/api";
 import { useFileStore } from "./stores/fileStore";
+import { isMobile } from "./utils/platform";
 import type { FileInfo } from "./types";
 
 const POLL_INTERVAL_MS = 1000;
@@ -55,6 +56,17 @@ export default function App() {
     let attempts = 0;
     let cancelled = false;
 
+    const bootstrap = async () => {
+      // 移动端：无 daemon 架构，直接加载空间列表进入应用
+      if (await isMobile()) {
+        await loadSpaces();
+        if (cancelled) return;
+        setAppReady(true);
+        return;
+      }
+      await pollForDaemon();
+    };
+
     const check = async () => {
       try {
         const ready = await isDaemonReady();
@@ -69,7 +81,7 @@ export default function App() {
       return false;
     };
 
-    const poll = async () => {
+    const pollForDaemon = async () => {
       const ok = await check();
       if (ok) return;
 
@@ -114,7 +126,7 @@ export default function App() {
       }, POLL_INTERVAL_MS);
     };
 
-    poll();
+    bootstrap();
 
     return () => {
       cancelled = true;

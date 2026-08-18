@@ -1145,6 +1145,11 @@ mod launcher_internal {
         instance.start().map_err(|e| {
             let err_msg = format!("EasyTier 启动失败: {:?}", e);
             crate::log_error!(&err_msg);
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            let err_msg = format!(
+                "{}（移动端 VPN 通道尚未集成：需要 NetworkExtension/VpnService 提供 TUN 设备，开发中）",
+                err_msg
+            );
             err_msg
         })?;
 

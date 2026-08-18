@@ -126,7 +126,8 @@
     "speakerShortcut": "Speaker mute shortcut",
     "micShortcutDesc": "Toggle global microphone mute/unmute, takes effect after editing",
     "speakerShortcutDesc": "Toggle global speaker mute/unmute, takes effect after editing",
-    "config": "Config File"
+    "config": "Config File",
+    "shortcutUnsupported": "Global shortcuts are not supported on this platform (no global key capture on mobile)"
   },
   "shortcuts": {
     "micMuted": "Microphone muted",

@@ -1,3 +1,5 @@
+#![cfg(not(any(target_os = "android", target_os = "ios")))]
+
 use std::sync::Arc;
 use tauri::State;
 use crate::proxy::{ActiveOrigin, ProxyKeyMap, ProxyServer};

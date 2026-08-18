@@ -14,6 +14,7 @@ import { useTranslation } from "react-i18next";
 import { Tabs, Tooltip, Button, Flex, Text, Switch, Card, Select } from "@radix-ui/themes";
 import { SettingTabEnum, LanguageEnum, ThemeEnum } from "../../enum";
 import { toastSuccess, toastError } from "../../utils/toast";
+import { isMobile } from "../../utils/platform";
 
 export function SettingsPage() {
   const {
@@ -33,7 +34,14 @@ export function SettingsPage() {
   // const [activeTab, setActiveTab] = useState<SettingTabEnum>(SettingTabEnum.BASIC);
   const [easytierConfig, setEasytierConfig] = useState<Partial<NetworkConfig>>({});
   const [saving, setSaving] = useState(false);
+  const [mobile, setMobile] = useState(false);
   const { t, i18n } = useTranslation();
+
+  useEffect(() => {
+    let alive = true;
+    isMobile().then((m) => { if (alive) setMobile(m); });
+    return () => { alive = false; };
+  }, []);
 
   const setActiveTab = (tab: SettingTabEnum) => {
     // setActiveTab(tab);
@@ -234,6 +242,11 @@ export function SettingsPage() {
                       <Text size="1" color="gray">{t("settings.shortcutsDesc")}</Text>
                     </Flex>
                   </Flex>
+                  {mobile ? (
+                    <Text size="1" color="gray" className="pl-12">
+                      {t("settings.shortcutUnsupported")}
+                    </Text>
+                  ) : (
                   <Flex direction="column" gap="3" className="pl-12">
                     <Flex direction="column" gap="1">
                       <Flex align="center" justify="between" gap="2">
@@ -277,6 +290,7 @@ export function SettingsPage() {
                       </Button>
                     </Flex>
                   </Flex>
+                  )}
                 </Flex>
               </Card>
               </div>

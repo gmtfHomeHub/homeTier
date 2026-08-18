@@ -126,7 +126,8 @@
     "speakerShortcut": "揚聲器靜音快捷鍵",
     "micShortcutDesc": "全域靜音/取消靜音麥克風，編輯完成後立即生效",
     "speakerShortcutDesc": "全域靜音/取消靜音揚聲器，編輯完成後立即生效",
-    "config": "設定檔"
+    "config": "設定檔",
+    "shortcutUnsupported": "目前平台不支援全域快捷鍵（行動裝置無全域按鍵擷取）"
   },
   "shortcuts": {
     "micMuted": "麥克風已靜音",

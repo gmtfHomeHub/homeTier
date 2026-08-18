@@ -5,11 +5,13 @@ import { Button, Text, Flex, Select, Switch, Progress } from "@radix-ui/themes";
 import { Cpu, RefreshCw, ArrowUpCircle } from "lucide-react";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { toastSuccess, toastError } from "../../utils/toast";
+import { isMobile } from "../../utils/platform";
 
 export function EasyTierVersionManager() {
   const { t } = useTranslation();
   const useProxy = useSettingsStore((s) => s.useProxy);
   const setUseProxy = useSettingsStore((s) => s.setUseProxy);
+  const [mobile, setMobile] = useState(false);
   const [githubMirror, setGithubMirror] = useState<string>("");
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
   const [availableVersions, setAvailableVersions] = useState<string[]>([]);
@@ -20,6 +22,13 @@ export function EasyTierVersionManager() {
 
   useEffect(() => {
     loadVersion();
+  }, []);
+
+  // 移动端不支持在线升级（引擎随应用编译），隐藏升级入口
+  useEffect(() => {
+    let alive = true;
+    isMobile().then((m) => { if (alive) setMobile(m); });
+    return () => { alive = false; };
   }, []);
 
   // 读取 GITHUB_MIRROR 配置：非空才展示代理下载开关
@@ -101,6 +110,7 @@ export function EasyTierVersionManager() {
         </div>
 
       <Flex gap="2" wrap="wrap">
+        {!mobile && (
         <Button
           onClick={handleCheckUpdate}
           disabled={checking}
@@ -111,6 +121,7 @@ export function EasyTierVersionManager() {
           <ArrowUpCircle size={14} />
           {t("settings.update")}
         </Button>
+        )}
       </Flex>
       </Flex>
 

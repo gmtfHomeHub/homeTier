@@ -224,10 +224,11 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(space_manager);
     log_info!("[GUI] 空间管理器已创建");
 
-    // 初始化配置存储服务（P2P 分布式配置同步：本地队列 + TCP 监听）
+    // 初始化配置存储服务（P2P 分布式配置同步：本地队列 + TCP 监听；移动端不监听端口）
     let config_store_root = app_data.join("config_store");
     let (config_store, queue_receiver) = crate::config_store::ConfigStoreService::new(config_store_root);
     app.manage(config_store.clone());
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     async_runtime::spawn(async move {
         config_store.start_consumer(queue_receiver);
         if let Err(e) = config_store.serve(crate::config_store::DEFAULT_PORT).await {
@@ -327,36 +328,39 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             .build(app)?;
     }
 
-    // 启动 HTTP 代理服务器（用于绕过 iframe 安全限制）
-    let active_origin: ActiveOrigin = Arc::new(RwLock::new(None));
-    let key_map: ProxyKeyMap = Arc::new(RwLock::new(HashMap::new()));
-    let http_forward = Arc::new(HttpForwardPlugin::new(
-        key_map.clone(),
-        active_origin.clone(),
-        Some(app.handle().clone()),
-    ).map_err(|e| format!("创建 HttpForwardPlugin 失败: {}", e))?);
-    let handlers: Vec<Arc<dyn ProxyHandler>> = vec![
-        Arc::new(HttpsTunnelPlugin),
-        http_forward,
-        Arc::new(crate::proxy::plugin::HttpReverseProxyHandler::new()
-            .map_err(|e| format!("创建 HttpReverseProxyHandler 失败: {}", e))?),
-    ];
+    // 启动 HTTP 代理服务器（用于绕过 iframe 安全限制；移动端 webview 直载 dist 无需代理）
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let active_origin: ActiveOrigin = Arc::new(RwLock::new(None));
+        let key_map: ProxyKeyMap = Arc::new(RwLock::new(HashMap::new()));
+        let http_forward = Arc::new(HttpForwardPlugin::new(
+            key_map.clone(),
+            active_origin.clone(),
+            Some(app.handle().clone()),
+        ).map_err(|e| format!("创建 HttpForwardPlugin 失败: {}", e))?);
+        let handlers: Vec<Arc<dyn ProxyHandler>> = vec![
+            Arc::new(HttpsTunnelPlugin),
+            http_forward,
+            Arc::new(crate::proxy::plugin::HttpReverseProxyHandler::new()
+                .map_err(|e| format!("创建 HttpReverseProxyHandler 失败: {}", e))?),
+        ];
 
-    let proxy_server = Arc::new(crate::proxy::ProxyServer::start(
-        vec![
-            Arc::new(CorsPlugin::new()),
-            Arc::new(IframeBypassPlugin),
-        ],
-        handlers,
-        key_map.clone(),
-        active_origin.clone(),
-    ).map_err(|e| format!("启动代理服务器失败: {}", e))?);
-    log_info!(format!("代理服务器已启动: port={}", proxy_server.port));
-    crate::proxy::hometier_protocol::set_proxy_port(proxy_server.port);
-    let _ = PROXY_SERVER.set(proxy_server.clone());
-    app.manage(proxy_server);
-    app.manage(key_map);
-    app.manage(active_origin);
+        let proxy_server = Arc::new(crate::proxy::ProxyServer::start(
+            vec![
+                Arc::new(CorsPlugin::new()),
+                Arc::new(IframeBypassPlugin),
+            ],
+            handlers,
+            key_map.clone(),
+            active_origin.clone(),
+        ).map_err(|e| format!("启动代理服务器失败: {}", e))?);
+        log_info!(format!("代理服务器已启动: port={}", proxy_server.port));
+        crate::proxy::hometier_protocol::set_proxy_port(proxy_server.port);
+        let _ = PROXY_SERVER.set(proxy_server.clone());
+        app.manage(proxy_server);
+        app.manage(key_map);
+        app.manage(active_origin);
+    }
 
     // 启动聊天消息监听任务（Desktop）
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
