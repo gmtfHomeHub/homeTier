@@ -219,24 +219,36 @@ jobs:
           echo "[winpcap] Packet.lib at $libPath"
 
       - name: Configure Windows SDK includes (for kcp-sys bindgen)
-        shell: bash
+        shell: pwsh
         run: |
           # The windows-latest GitHub runner has the Windows SDK installed,
-          # but its include/lib paths aren't automatically in the cargo/bindgen
-          # environment. Add the UCRT and shared include directories so that
-          # bindgen can find <stdlib.h> and other C stdlib headers used by
-          # kcp-sys ikcp.h and other dependencies.
-          # Typical SDK path: C:\Program Files (x86)\Windows Kits\10\
-          # Include: ucrt (C runtime) + shared (core headers)
-          UCRT_INC="C:/Program Files (x86)/Windows Kits/10/Include/10.0.19041.0/ucrt"
-          SHARED_INC="C:/Program Files (x86)/Windows Kits/10/Include/10.0.19041.0/shared"
-          if [ -d "$UCRT_INC" ]; then
-            echo "INCLUDE=$UCRT_INC;$SHARED_INC;$env:INCLUDE" >> "$GITHUB_ENV"
-          else
-            # Fallback: try to add Program Files (x86) Windows Kits root
-            echo "INCLUDE=C:/Program Files (x86)/Windows Kits/10/Include;$env:INCLUDE" >> "$GITHUB_ENV"
-          fi
-          echo "[windows-sdk] Include paths configured for kcp-sys bindgen"
+          # but its include paths aren't automatically in the cargo/bindgen
+          # environment. Find the SDK version and add UCRT/shared include dirs
+          # so bindgen can find <stdlib.h> and other C stdlib headers.
+          $sdkRoot = "C:/Program Files (x86)/Windows Kits/10/Include"
+          if (Test-Path $sdkRoot) {
+            $versions = Get-ChildItem -Path $sdkRoot -Directory | Sort-Object Name -Descending
+            if ($versions.Count -gt 0) {
+              $latestVersion = $versions[0].Name
+              $ucrtInc = "$sdkRoot/$latestVersion/ucrt"
+              $sharedInc = "$sdkRoot/$latestVersion/shared"
+              $umInc = "$sdkRoot/$latestVersion/um"
+              $includePaths = @($ucrtInc, $sharedInc, $umInc) -join ';'
+              # Prepend to existing INCLUDE
+              $env:INCLUDE = "$includePaths;$env:INCLUDE"
+              echo "INCLUDE=$includePaths;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              # Also set BINDGEN_EXTRA_CLANG_ARGS for kcp-sys bindgen
+              $clangArgs = ($ucrtInc, $sharedInc, $umInc) | ForEach-Object { "-I$_" } -join ' '
+              echo "BINDGEN_EXTRA_CLANG_ARGS=$clangArgs" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              echo "[windows-sdk] Found SDK version $latestVersion"
+              echo "[windows-sdk] INCLUDE paths: $includePaths"
+              echo "[windows-sdk] BINDGEN_EXTRA_CLANG_ARGS: $clangArgs"
+            } else {
+              echo "[windows-sdk] WARNING: No SDK versions found in $sdkRoot"
+            }
+          } else {
+            echo "[windows-sdk] WARNING: SDK root not found at $sdkRoot"
+          }
 
       - name: Configure WinDivert (compile from vendored source)
         shell: bash
