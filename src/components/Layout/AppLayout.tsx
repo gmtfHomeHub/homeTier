@@ -1,18 +1,31 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TitleBar } from "./TitleBar";
 import { AppWorkspace } from "../AppBrowser/AppWorkspace";
 import { VoiceAutoJoin } from "../Voice/VoiceAutoJoin";
 import { ShortcutOsd } from "../Common/ShortcutOsd";
 import { useLayoutStore } from "../../stores/layoutStore";
+import { useAppTabsStore } from "../../stores/appTabsStore";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface AppLayoutProps {
   children: ReactNode;
 }
 
+const APP_ROUTE_RE = /^\/space\/[^/]+\/app\/[^/]+$/;
+
 export function AppLayout({ children }: AppLayoutProps) {
   const { sidebarOpen, setSidebarOpen } = useLayoutStore();
+  const location = useLocation();
+  const hideWorkspace = useAppTabsStore((s) => s.hide);
+
+  // 离开应用页（空间/设置/其他路由）时隐藏 AppWorkspace，避免其 z-20 浮层遮挡新页面
+  useEffect(() => {
+    if (!APP_ROUTE_RE.test(location.pathname)) {
+      hideWorkspace();
+    }
+  }, [location.pathname, hideWorkspace]);
 
   return (
     <div className="h-[100dvh] w-screen flex flex-col bg-[var(--color-bg)]">

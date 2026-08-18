@@ -12,6 +12,10 @@ interface JoinSpaceDialogProps {
   onClose: () => void;
 }
 
+interface Html5QrcodeScanner {
+  stop(): Promise<void>;
+}
+
 export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
   const { t } = useTranslation();
   const [networkName, setNetworkName] = useState("");
@@ -21,9 +25,7 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
-  // InstanceType<typeof import("html5-qrcode").Html5Qrcode>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const scannerRef = useRef<any>(null);
+  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
   const joinSpace = useSpaceStore((s) => s.joinSpace);
 
   const isMobile = detectDeviceMode() === "mobile";
@@ -68,7 +70,7 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
     setLoading(true);
     setError(null);
     try {
-      await joinSpace(buildConfigJson(pendingShare));
+      await joinSpace(buildConfigJson(pendingShare), pendingShare.name);
       onClose();
     } catch (e) {
       setError(String(e));
@@ -189,7 +191,7 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
                   {t("settings.networkName")}
                 </div>
                 <div className="text-sm font-medium break-all">
-                  {pendingShare.network_name}
+                  {pendingShare.name || pendingShare.network_name}
                 </div>
               </div>
               <div>

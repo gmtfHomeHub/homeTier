@@ -1,9 +1,8 @@
 use async_trait::async_trait;
-use http_body_util::Full;
 use hyper::body::{Bytes, Incoming};
 use hyper::{Method, Request, Response, StatusCode};
 
-use crate::proxy::plugin::{ProxyPlugin, ProxyResponse, RequestContext, ResponseBody};
+use crate::proxy::plugin::{ProxyPlugin, ProxyResponse, RequestContext};
 
 pub struct CorsPlugin {
     allowed_origins: String,
@@ -64,7 +63,7 @@ impl ProxyPlugin for CorsPlugin {
                 .header("access-control-allow-methods", &self.allowed_methods)
                 .header("access-control-allow-headers", &self.allowed_headers)
                 .header("access-control-max-age", "86400")
-                .body(Full::new(Bytes::new()))?;
+                .body(crate::proxy::plugin::full_body(Bytes::new()))?;
             return Ok(Some(resp));
         }
         Ok(None)

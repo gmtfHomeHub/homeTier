@@ -1,3 +1,4 @@
+import i18next from "i18next";
 import { registerSignalHandler, sendSignal, preloadMembers, resolveMember, getSelfVirtualIp } from "./signal";
 import { useScreenStore, type ScreenQuality } from "../stores/screenStore";
 import { toastError } from "../utils/toast";
@@ -60,7 +61,7 @@ class ScreenService {
     await this.stopWatching();
 
     if (!navigator.mediaDevices?.getDisplayMedia) {
-      throw new Error("当前环境不支持屏幕采集（getDisplayMedia 不可用）");
+      throw new Error(i18next.t("screen.unsupported", "当前环境不支持屏幕采集（getDisplayMedia 不可用）"));
     }
 
     const preset = SCREEN_QUALITY_PRESETS[quality];
@@ -71,15 +72,15 @@ class ScreenService {
         audio: false,
       });
     } catch (e) {
-      toastError("屏幕采集被取消或失败");
+      toastError(i18next.t("screen.captureCancelled", "屏幕采集被取消或失败"));
       throw e;
     }
 
     const track = stream.getVideoTracks()[0];
     if (!track) {
       stream.getTracks().forEach((t) => t.stop());
-      toastError("未获取到屏幕视频轨道");
-      throw new Error("未获取到屏幕视频轨道");
+      toastError(i18next.t("screen.noTrack", "未获取到屏幕视频轨道"));
+      throw new Error(i18next.t("screen.noTrack", "未获取到屏幕视频轨道"));
     }
     // 用户通过系统 UI 停止共享时自动清理
     track.addEventListener("ended", () => {

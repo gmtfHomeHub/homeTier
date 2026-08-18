@@ -7,10 +7,8 @@ pub mod launcher {
     pub use super::launcher_internal::*;
 }
 
-use std::sync::Arc;
 use dashmap::DashMap;
 use uuid::Uuid;
-use tokio::sync::RwLock;
 use std::path::PathBuf;
 
 pub use downloader::{EasyTierDownloader, BinarySource};
@@ -20,6 +18,7 @@ pub use process::EasyTierProcess;
 pub struct EasyTierManager {
     /// 运行中的进程: space_id → process (Desktop)
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[allow(dead_code)]
     processes: DashMap<Uuid, EasyTierProcess>,
     /// 运行中的实例: space_id → RunningInstance (Mobile)
     #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -414,7 +413,6 @@ impl EasyTierManager {
                 match running_info {
                     Some(running_info) => {
                         let mut virtual_ip = None;
-                        let mut connected_peers = 0u32;
 
                         if let Some(ref my_node) = running_info.my_node_info {
                             if let Some(ref ipv4_inet) = my_node.virtual_ipv4 {
@@ -423,7 +421,7 @@ impl EasyTierManager {
                                 }
                             }
                         }
-                        connected_peers = running_info.peer_route_pairs.len() as u32;
+                        let connected_peers = running_info.peer_route_pairs.len() as u32;
 
                         crate::log_info!(format!(
                             "EasyTierManager: collect_network_info 成功, peer_route_pairs={}, routes={}, peers={}, connected_peers={}, has_virtual_ip={}",
@@ -487,7 +485,7 @@ impl EasyTierManager {
     }
 
     /// 获取实例的 RPC 端口（共享 daemon 端口）
-    fn get_instance_rpc_port(&self, instance_id: &Uuid) -> Option<u16> {
+    fn get_instance_rpc_port(&self, _instance_id: &Uuid) -> Option<u16> {
         Some(crate::daemon::ipc::easytier_daemon_rpc_port())
     }
 
@@ -738,7 +736,7 @@ impl EasyTierManager {
         }
 
         // 读取现有 NetworkConfig（从 TOML 反序列化）
-        let toml_content = std::fs::read_to_string(&config_path)
+        let _toml_content = std::fs::read_to_string(&config_path)
             .map_err(|e| format!("读取配置文件失败: {}", e))?;
 
         // 解析 patch 中的字段并应用
@@ -798,7 +796,7 @@ impl EasyTierManager {
         let mut network_config = config::NetworkConfig::default();
 
         // 解析 network_identity
-        if let Some(ni) = toml_content.lines().find(|l| l.starts_with("[network_identity]")) {
+        if let Some(_ni) = toml_content.lines().find(|l| l.starts_with("[network_identity]")) {
             // 简单解析 TOML section
             for line in toml_content.lines().skip_while(|l| !l.starts_with("[network_identity]")).take_while(|l| !l.starts_with('[')) {
                 if let Some((key, value)) = line.split_once('=') {
@@ -1017,7 +1015,9 @@ mod launcher_internal {
         virtual_ip: Option<String>,
         connected_peers: u32,
         is_running: bool,
+        #[allow(dead_code)]
         rx_bytes: u64,
+        #[allow(dead_code)]
         tx_bytes: u64,
         avg_latency_ms: f64,
         peers: Vec<PeerInfo>,

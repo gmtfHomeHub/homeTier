@@ -10,6 +10,7 @@ import { Download, Lock, FileText, ArrowLeft, Upload, Trash2, CheckCircle2, Load
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { isTauri } from "../../utils/api";
 import { sendSignal } from "../../services/signal";
 import { v4 as uuidv4 } from "uuid";
 
@@ -19,6 +20,9 @@ export function FileList() {
   const { files, setFiles, addFile, removeFile, sendQueue, setSendQueue, updateSendQueueItem } = useFileStore();
   const [loading, setLoading] = useState(false);
   const { t } = useTranslation();
+
+  // Web 模式：隐藏文件选择器
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 密码 Dialog 状态
   const [passwordFile, setPasswordFile] = useState<FileInfo | null>(null);
@@ -53,9 +57,13 @@ export function FileList() {
     }
   };
 
-  /** 批量选择文件并发送 */
+  /** 批量选择文件并发送（Tauri 用系统对话框，Web 用隐藏 input） */
   const handleFileSelect = async () => {
     if (!id) return;
+    if (!isTauri()) {
+      fileInputRef.current?.click();
+      return;
+    }
     const selected = await open({ multiple: true });
     if (!selected) return;
     const paths = Array.isArray(selected) ? selected : [selected];
@@ -74,10 +82,30 @@ export function FileList() {
     void sendQueueSequentially(id, paths, items);
   };
 
+  /** Web 模式：input 选择文件后发送 */
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!id) return;
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (files.length === 0) return;
+
+    const items = files.map((f) => ({
+      id: uuidv4(),
+      file_name: f.name,
+      bytes_transferred: 0,
+      total_bytes: 0,
+      speed_bytes_per_sec: 0,
+      status: "Transferring" as const,
+      isUpload: true,
+    }));
+    setSendQueue(id, [...queue, ...items]);
+    void sendQueueSequentially(id, files, items);
+  };
+
   /** 依次发送队列中的文件 */
   const sendQueueSequentially = async (
     spaceId: string,
-    paths: string[],
+    paths: (string | File)[],
     items: FileTransferItem[],
     password?: string
   ) => {
@@ -126,6 +154,11 @@ export function FileList() {
   const doDownload = async (spaceId: string, file: FileInfo, password?: string) => {
     setDownloadStates((s) => ({ ...s, [file.id]: "downloading" }));
     try {
+      if (!isTauri()) {
+        await api.receiveFile(spaceId, file.id, undefined, password);
+        setDownloadStates((s) => ({ ...s, [file.id]: "done" }));
+        return;
+      }
       const savePath = await save({
         defaultPath: file.file_name,
       });
@@ -180,7 +213,14 @@ export function FileList() {
         </Button>
         <span className="font-semibold">{t('file.title')}</span>
         <div className="flex-1" />
-        <Button onClick={handleFileSelect} variant="solid" color="blue" size="2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={handleFileInputChange}
+        />
+        <Button onClick={handleFileSelect} variant="ghost" size="1">
           <Upload size={16} />
           {t('file.batchSend')}
         </Button>

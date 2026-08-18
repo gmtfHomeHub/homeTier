@@ -21,6 +21,7 @@ struct TransferState {
     bytes_transferred: u64,
     speed: u64,
     status: TransferStatus,
+    #[allow(dead_code)]
     last_update: std::time::Instant,
 }
 
@@ -55,7 +56,7 @@ impl FileTransferManager {
         let file_id = file_id.unwrap_or_else(Uuid::new_v4);
 
         // 读取文件内容
-        let mut data = std::fs::read(&file_path)
+        let data = std::fs::read(&file_path)
             .map_err(|e| format!("Read error: {}", e))?;
 
         // 压缩
@@ -142,7 +143,7 @@ impl FileTransferManager {
         let url = format!("http://{}:{}/files/{}", target_ip, target_port, file_id);
         let client = reqwest::Client::new();
 
-        use futures_util::stream::{self, StreamExt};
+        use futures_util::stream;
         let sent_stream = sent.clone();
         let body_stream = stream::iter(chunks.into_iter().map(move |c| {
             sent_stream.fetch_add(c.len() as u64, Ordering::SeqCst);

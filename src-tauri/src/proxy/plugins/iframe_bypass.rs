@@ -1,6 +1,4 @@
 use async_trait::async_trait;
-use hyper::body::Incoming;
-use hyper::{Request, Response};
 
 use crate::proxy::plugin::{ProxyPlugin, ProxyResponse, RequestContext};
 

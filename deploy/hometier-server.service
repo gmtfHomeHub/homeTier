@@ -1,0 +1,33 @@
+[Unit]
+Description=homeTier Server Mode
+Documentation=https://github.com/yourorg/homeTier
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 安装示例：
+#   install -d /opt/homeTier
+#   cp -r dist /opt/homeTier/dist
+#   cp homeTier.conf.example /opt/homeTier/homeTier.conf
+#   install -m 755 src-tauri/target/release/home-tier /opt/homeTier/home-tier
+#   cp deploy/hometier-server.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now hometier-server
+User=hometier
+WorkingDirectory=/opt/homeTier
+ExecStart=/opt/homeTier/home-tier --server --server-bind 0.0.0.0 --server-port 9339 \
+  --server-dir /var/lib/hometier --server-static-dir /opt/homeTier/dist
+Restart=on-failure
+RestartSec=3
+# 数据目录持久化（含 server.conf、homeTier.db、easytier 配置）
+StateDirectory=hometier
+ReadWritePaths=/var/lib/hometier
+# 安全加固
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { Space, SpaceApp } from "../types";
 import { buildAppUrl } from "../types";
-import { buildProxyUrl } from "../components/AppBrowser/ProxyFrame";
+import { resolveProxyUrl } from "../components/AppBrowser/ProxyFrame";
 import { detectDeviceMode, type DeviceMode } from "../utils/device";
 
 export const MAX_IFRAMES = 10;
@@ -26,6 +26,7 @@ interface AppTabsStore {
   openApp: (space: Space, app: SpaceApp) => void;
   setActive: (key: string) => void;
   setLoadError: (key: string, err: boolean) => void;
+  updateProxyUrl: (key: string, url: string) => void;
   closeTab: (key: string) => void;
   clearSpace: (spaceId: string) => void;
   hide: () => void;
@@ -40,10 +41,20 @@ function makeTab(space: Space, app: SpaceApp): AppTab {
     appId: app.id,
     app,
     appUrl,
-    proxyUrl: buildProxyUrl(appUrl),
+    proxyUrl: "",
     lastActiveAt: Date.now(),
     loadError: false,
   };
+}
+
+/** 异步解析本地 HTTP 代理 URL，完成后回写 store；失败标记加载错误 */
+async function resolveTabProxyUrl(key: string, appUrl: string) {
+  try {
+    const url = await resolveProxyUrl(appUrl);
+    useAppTabsStore.getState().updateProxyUrl(key, url);
+  } catch {
+    useAppTabsStore.getState().setLoadError(key, true);
+  }
 }
 
 export const useAppTabsStore = create<AppTabsStore>((set) => ({
@@ -72,6 +83,8 @@ export const useAppTabsStore = create<AppTabsStore>((set) => ({
         const oldest = [...openApps].sort((a, b) => a.lastActiveAt - b.lastActiveAt)[0];
         openApps = openApps.filter((t) => t.key !== oldest.key);
       }
+      const appUrl = buildAppUrl(app);
+      resolveTabProxyUrl(key, appUrl);
       return { openApps, activeKey: key, visible: true };
     });
   },
@@ -90,6 +103,14 @@ export const useAppTabsStore = create<AppTabsStore>((set) => ({
     set((state) => ({
       openApps: state.openApps.map((t) =>
         t.key === key ? { ...t, loadError: err } : t
+      ),
+    }));
+  },
+
+  updateProxyUrl: (key, url) => {
+    set((state) => ({
+      openApps: state.openApps.map((t) =>
+        t.key === key ? { ...t, proxyUrl: url } : t
       ),
     }));
   },

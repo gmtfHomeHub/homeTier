@@ -10,12 +10,14 @@ interface SettingsStore {
   logEnabled: boolean;
   micShortcut: string;
   speakerShortcut: string;
+  shortcutEditing: boolean;
   setTheme: (theme: ThemeEnum) => void;
   setLanguage: (lang: LanguageEnum) => void;
   setUseProxy: (v: boolean) => void;
   setLogEnabled: (v: boolean) => void;
   setMicShortcut: (v: string) => void;
   setSpeakerShortcut: (v: string) => void;
+  setShortcutEditing: (v: boolean) => void;
   setSettingsTab: (tab: SettingTabEnum) => void;
 }
 
@@ -28,6 +30,7 @@ export const useSettingsStore = create<SettingsStore>()(
       logEnabled: true,
       micShortcut: "Ctrl+M",
       speakerShortcut: "Ctrl+T",
+      shortcutEditing: false,
       settingsTab: SettingTabEnum.BASIC,
       setTheme: (theme) => set({ theme }),
       setLanguage: (language) => set({ language }),
@@ -35,6 +38,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setLogEnabled: (logEnabled) => set({ logEnabled }),
       setMicShortcut: (micShortcut) => set({ micShortcut }),
       setSpeakerShortcut: (speakerShortcut) => set({ speakerShortcut }),
+      setShortcutEditing: (shortcutEditing) => set({ shortcutEditing }),
       setSettingsTab: (settingsTab) => set({ settingsTab }),
     }),
     {

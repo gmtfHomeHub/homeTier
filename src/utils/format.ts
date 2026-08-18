@@ -1,3 +1,5 @@
+import i18next from "i18next";
+
 export function formatFileSize(bytes: number): string {
   if (bytes === 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -11,9 +13,9 @@ export function formatTimestamp(iso: string): string {
   const now = new Date();
   const diff = now.getTime() - date.getTime();
 
-  if (diff < 60000) return "刚刚";
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
+  if (diff < 60000) return i18next.t("format.justNow");
+  if (diff < 3600000) return i18next.t("format.minutesAgo", { count: Math.floor(diff / 60000) });
+  if (diff < 86400000) return i18next.t("format.hoursAgo", { count: Math.floor(diff / 3600000) });
 
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");

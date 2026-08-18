@@ -43,6 +43,7 @@ function StatusIndicator({ status }: { status: Message["status"] }) {
 }
 
 export function MessageList({ messages }: MessageListProps) {
+  const { t } = useTranslation();
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -52,7 +53,7 @@ export function MessageList({ messages }: MessageListProps) {
   if (messages.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-[var(--color-text-secondary)] text-sm">
-        暂无消息，开始聊天吧
+        {t("chat.noMessages")}
       </div>
     );
   }
@@ -82,7 +83,7 @@ export function MessageList({ messages }: MessageListProps) {
               {msg.msg_type === "image" ? (
                 <img
                   src={msg.content}
-                  alt="图片"
+                  alt={t("chat.image")}
                   className="max-w-sm rounded-lg mt-1 cursor-pointer hover:opacity-90"
                   onClick={() => window.open(msg.content)}
                 />

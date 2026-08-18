@@ -10,6 +10,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Button, TextField, Text, Flex, Callout } from "@radix-ui/themes";
 import { FileCog, RefreshCw, AlertTriangle } from "lucide-react";
 import { toastError } from "../../utils/toast";
+import { useSettingsStore } from "../../stores/settingsStore";
 
 interface KeyMeta {
   description: string;
@@ -38,6 +39,12 @@ export function AppConfigEditor() {
   const [templatePath, setTemplatePath] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const storeLogEnabled = useSettingsStore((s) => s.logEnabled);
+
+  const syncLogEnabled = (cfg: Record<string, string>) => {
+    const v = cfg["LOG_ENABLED"];
+    if (v !== undefined) useSettingsStore.getState().setLogEnabled(v !== "0");
+  };
 
   const load = async () => {
     try {
@@ -49,6 +56,7 @@ export function AppConfigEditor() {
       setConfig(cfg);
       setPath(cfgPath);
       setTemplatePath(tmplPath);
+      syncLogEnabled(cfg);
     } catch (e) {
       console.error(e);
     }
@@ -67,6 +75,7 @@ export function AppConfigEditor() {
     setSaved(false);
     try {
       await setAppConfig(config);
+      syncLogEnabled(config);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -83,6 +92,14 @@ export function AppConfigEditor() {
     }
     setConfig(next);
   };
+
+  // 基本设置页签的日志开关变化时，同步更新本页签的 LOG_ENABLED 字段
+  useEffect(() => {
+    setConfig((prev) => {
+      const want = storeLogEnabled ? "1" : "0";
+      return prev["LOG_ENABLED"] === want ? prev : { ...prev, LOG_ENABLED: want };
+    });
+  }, [storeLogEnabled]);
 
   return (
     <div className="p-4 space-y-4">

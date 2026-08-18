@@ -30,8 +30,42 @@ pub async fn send_file(
     // 获取 peer 列表（虚拟 IP + 文件服务器端口）
     let peers = space_manager.get_peers_for_file_transfer(&space_uuid).await?;
 
+    // 离线场景：无在线 peer 时创建空记录（接收方上线后通过信令 + HTTP 下载）
     if peers.is_empty() {
-        return Err("没有可用的 peers".to_string());
+        let file_id = uuid::Uuid::new_v4();
+        let file_name = path.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let meta = std::fs::metadata(&path).map_err(|e| format!("无法读取文件: {}", e))?;
+        let file_info = FileInfo {
+            id: file_id,
+            space_id: space_uuid,
+            sender_id,
+            file_name: file_name.clone(),
+            file_size: meta.len(),
+            file_hash: None,
+            mime_type: None,
+            is_compressed: false,
+            is_password_protected: password.is_some(),
+            storage_path: None,
+            created_at: chrono::Local::now(),
+        };
+        let row = crate::db::models::FileRow {
+            id: file_info.id.to_string(),
+            space_id: file_info.space_id.to_string(),
+            sender_id: file_info.sender_id.to_string(),
+            file_name: file_info.file_name.clone(),
+            file_size: file_info.file_size as i64,
+            file_hash: file_info.file_hash.clone(),
+            mime_type: file_info.mime_type.clone(),
+            is_compressed: file_info.is_compressed,
+            is_password_protected: file_info.is_password_protected,
+            storage_path: file_info.storage_path.clone(),
+            created_at: file_info.created_at.to_rfc3339(),
+        };
+        db.insert_file(&row)?;
+        crate::log_info!(format!("空间无在线成员，文件已记录待离线接收: {}", file_name), &space_id);
+        return Ok(SendFileResult { transfer_id: file_id.to_string(), file_info });
     }
 
     // 发送给所有在线成员（复用同一 file_id）
@@ -134,7 +168,7 @@ pub async fn delete_file(
 pub async fn list_files(
     space_id: String,
     limit: Option<u32>,
-    db: State<'_, Arc<Database>>,
+    _db: State<'_, Arc<Database>>,
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<Vec<FileInfo>, String> {
     // 从数据库查询

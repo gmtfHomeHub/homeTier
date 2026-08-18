@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # homeTier 镜像：内置前端资源与 easytier-core（resources/bin/），
-# 默认以 headless daemon 模式运行（--daemon），可通过 CLI 参数覆盖。
+# 默认以服务器模式运行（--server，Web 管理界面 + REST/WS API），可通过 CLI 参数覆盖。
 
 ARG EASYTIER_CORE_VERSION=v2.6.4
 
@@ -17,12 +17,12 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 # 系统依赖（webkit2gtk 等，与 GitHub Actions ubuntu 一致）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libwebkit2gtk-4.1-dev \
-    libappindicator3-dev \
     librsvg2-dev \
     patchelf \
     libssl-dev \
     libxdo-dev \
     libayatana-appindicator3-dev \
+    protobuf-compiler \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
@@ -58,11 +58,14 @@ RUN useradd -m -u 10001 -s /bin/sh hometier && mkdir -p ${HOME}/.local/share/hom
 WORKDIR /opt/homeTier
 COPY --from=build /app/src-tauri/target/release/homeTier /opt/homeTier/homeTier
 COPY --from=build /app/src-tauri/resources/bin /opt/homeTier/resources/bin
+COPY --from=build /app/dist /opt/homeTier/dist
 COPY --from=build /app/homeTier.conf.example /opt/homeTier/homeTier.conf.example
 
 USER hometier
-EXPOSE 15888 15889
+EXPOSE 15888 15889 9339
 
-# 默认以 daemon 模式运行；通过 --daemon-resource-dir 使内置 easytier-core 兜底可用，
-# 可通过 --daemon-config / --daemon-data 指定数据目录
-ENTRYPOINT ["/opt/homeTier/homeTier", "--daemon", "--daemon-resource-dir", "/opt/homeTier/resources"]
+# 默认以服务器模式运行（--server，内置前端静态资源 + REST/WS API）；
+# --server-resource-dir 定位内置 easytier-core 兜底二进制，
+# 可通过 --server-bind / --server-port / --server-dir 覆盖监听与数据目录，
+# 或通过 --daemon 切换为 headless daemon 模式
+ENTRYPOINT ["/opt/homeTier/homeTier", "--server", "--server-bind", "0.0.0.0", "--server-port", "9339", "--server-resource-dir", "/opt/homeTier", "--server-static-dir", "/opt/homeTier/dist", "--server-dir", "/home/hometier/.local/share/homeTier"]

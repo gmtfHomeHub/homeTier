@@ -1,14 +1,13 @@
-import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
-import type { ShortcutEvent } from "@tauri-apps/plugin-global-shortcut";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useShortcutOsdStore } from "../stores/shortcutOsdStore";
 import { voiceService } from "./voice";
-
-const DEFAULT_MIC_SHORTCUT = "Ctrl+M";
-const DEFAULT_SPEAKER_SHORTCUT = "Ctrl+T";
+import { isTauri } from "../utils/api";
 
 function handlePressed(shortcut: string): void {
-  const { micShortcut, speakerShortcut } = useSettingsStore.getState();
+  const state = useSettingsStore.getState();
+  // 快捷键编辑中：忽略一切触发，避免录入过程误触功能
+  if (state.shortcutEditing) return;
+  const { micShortcut, speakerShortcut } = state;
   if (!voiceService.joined) {
     useShortcutOsdStore.getState().show("mic", true, true);
     return;
@@ -24,17 +23,26 @@ function handlePressed(shortcut: string): void {
   }
 }
 
-function toHandler(shortcut: string): (event: ShortcutEvent) => void {
+function toHandler(shortcut: string): (event: { state: string }) => void {
   return (event) => {
     if (event.state === "Pressed") handlePressed(shortcut);
   };
 }
 
 export async function applyGlobalShortcuts(): Promise<void> {
+  // Web 模式无全局快捷键插件，仅保留页面内快捷入口
+  if (!isTauri()) return;
   const { micShortcut, speakerShortcut } = useSettingsStore.getState();
+  let mod: typeof import("@tauri-apps/plugin-global-shortcut");
+  try {
+    mod = await import("@tauri-apps/plugin-global-shortcut");
+  } catch {
+    // 插件未注册时忽略
+    return;
+  }
 
   try {
-    await unregister([micShortcut, speakerShortcut]);
+    await mod.unregister([micShortcut, speakerShortcut]);
   } catch {
     // 未注册或权限不足时忽略
   }
@@ -42,7 +50,7 @@ export async function applyGlobalShortcuts(): Promise<void> {
   const all = [micShortcut, speakerShortcut];
   const unique = [...new Set(all)];
   try {
-    await register(unique, (event) => {
+    await mod.register(unique, (event) => {
       if (event.state === "Pressed") handlePressed(event.shortcut);
     });
   } catch (e) {
@@ -50,4 +58,4 @@ export async function applyGlobalShortcuts(): Promise<void> {
   }
 }
 
-export { DEFAULT_MIC_SHORTCUT, DEFAULT_SPEAKER_SHORTCUT };
+export { handlePressed as handleShortcutPress };

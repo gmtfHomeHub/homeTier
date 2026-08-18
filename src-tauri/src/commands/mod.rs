@@ -1,6 +1,7 @@
 pub mod app;
 pub mod chat;
 pub mod config;
+pub mod config_store;
 pub mod daemon;
 pub mod easytier;
 pub mod file;
@@ -13,5 +14,6 @@ pub mod screen;
 pub mod signal;
 pub mod space;
 pub mod tray;
+pub mod update_app;
 pub mod util;
 pub mod voice;

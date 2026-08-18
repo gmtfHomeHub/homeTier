@@ -2,6 +2,7 @@
 
 // macOS 生产版不再自我提权（S3），GUI 保持普通用户权限；这些函数仅 Windows/Linux 使用。
 #[cfg(not(target_os = "macos"))]
+#[allow(dead_code)]
 fn is_elevated() -> bool {
     #[cfg(target_os = "windows")]
     {
@@ -15,6 +16,7 @@ fn is_elevated() -> bool {
 }
 
 #[cfg(not(target_os = "macos"))]
+#[allow(dead_code)]
 fn elevate_self() -> bool {
     let exe = std::env::current_exe().unwrap_or_default();
 
@@ -42,7 +44,7 @@ fn elevate_self() -> bool {
     {
         return std::process::Command::new("/usr/bin/pkexec")
             .arg("--disable-internal-agent")
-            .arg(exe.to_string_lossy())
+            .arg(exe.to_string_lossy().into_owned())
             .arg("--elevated")
             .spawn()
             .is_ok();
@@ -53,6 +55,33 @@ fn elevate_self() -> bool {
 
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().collect();
+    
+    // --server 模式（Web 管理界面 + REST API）
+    if args.iter().any(|a| a == "--server") {
+        let bind = args
+            .iter()
+            .position(|a| a == "--server-bind")
+            .and_then(|i| args.get(i + 1).cloned());
+        let port = args
+            .iter()
+            .position(|a| a == "--server-port")
+            .and_then(|i| args.get(i + 1).and_then(|s| s.parse().ok()));
+        let server_dir = args
+            .iter()
+            .position(|a| a == "--server-dir")
+            .and_then(|i| args.get(i + 1).map(std::path::PathBuf::from));
+        let resource_dir = args
+            .iter()
+            .position(|a| a == "--server-resource-dir")
+            .and_then(|i| args.get(i + 1).map(std::path::PathBuf::from));
+        let static_dir = args
+            .iter()
+            .position(|a| a == "--server-static-dir")
+            .and_then(|i| args.get(i + 1).map(std::path::PathBuf::from));
+        
+        return home_tier_lib::run_server(bind, port, server_dir, resource_dir, static_dir);
+    }
+
     let daemon = args.iter().any(|a| a == "--daemon");
 
     if daemon {

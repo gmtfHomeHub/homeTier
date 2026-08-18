@@ -104,12 +104,12 @@ export function EasyTierVersionManager() {
         <Button
           onClick={handleCheckUpdate}
           disabled={checking}
-          variant="outline"
+          variant="ghost"
           size="1"
           loading={checking}
         >
-          <RefreshCw size={14} />
-          {t("settings.checkUpdate")}
+          <ArrowUpCircle size={14} />
+          {t("settings.update")}
         </Button>
       </Flex>
       </Flex>

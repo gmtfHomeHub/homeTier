@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "eslint src/ --fix && vite",
     "build": "tsc --noEmit && vite build",
+    "build:server": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
     "lint": "eslint src/",

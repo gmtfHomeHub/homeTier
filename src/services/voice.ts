@@ -1,3 +1,4 @@
+import i18next from "i18next";
 import { registerSignalHandler, sendSignal, preloadMembers, resolveMember, getSelfVirtualIp } from "./signal";
 import { useVoiceStore } from "../stores/voiceStore";
 
@@ -27,7 +28,7 @@ interface RemotePeer {
   stream: MediaStream | null;
   pendingIce: RTCIceCandidateInit[];
   ctx: AudioContext;
-  source: MediaStreamAudioSourceNode;
+  source: MediaStreamAudioSourceNode | null;
   analyser: AnalyserNode;
   gain: GainNode;
 }
@@ -56,7 +57,7 @@ class VoiceService {
     await this.leave();
 
     if (!navigator.mediaDevices?.getUserMedia) {
-      throw new Error("当前环境不支持麦克风采集（mediaDevices 不可用）");
+      throw new Error(i18next.t("voice.unsupported", "当前环境不支持麦克风采集（mediaDevices 不可用）"));
     }
 
     useVoiceStore.getState().setJoining(true);
@@ -377,7 +378,7 @@ class VoiceService {
       stream: null,
       pendingIce: [],
       ctx,
-      source: null as unknown as MediaStreamAudioSourceNode,
+      source: null,
       analyser,
       gain,
     };
@@ -391,8 +392,9 @@ class VoiceService {
     pc.ontrack = (e) => {
       const stream = e.streams[0] ?? new MediaStream([e.track]);
       peer.stream = stream;
-      peer.source = ctx.createMediaStreamSource(stream);
-      peer.source.connect(analyser);
+      const src = ctx.createMediaStreamSource(stream);
+      peer.source = src;
+      src.connect(analyser);
       useVoiceStore.getState().setPeerStream(remoteIp, stream);
     };
 

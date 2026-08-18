@@ -7,23 +7,6 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
 use crate::easytier::EasyTierManager;
 
-async fn wait_rpc_ready(rpc_port: u16, timeout: std::time::Duration) -> bool {
-    let start = std::time::Instant::now();
-    while start.elapsed() < timeout {
-        match tokio::net::TcpStream::connect(format!("127.0.0.1:{}", rpc_port)).await {
-            Ok(_) => {
-                crate::log_info!(format!("[Daemon] RPC 端口就绪，耗时 {:?}", start.elapsed()));
-                return true;
-            }
-            Err(_) => {
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            }
-        }
-    }
-    crate::log_error!(format!("[Daemon] RPC 端口 {} 就绪超时 {:?}", rpc_port, timeout));
-    false
-}
-
 pub struct Daemon {
     status: Arc<RwLock<ipc::DaemonStatus>>,
     easytier: Arc<EasyTierManager>,
@@ -229,7 +212,7 @@ impl Daemon {
         easytier: Arc<EasyTierManager>,
         shutdown_tx: broadcast::Sender<()>,
     ) {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::io::AsyncReadExt;
 
         loop {
             // 读取请求长度 (4 bytes)
@@ -470,7 +453,7 @@ impl Daemon {
             }
             ipc::IpcRequest::WriteLog { entries } => {
                 for e in entries {
-                    crate::log::log(e.level, &e.module, e.message, e.space_id);
+                    crate::log::log(e.level, &e.target, e.message, e.space_id);
                 }
                 ipc::IpcResponse::Ok { data: None }
             }

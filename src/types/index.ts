@@ -17,6 +17,7 @@ export interface Space {
 
 /** 分享链接信息（后端解密后返回） */
 export interface ShareInfo {
+  name?: string;
   network_name: string;
   network_secret: string;
   host_hint?: string;
@@ -75,9 +76,43 @@ export interface LogEntry {
   seq: number;
   timestamp: string;
   level: "debug" | "info" | "warning" | "error";
+  target: string;
   module: string;
+  category:
+    | "system"
+    | "network"
+    | "webrtc"
+    | "data"
+    | "proxy"
+    | "daemon"
+    | "space"
+    | "server";
   message: string;
   space_id?: string;
+  trace_id?: string;
+}
+
+export type LogLevel = "debug" | "info" | "warning" | "error";
+export type LogCategory =
+  | "system"
+  | "network"
+  | "webrtc"
+  | "data"
+  | "proxy"
+  | "daemon"
+  | "space"
+  | "server";
+
+export interface LogFilter {
+  level?: LogLevel;
+  space_id?: string;
+  module?: string;
+  category?: LogCategory;
+  keyword?: string;
+  since_seq?: number;
+  before_ts?: string;
+  after_ts?: string;
+  limit?: number;
 }
 
 export interface PeerInfo {
@@ -109,6 +144,14 @@ export interface SpaceApp {
   sort_order: number;
   created_by: string;
   created_at: string;
+}
+
+export interface SystemApp {
+  name: string;
+  path: string;
+  icon?: string;
+  desc?: string;
+  enabled?: boolean;
 }
 
 export function buildAppUrl(app: SpaceApp): string {
@@ -148,3 +191,15 @@ export interface PortForwardRule {
 
 
 
+
+// 应用更新检查结果
+export interface CheckAppUpdate {
+  current: string;
+  latest: string | null;
+  has_update: boolean;
+}
+
+// 应用更新执行结果
+export interface AppUpdateOutcome {
+  action: "installed" | "open_release";
+}

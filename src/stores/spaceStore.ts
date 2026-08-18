@@ -12,7 +12,7 @@ interface SpaceStore {
   loadSpaces: () => Promise<void>;
   loadSpacesOnce: () => Promise<void>;
   createSpace: (name: string, networkSecret: string, description?: string) => Promise<Space>;
-  joinSpace: (configJson: string) => Promise<Space>;
+  joinSpace: (configJson: string, name?: string) => Promise<Space>;
   leaveSpace: (spaceId: string) => Promise<void>;
   deleteSpace: (spaceId: string) => Promise<void>;
   setCurrentSpace: (id: string | null) => void;
@@ -62,8 +62,8 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
     return space;
   },
 
-  joinSpace: async (configJson) => {
-    const space = await api.joinSpace(configJson);
+  joinSpace: async (configJson, name) => {
+    const space = await api.joinSpace(configJson, name);
     set((state) => ({ spaces: [...state.spaces, space] }));
     syncTrayMenu(get().spaces);
     return space;

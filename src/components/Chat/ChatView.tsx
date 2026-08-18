@@ -54,29 +54,6 @@ export function ChatView() {
           </Button>
           <span className="font-semibold">{t("chat.title")}</span>
           <div className="flex-1" />
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger>
-              <Button variant="ghost" size="2">
-                <MoreHorizontal size={18} />
-              </Button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content>
-              <DropdownMenu.Item onClick={() => navigate(`/space/${id}/voice`)}>
-                <Mic size={16} />
-                {t("voice.title")}
-              </DropdownMenu.Item>
-              <DropdownMenu.Item onClick={() => navigate(`/space/${id}/files`)}>
-                <FileUp size={16} />
-                {t("file.title")}
-              </DropdownMenu.Item>
-              <DropdownMenu.Item
-                onClick={() => navigate(`/space/${id}/screen`)}
-              >
-                <Monitor size={16} />
-                {t("screen.title")}
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
         </>
       }
     >

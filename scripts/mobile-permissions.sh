@@ -4,8 +4,12 @@
 
 set -euo pipefail
 
-ANDROID_MANIFEST="src-tauri/gen/android/AndroidManifest.xml"
-IOS_PLIST="src-tauri/gen/ios/App/Info.plist"
+ANDROID_MANIFEST="src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+IOS_PLIST="src-tauri/gen/apple/homeTier_iOS/Info.plist"
+
+# 防御：文件不存在时告警但不阻断（避免 build 因路径漂移被静默跳过注入）
+[ -f "$ANDROID_MANIFEST" ] || echo "[mobile-permissions] WARN: $ANDROID_MANIFEST 不存在（tauri android init 未执行或结构变更）"
+[ -f "$IOS_PLIST" ] || echo "[mobile-permissions] WARN: $IOS_PLIST 不存在（tauri ios init 未执行或结构变更）"
 
 if [ -f "$ANDROID_MANIFEST" ]; then
     if ! grep -q 'android.permission.CAMERA' "$ANDROID_MANIFEST"; then

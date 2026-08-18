@@ -43,3 +43,18 @@ pub async fn set_proxy_source(
     *origin.write().await = Some(url);
     Ok(())
 }
+
+#[tauri::command]
+pub async fn set_device_mode(mode: String) -> Result<(), String> {
+    crate::log_info!(format!("设置设备仿真模式: {}", mode));
+    crate::proxy::hometier_protocol::set_device_mode(&mode);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_pending_downloads() -> Result<Vec<String>, String> {
+    let mut queue = crate::proxy::hometier_protocol::pending_downloads()
+        .lock()
+        .unwrap();
+    Ok(std::mem::take(&mut *queue))
+}

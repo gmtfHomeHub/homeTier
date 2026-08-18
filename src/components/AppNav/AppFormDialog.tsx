@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { X, Search } from "lucide-react";
 import { Button, TextField, Select, Flex, Text, Dialog } from "@radix-ui/themes";
 import { Icon } from "@iconify/react";
@@ -22,6 +23,7 @@ const PROTOCOL_OPTIONS = [
 const NEW_CATEGORY_VALUE = "__new__";
 
 export function AppFormDialog({ app, spaceId, existingCategories, onClose, onSubmit }: AppFormDialogProps) {
+  const { t } = useTranslation();
   const isEditing = !!app;
   const [name, setName] = useState(app?.name ?? "");
   const [category, setCategory] = useState(app?.category ?? "");
@@ -82,7 +84,7 @@ export function AppFormDialog({ app, spaceId, existingCategories, onClose, onSub
       <Dialog.Content className="w-full max-w-[calc(100vw-24px)] sm:w-[520px]">
         <div className="flex items-center justify-between mb-4">
           <Dialog.Title className="m-0 text-lg font-semibold">
-            {isEditing ? "编辑应用" : "添加应用"}
+            {isEditing ? t("appNav.editApp") : t("appNav.addApp")}
           </Dialog.Title>
           <Dialog.Close>
             <Button variant="ghost" size="2">
@@ -106,12 +108,12 @@ export function AppFormDialog({ app, spaceId, existingCategories, onClose, onSub
           {/* 名称 */}
           <div>
             <Text as="label" size="2" weight="medium" mb="1" className="block">
-              应用名称
+              {t("appNav.appName")}
             </Text>
             <TextField.Root
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="输入应用名称"
+              placeholder={t("appNav.appNamePlaceholder")}
               autoFocus
             />
           </div>
@@ -119,7 +121,7 @@ export function AppFormDialog({ app, spaceId, existingCategories, onClose, onSub
           {/* 分类 — 下拉选择 + 输入新模式 */}
           <div>
             <Text as="label" size="2" weight="medium" mb="1" className="block">
-              分类
+              {t("appNav.category")}
             </Text>
             {categoryMode === "select" ? (
               <Select.Root value={category} onValueChange={handleCategorySelect}>
@@ -127,11 +129,11 @@ export function AppFormDialog({ app, spaceId, existingCategories, onClose, onSub
                 <Select.Content>
                   {existingCategories.map((cat) => (
                     <Select.Item key={cat} value={cat}>
-                      {cat || "未分类"}
+                      {cat || t("appNav.uncategorized")}
                     </Select.Item>
                   ))}
                   <Select.Item value={NEW_CATEGORY_VALUE}>
-                    + 输入新分类
+                    {t("appNav.newCategory")}
                   </Select.Item>
                 </Select.Content>
               </Select.Root>
@@ -140,7 +142,7 @@ export function AppFormDialog({ app, spaceId, existingCategories, onClose, onSub
                 <TextField.Root
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  placeholder="输入新分类名称"
+                  placeholder={t("appNav.newCategoryPlaceholder")}
                   className="flex-1"
                 />
                 {existingCategories.length > 0 && (
@@ -153,7 +155,7 @@ export function AppFormDialog({ app, spaceId, existingCategories, onClose, onSub
                     variant="ghost"
                     size="2"
                   >
-                    选择已有
+                    {t("appNav.selectExisting")}
                   </Button>
                 )}
               </Flex>
@@ -163,28 +165,28 @@ export function AppFormDialog({ app, spaceId, existingCategories, onClose, onSub
           {/* 图标 — Iconify */}
           <div>
             <Text as="label" size="2" weight="medium" mb="1" className="block">
-              图标（Iconify 名称）
+              {t("appNav.icon")}
             </Text>
             <Flex gap="2">
               <TextField.Root
                 value={icon}
                 onChange={(e) => setIcon(e.target.value)}
-                placeholder="如: mdi:home, ph:globe"
+                placeholder={t("appNav.iconPlaceholder")}
                 className="flex-1"
               />
-              <Button type="button" onClick={openIconSearch} variant="ghost" size="2" title="搜索图标">
+              <Button type="button" onClick={openIconSearch} variant="ghost" size="2" title={t("appNav.searchIcon")}>
                 <Search size={16} />
               </Button>
             </Flex>
             <Text size="1" className="text-[var(--color-text-secondary)] mt-1">
-              从 <a href="https://icon-sets.iconify.design/" target="_blank" rel="noopener noreferrer" className="underline">icon-sets.iconify.design</a> 搜索图标，复制名称后粘贴
+              <a href="https://icon-sets.iconify.design/" target="_blank" rel="noopener noreferrer" className="underline">{t("appNav.fromIconify")}</a> {t("appNav.searchIconHint")}
             </Text>
           </div>
 
           {/* URL 分段 */}
           <div>
             <Text as="label" size="2" weight="medium" mb="1" className="block">
-              地址
+              {t("appNav.address")}
             </Text>
             <Flex gap="2" align="end">
               <Select.Root value={protocol} onValueChange={setProtocol}>
@@ -201,37 +203,37 @@ export function AppFormDialog({ app, spaceId, existingCategories, onClose, onSub
               <TextField.Root
                 value={hostname}
                 onChange={(e) => setHostname(e.target.value)}
-                placeholder="主机地址"
+                placeholder={t("appNav.hostnamePlaceholder")}
                 className="flex-1"
               />
               <Text size="1" className="text-[var(--color-text-secondary)]">:</Text>
               <TextField.Root
                 value={port}
                 onChange={(e) => setPort(e.target.value)}
-                placeholder="端口"
+                placeholder={t("appNav.portPlaceholder")}
                 style={{ width: 80 }}
               />
               <Text size="1" className="text-[var(--color-text-secondary)]">/</Text>
               <TextField.Root
                 value={pathname}
                 onChange={(e) => setPathname(e.target.value)}
-                placeholder="路径"
+                placeholder={t("appNav.pathPlaceholder")}
                 className="flex-1"
               />
             </Flex>
             {hostname && (
               <Text size="1" className="text-[var(--color-text-secondary)] mt-1 block">
-                预览: {urlPreview}
+                {t("appNav.preview")} {urlPreview}
               </Text>
             )}
           </div>
 
           <Flex justify="end" gap="2" pt="2">
             <Button type="button" onClick={onClose} variant="outline" size="2">
-              取消
+              {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={saving || !name.trim()} variant="solid" color="blue" size="2" loading={saving}>
-              {saving ? "保存中..." : isEditing ? "保存" : "添加"}
+              {saving ? t("common.saving") : isEditing ? t("common.save") : t("common.add")}
             </Button>
           </Flex>
         </form>

@@ -111,3 +111,17 @@ pub struct PortForwardRuleRow {
     pub created_at: String,
     pub updated_at: String,
 }
+
+/// 代理 Cookie 行数据（数据库映射，host_key 为 "host:port"）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProxyCookieRow {
+    pub host_key: String,
+    pub name: String,
+    pub value: String,
+    pub path: String,
+    pub domain: Option<String>,
+    pub expires_at: Option<i64>, // unix 秒；None = 会话 Cookie
+    pub http_only: bool,
+    pub secure: bool,
+    pub same_site: Option<String>,
+}

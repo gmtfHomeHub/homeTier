@@ -1,5 +1,5 @@
 import { Button } from "@radix-ui/themes";
-import { ArrowLeft, Home } from "lucide-react";
+import { Home } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 

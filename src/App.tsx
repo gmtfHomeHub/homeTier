@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import i18next from "i18next";
 import { AppLayout } from "./components/Layout/AppLayout";
 import { TrayBridge } from "./components/Layout/TrayBridge";
 import { SpaceList } from "./components/Space/SpaceList";
@@ -14,12 +15,13 @@ import { NotFoundPage } from "./components/Common/NotFoundPage";
 import { AppLoadingScreen, AppErrorScreen } from "./components/Common/AppLoadingScreen";
 import { useSpaceStore } from "./stores/spaceStore";
 import { useSettingsStore } from "./stores/settingsStore";
+import { useUpdateStore } from "./stores/updateStore";
 import { useEffect, useState } from "react";
 import { Theme } from "@radix-ui/themes";
 import { isDaemonReady, getDaemonErrorReason } from "./utils/api";
 import { listen } from "@tauri-apps/api/event";
 import { initRealtime } from "./services/realtime";
-import { applyGlobalShortcuts } from "./services/shortcuts";
+import { applyGlobalShortcuts, handleShortcutPress } from "./services/shortcuts";
 import { registerSignalHandler, resolveMember } from "./services/signal";
 import * as api from "./utils/api";
 import { useFileStore } from "./stores/fileStore";
@@ -76,7 +78,7 @@ export default function App() {
         "daemon-ready",
         (event) => {
           if (!event.payload.ready) {
-            setAppError(`daemon 启动失败: ${event.payload.reason || "未知原因"}`);
+            setAppError(i18next.t("common.daemonStartFailed", { reason: event.payload.reason || i18next.t("common.unknown") }));
           }
         }
       );
@@ -96,11 +98,11 @@ export default function App() {
             const reason = await getDaemonErrorReason();
             setAppError(
               reason 
-                ? `daemon 启动超时: ${reason}` 
-                : "daemon 启动超时（超过30秒），请重试"
+                ? i18next.t("common.daemonStartTimeoutReason", { reason }) 
+                : i18next.t("common.daemonStartTimeout")
             );
           } catch {
-            setAppError("daemon 启动超时（超过30秒），请重试");
+            setAppError(i18next.t("common.daemonStartTimeout"));
           }
           return;
         }
@@ -125,6 +127,9 @@ export default function App() {
     let cancelled = false;
     let unlisten: (() => void) | null = null;
 
+    // 启动时检查一次应用更新（失败静默）
+    useUpdateStore.getState().checkAppUpdate();
+
     initRealtime()
       .then((fn) => {
         if (cancelled) {
@@ -139,12 +144,32 @@ export default function App() {
       console.error("[shortcuts] init failed:", e)
     );
 
+    // 配置变更（含 LOG_ENABLED）时刷新日志开关，保证设置页签间双向同步
+    const unlistenConfigChanged = listen("config:changed", async () => {
+      try {
+        const enabled = await api.getLogEnabled();
+        useSettingsStore.getState().setLogEnabled(enabled);
+      } catch (e) {
+        console.warn("[config] refresh log enabled failed:", e);
+      }
+    }).catch(() => null);
+
+    // Web 模式无全局快捷键插件，降级为页面内 Ctrl+M / Ctrl+T
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      const key = e.key.toLowerCase();
+      if (key === "m") handleShortcutPress("Ctrl+M");
+      else if (key === "t") handleShortcutPress("Ctrl+T");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    const removeKeyDown = () => window.removeEventListener("keydown", onKeyDown);
+
     // 文件信令：收到 "sent" 时落库并刷新文件列表
     const unregisterFileSignal = registerSignalHandler("file", async (spaceId, env) => {
       if (env.type !== "sent") return;
       try {
-        const payload = env.data as unknown as { file?: FileInfo };
-        const fileInfo = payload?.file;
+        const data = env.data as { file?: FileInfo };
+        const fileInfo = data?.file;
         if (!fileInfo || !fileInfo.id) return;
         await api.recordReceivedFile(fileInfo);
         const fresh = await api.listFiles(spaceId);
@@ -174,6 +199,8 @@ export default function App() {
       cancelled = true;
       unregisterFileSignal();
       unlisten?.();
+      removeKeyDown();
+      unlistenConfigChanged.then((fn) => fn?.());
     };
   }, [appReady]);
 

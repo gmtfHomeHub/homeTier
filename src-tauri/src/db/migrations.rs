@@ -121,4 +121,18 @@ pub const SCHEMA_MIGRATIONS: &[&str] = &[
         updated_at TEXT NOT NULL
     )",
     "ALTER TABLE spaces DROP COLUMN local_config_json",
+    // 代理 Cookie 持久化（登录状态跨重启保留）
+    "CREATE TABLE IF NOT EXISTS proxy_cookies (
+        host_key TEXT NOT NULL,
+        name TEXT NOT NULL,
+        value TEXT NOT NULL,
+        path TEXT NOT NULL DEFAULT '/',
+        domain TEXT,
+        expires_at INTEGER,
+        http_only INTEGER NOT NULL DEFAULT 0,
+        secure INTEGER NOT NULL DEFAULT 0,
+        same_site TEXT,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (host_key, name, path)
+    )",
 ];
