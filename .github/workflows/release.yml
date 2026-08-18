@@ -359,13 +359,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
       - uses: actions/download-artifact@v4
         with:
           name: easytier-bin
           path: src-tauri/resources/bin/
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/share/swift
+          sudo rm -rf /opt/hostedtoolcache/CodeQL /usr/local/lib/android/m2repository
+          df -h / | tail -1
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
@@ -396,10 +398,14 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Init Android project
         run: pnpm tauri android init
+      - name: Limit Gradle parallelism
+        run: |
+          echo "org.gradle.workers.max=2" >> src-tauri/gen/android/gradle.properties
+          echo "org.gradle.jvmargs=-Xmx2048m" >> src-tauri/gen/android/gradle.properties
       - name: Inject camera permissions
         run: bash scripts/mobile-permissions.sh
       - name: Build APK
-        run: pnpm tauri android build --apk
+        run: pnpm tauri android build --apk --target aarch64
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
