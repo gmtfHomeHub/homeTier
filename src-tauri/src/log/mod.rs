@@ -290,10 +290,11 @@ pub fn log_system(tag: &str, message: &str) {
     }
     #[cfg(target_os = "windows")]
     {
-        use windows::Win32::System::Diagnostics::Debug::OutputDebugStringA;
+        use windows::Win32::System::Diagnostics::Debug::OutputDebugStringW;
         let formatted = format!("homeTier[{}]: {}\0", tag, message);
+        let wide: Vec<u16> = formatted.encode_utf16().collect();
         unsafe {
-            OutputDebugStringA(windows::core::s!(formatted));
+            OutputDebugStringW(wide.as_ptr());
         }
     }
 }
