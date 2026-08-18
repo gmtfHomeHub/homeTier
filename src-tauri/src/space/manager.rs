@@ -59,6 +59,25 @@ impl Clone for SpaceManager {
     }
 }
 
+#[cfg(any(target_os = "android", target_os = "ios"))]
+impl Clone for SpaceManager {
+    fn clone(&self) -> Self {
+        Self {
+            db: self.db.clone(),
+            easytier: self.easytier.clone(),
+            spaces: self.spaces.clone(),
+            chat_servers: self.chat_servers.clone(),
+            chat_clients: self.chat_clients.clone(),
+            voice_servers: self.voice_servers.clone(),
+            screen_servers: self.screen_servers.clone(),
+            file_servers: self.file_servers.clone(),
+            storage_dir: self.storage_dir.clone(),
+            cancel_tokens: self.cancel_tokens.clone(),
+            connect_handles: self.connect_handles.clone(),
+        }
+    }
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl SpaceManager {
     pub fn new(
@@ -786,7 +805,26 @@ Self {
 #[cfg(any(target_os = "android", target_os = "ios"))]
 impl SpaceManager {
     pub fn new(db: Arc<Database>, easytier: Arc<crate::easytier::EasyTierManager>) -> Self {
-        Self { db, easytier, spaces: Arc::new(RwLock::new(Vec::new())) }
+        let storage_dir = std::env::var("APPDATA_DIR")
+            .or_else(|_| std::env::var("HOME"))
+            .map(|p| PathBuf::from(p).join("homeTier/files"))
+            .unwrap_or_else(|_| PathBuf::from(".files"));
+
+        let _ = std::fs::create_dir_all(&storage_dir);
+
+        Self {
+            db,
+            easytier,
+            spaces: Arc::new(RwLock::new(Vec::new())),
+            chat_servers: Arc::new(RwLock::new(HashMap::new())),
+            chat_clients: Arc::new(RwLock::new(HashMap::new())),
+            voice_servers: Arc::new(RwLock::new(HashMap::new())),
+            screen_servers: Arc::new(RwLock::new(HashMap::new())),
+            file_servers: Arc::new(RwLock::new(HashMap::new())),
+            storage_dir: Arc::new(RwLock::new(storage_dir)),
+            cancel_tokens: Arc::new(RwLock::new(HashMap::new())),
+            connect_handles: Arc::new(RwLock::new(HashMap::new())),
+        }
     }
 
     /// 创建空间（Mobile: 库方式）
@@ -956,12 +994,14 @@ impl SpaceManager {
         let virtual_ip = ip
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
+        // 先借用计算结果，避免之后 move 后 borrow
+        let dhcp = virtual_ip.is_none();
         let info = ShareInfo {
             network_name: space.network_name.clone(),
             network_secret: space.network_secret.clone(),
             host_hint: None,
             virtual_ip,
-            dhcp: Some(virtual_ip.is_none()),
+            dhcp: Some(dhcp),
             name: Some(space.name.clone()),
             peer_urls: Vec::new(),
             listener_urls: Vec::new(),
@@ -989,7 +1029,7 @@ impl SpaceManager {
             ..Default::default()
         };
 
-        self.easytier.start_network(cfg, *space_id, existing_config).await?;
+        self.easytier.start_network(&cfg, *space_id, existing_config).await?;
         crate::log_info!(format!("连接空间: {}", space.name), &space_id.to_string());
         Ok(())
     }
@@ -1053,5 +1093,98 @@ impl SpaceManager {
             }
         }).collect();
         Ok(members)
+    }
+
+    /// 退出应用前断开所有运行中的空间
+    pub async fn shutdown_all(&self) {
+        let spaces = self.spaces.read().await;
+        for space in spaces.iter() {
+            if space.status == SpaceStatus::Connected {
+                let _ = self.disconnect(&space.id).await;
+            }
+        }
+    }
+
+    /// 获取空间运行时状态（Mobile: 基于库实例状态组装）
+    pub async fn get_space_status(&self, space_id: &str) -> Result<Option<serde_json::Value>, String> {
+        let id: Uuid = space_id.parse().map_err(|_| format!("无效 space_id: {}", space_id))?;
+        if !self.easytier.is_running(&id) {
+            return Ok(None);
+        }
+        let status = self.easytier.get_status(&id).await?;
+        Ok(Some(serde_json::json!({
+            "space_id": space_id,
+            "status": status.status,
+            "virtual_ip": status.virtual_ip,
+            "connected_peers": status.connected_peers,
+            "latency_ms": status.latency_ms,
+            "is_running": true,
+        })))
+    }
+
+    /// 运行时修改空间配置（Mobile: 仅保存到数据库，重启实例时生效）
+    pub async fn patch_config(&self, space_id: &str, patch: serde_json::Value) -> Result<(), String> {
+        if let Ok(Some(existing)) = self.db.get_space_config(space_id) {
+            if let Ok(mut config) = serde_json::from_str::<serde_json::Value>(&existing) {
+                if let (Some(obj), Some(patch_obj)) = (config.as_object_mut(), patch.as_object()) {
+                    for (key, value) in patch_obj {
+                        obj.insert(key.clone(), value.clone());
+                    }
+                }
+                let _ = self.db.update_space_config(space_id, &config.to_string());
+            }
+        }
+        Ok(())
+    }
+
+    /// 广播消息到所有 peers（Mobile: 沿用内存 ChatClient）
+    pub async fn broadcast_message(&self, msg: &crate::chat::message::ChatMessage) -> Vec<(String, String)> {
+        let clients = self.chat_clients.read().await;
+        if let Some(client) = clients.get(&msg.space_id) {
+            client.broadcast(msg).await
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// 获取当前已连接的可达 peer 数量
+    pub async fn chat_peer_count(&self, space_id: &Uuid) -> usize {
+        let clients = self.chat_clients.read().await;
+        clients.get(space_id).map(|c| c.peer_count()).unwrap_or(0)
+    }
+
+    /// 定向发送信令到指定成员（Mobile: 沿用内存 ChatClient）
+    pub async fn send_signal_to(&self, space_id: &Uuid, target: &str, msg: &crate::chat::message::ChatMessage) -> Result<(), String> {
+        let clients = self.chat_clients.read().await;
+        if let Some(client) = clients.get(space_id) {
+            client.send_to(target, msg).await
+        } else {
+            Err("空间未连接，ChatClient 不存在".to_string())
+        }
+    }
+
+    /// 获取 peer 列表（Mobile: 直接从库实例查询）
+    pub async fn get_peers(&self, space_id: &Uuid) -> Result<Vec<crate::easytier::launcher::PeerInfo>, String> {
+        self.easytier.get_peers(space_id).await
+    }
+
+    /// 获取用于文件传输的 peer (IP, port) 列表
+    pub async fn get_peers_for_file_transfer(&self, space_id: &Uuid) -> Result<Vec<(String, u16)>, String> {
+        let peers = self.get_peers(space_id).await?;
+        let base = crate::config::get_u16(crate::config::KEY_FILE_SERVER_PORT_BASE, crate::config::DEFAULT_FILE_SERVER_PORT_BASE);
+        let file_port = base + (space_id.as_u128() % 1000) as u16;
+
+        let mut results = Vec::new();
+        for peer in peers {
+            if let Some(virtual_ip) = peer.virtual_ip {
+                results.push((virtual_ip, file_port));
+            }
+        }
+        Ok(results)
+    }
+
+    /// 获取文件列表
+    pub async fn list_space_files(&self, space_id: &str, limit: Option<u32>) -> Result<Vec<crate::db::models::FileRow>, String> {
+        self.db.list_files(space_id, limit)
     }
 }

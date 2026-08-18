@@ -9,6 +9,7 @@ use crate::app::daemon;
 use crate::cleanup;
 
 /// 应用退出时的清理流程（原 lib.rs RunEvent::Exit 分支）。
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn on_exit_cleanup(app_handle: &tauri::AppHandle) {
     use std::thread;
     use std::time::{Duration, Instant};

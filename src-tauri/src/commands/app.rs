@@ -158,6 +158,7 @@ pub async fn share_app(
     Ok(app)
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 pub async fn get_system_apps(
     app: tauri::AppHandle,

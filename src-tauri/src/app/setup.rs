@@ -7,7 +7,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Emitter, Manager, async_runtime};
 use tokio::sync::RwLock;
 
-use crate::app::daemon::{DaemonReadyState, set_daemon_child};
+use crate::app::daemon::DaemonReadyState;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use crate::app::daemon::set_daemon_child;
 use crate::app::PROXY_SERVER;
 use crate::{log_info, log_error, log_warn, log_debug};
 use crate::proxy::plugins::*;
@@ -273,7 +275,7 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(screen_share);
 
     // 托盘图标与菜单
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         use tauri::menu::MenuBuilder;
         let tray_menu = MenuBuilder::new(app)

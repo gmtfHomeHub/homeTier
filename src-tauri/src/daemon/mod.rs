@@ -7,6 +7,7 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
 use crate::easytier::EasyTierManager;
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub struct Daemon {
     status: Arc<RwLock<ipc::DaemonStatus>>,
     easytier: Arc<EasyTierManager>,
@@ -18,6 +19,7 @@ pub struct Daemon {
     gui_pid: Option<u32>,
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl Daemon {
     pub fn new(config_dir: PathBuf, data_dir: PathBuf, gui_pid: Option<u32>, resource_dir: Option<PathBuf>) -> Result<Self, String> {
         // daemon 启动时清空历史日志
@@ -547,6 +549,7 @@ impl Daemon {
 }
 
 /// daemon 入口点（路径由 GUI 通过 CLI 传入）
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub async fn run_daemon_async(config_dir: PathBuf, data_dir: PathBuf, gui_pid: Option<u32>, resource_dir: Option<PathBuf>) -> Result<(), String> {
     let daemon = Daemon::new(config_dir, data_dir, gui_pid, resource_dir)?;
     daemon.run().await

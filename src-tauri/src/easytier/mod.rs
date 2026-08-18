@@ -929,7 +929,7 @@ impl EasyTierManager {
     }
 
     /// 获取网络状态
-    pub async fn get_status(&self, instance_id: &Uuid) -> Result<NetworkStatus, String> {
+    pub async fn get_status(&self, instance_id: &Uuid) -> Result<crate::types::NetworkStatus, String> {
         let instance = self.instances.get(instance_id)
             .ok_or_else(|| {
                 crate::log_warn!(format!("EasyTierManager: 获取状态失败, 实例未找到 (Mobile), id={}", instance_id));
@@ -970,8 +970,27 @@ impl EasyTierManager {
         Ok(env!("CARGO_PKG_VERSION").into())
     }
 
+    /// 获取详细网络统计（Mobile: 基于库实例状态组装）
+    pub async fn get_network_stats(&self, instance_id: &Uuid) -> Option<crate::daemon::ipc::SpaceRuntimeStatus> {
+        let status = self.get_status(instance_id).await.ok()?;
+        Some(crate::daemon::ipc::SpaceRuntimeStatus {
+            space_id: instance_id.to_string(),
+            is_running: true,
+            virtual_ip: status.virtual_ip.clone(),
+            connected_peers: status.connected_peers,
+            rx_bytes: 0,
+            tx_bytes: 0,
+            avg_latency_ms: status.latency_ms.unwrap_or(0.0),
+        })
+    }
+
+    /// 获取空间运行时状态（Mobile: 基于库实例状态组装）
+    pub async fn get_space_status(&self, instance_id: &Uuid) -> Option<crate::daemon::ipc::SpaceRuntimeStatus> {
+        self.get_network_stats(instance_id).await
+    }
+
     /// 升级版本（Mobile 不支持）
-    pub async fn upgrade(&self, _version: &str, _source: BinarySource) -> Result<(), String> {
+    pub async fn upgrade(&self, _version: &str, _source: Option<BinarySource>) -> Result<(), String> {
         Err("Mobile 不支持版本升级".into())
     }
 }

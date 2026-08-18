@@ -58,56 +58,66 @@ fn main() -> std::process::ExitCode {
     
     // --server 模式（Web 管理界面 + REST API）
     if args.iter().any(|a| a == "--server") {
-        let bind = args
-            .iter()
-            .position(|a| a == "--server-bind")
-            .and_then(|i| args.get(i + 1).cloned());
-        let port = args
-            .iter()
-            .position(|a| a == "--server-port")
-            .and_then(|i| args.get(i + 1).and_then(|s| s.parse().ok()));
-        let server_dir = args
-            .iter()
-            .position(|a| a == "--server-dir")
-            .and_then(|i| args.get(i + 1).map(std::path::PathBuf::from));
-        let resource_dir = args
-            .iter()
-            .position(|a| a == "--server-resource-dir")
-            .and_then(|i| args.get(i + 1).map(std::path::PathBuf::from));
-        let static_dir = args
-            .iter()
-            .position(|a| a == "--server-static-dir")
-            .and_then(|i| args.get(i + 1).map(std::path::PathBuf::from));
-        
-        return home_tier_lib::run_server(bind, port, server_dir, resource_dir, static_dir);
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        {
+            let bind = args
+                .iter()
+                .position(|a| a == "--server-bind")
+                .and_then(|i| args.get(i + 1).cloned());
+            let port = args
+                .iter()
+                .position(|a| a == "--server-port")
+                .and_then(|i| args.get(i + 1).and_then(|s| s.parse().ok()));
+            let server_dir = args
+                .iter()
+                .position(|a| a == "--server-dir")
+                .and_then(|i| args.get(i + 1).map(std::path::PathBuf::from));
+            let resource_dir = args
+                .iter()
+                .position(|a| a == "--server-resource-dir")
+                .and_then(|i| args.get(i + 1).map(std::path::PathBuf::from));
+            let static_dir = args
+                .iter()
+                .position(|a| a == "--server-static-dir")
+                .and_then(|i| args.get(i + 1).map(std::path::PathBuf::from));
+            
+            return home_tier_lib::run_server(bind, port, server_dir, resource_dir, static_dir);
+        }
     }
 
     let daemon = args.iter().any(|a| a == "--daemon");
 
     if daemon {
-        let config_dir = args
-            .iter()
-            .position(|a| a == "--daemon-config")
-            .and_then(|i| args.get(i + 1))
-            .map(|s| std::path::PathBuf::from(s))
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default().join("homeTier"));
-        let data_dir = args
-            .iter()
-            .position(|a| a == "--daemon-data")
-            .and_then(|i| args.get(i + 1))
-            .map(|s| std::path::PathBuf::from(s))
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-        let gui_pid = args
-            .iter()
-            .position(|a| a == "--gui-pid")
-            .and_then(|i| args.get(i + 1))
-            .and_then(|s| s.parse::<u32>().ok());
-        let resource_dir = args
-            .iter()
-            .position(|a| a == "--daemon-resource-dir")
-            .and_then(|i| args.get(i + 1))
-            .map(std::path::PathBuf::from);
-        home_tier_lib::run_daemon(config_dir, data_dir, gui_pid, resource_dir)
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        {
+            let config_dir = args
+                .iter()
+                .position(|a| a == "--daemon-config")
+                .and_then(|i| args.get(i + 1))
+                .map(|s| std::path::PathBuf::from(s))
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default().join("homeTier"));
+            let data_dir = args
+                .iter()
+                .position(|a| a == "--daemon-data")
+                .and_then(|i| args.get(i + 1))
+                .map(|s| std::path::PathBuf::from(s))
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            let gui_pid = args
+                .iter()
+                .position(|a| a == "--gui-pid")
+                .and_then(|i| args.get(i + 1))
+                .and_then(|s| s.parse::<u32>().ok());
+            let resource_dir = args
+                .iter()
+                .position(|a| a == "--daemon-resource-dir")
+                .and_then(|i| args.get(i + 1))
+                .map(std::path::PathBuf::from);
+            home_tier_lib::run_daemon(config_dir, data_dir, gui_pid, resource_dir)
+        }
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        {
+            std::process::ExitCode::FAILURE
+        }
     } else {
         #[cfg(debug_assertions)]
         return home_tier_lib::run_with_args(false);
