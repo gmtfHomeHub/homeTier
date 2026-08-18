@@ -724,13 +724,27 @@ async fn set_app_config_handler(
                 .collect()
         })
         .unwrap_or_default();
-    for (k, v) in updates {
-        if let Err(e) = state.config.set(&k, &v) {
+    for (k, v) in &updates {
+        if let Err(e) = state.config.set(k, v) {
             return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
         }
     }
     if let Err(e) = state.config.save() {
         return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
+    }
+    // LOG_ENABLED 立即生效（与桌面端一致：内存标志 + DB）
+    if let Some((_, v)) = updates
+        .iter()
+        .find(|(k, _)| k == crate::config::KEY_LOG_ENABLED)
+    {
+        let enabled = v != "0";
+        crate::log::set_log_enabled(enabled);
+        if let Err(e) = state
+            .db
+            .set_setting("LOG_ENABLED", if enabled { "1" } else { "0" })
+        {
+            return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
+        }
     }
     StatusCode::NO_CONTENT.into_response()
 }

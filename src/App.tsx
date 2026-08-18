@@ -144,6 +144,16 @@ export default function App() {
       console.error("[shortcuts] init failed:", e)
     );
 
+    // 配置变更（含 LOG_ENABLED）时刷新日志开关，保证设置页签间双向同步
+    const unlistenConfigChanged = listen("config:changed", async () => {
+      try {
+        const enabled = await api.getLogEnabled();
+        useSettingsStore.getState().setLogEnabled(enabled);
+      } catch (e) {
+        console.warn("[config] refresh log enabled failed:", e);
+      }
+    }).catch(() => null);
+
     // Web 模式无全局快捷键插件，降级为页面内 Ctrl+M / Ctrl+T
     const onKeyDown = (e: KeyboardEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
@@ -190,6 +200,7 @@ export default function App() {
       unregisterFileSignal();
       unlisten?.();
       removeKeyDown();
+      unlistenConfigChanged.then((fn) => fn?.());
     };
   }, [appReady]);
 

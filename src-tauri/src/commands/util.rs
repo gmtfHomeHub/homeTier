@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 use crate::db::Database;
 use std::sync::Arc;
 
@@ -31,7 +31,11 @@ pub fn get_log_enabled(db: State<'_, Arc<Database>>) -> Result<bool, String> {
 
 /// 设置日志开关（写 DB + 配置文件 + 设本地标志 + 同步 daemon）
 #[tauri::command]
-pub async fn set_log_enabled(enabled: bool, db: State<'_, Arc<Database>>) -> Result<(), String> {
+pub async fn set_log_enabled(
+    enabled: bool,
+    db: State<'_, Arc<Database>>,
+    app_handle: AppHandle,
+) -> Result<(), String> {
     crate::log::set_log_enabled(enabled);
     db.set_setting("LOG_ENABLED", if enabled { "1" } else { "0" })?;
     // 同步写入配置文件
@@ -46,6 +50,8 @@ pub async fn set_log_enabled(enabled: bool, db: State<'_, Arc<Database>>) -> Res
             let _ = client.set_log_enabled(enabled).await;
         }
     }
+    // 广播配置变更，供配置文件页签等监听方刷新
+    let _ = app_handle.emit("config:changed", ());
     crate::log_info!(format!("设置日志开关: {}", if enabled { "开启" } else { "关闭" }));
     Ok(())
 }
