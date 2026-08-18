@@ -55,6 +55,7 @@ pub fn run() -> std::process::ExitCode {
             commands::space::disconnect_space,
             commands::space::get_space_status,
             commands::space::patch_space_config,
+            commands::space::set_tun_fd,
             commands::network::get_network_stats,
             commands::network::update_group_config,
             commands::network::get_space_peers,

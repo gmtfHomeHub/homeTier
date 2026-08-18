@@ -800,6 +800,11 @@ Self {
         }).collect();
         Ok(members)
     }
+
+    /// 设置 TUN 文件描述符（桌面端存根：桌面直接使用内核 TUN 设备，无需注入 fd）
+    pub fn set_tun_fd(&self, _space_id: &Uuid, _fd: i32) -> Result<(), String> {
+        Err("Desktop uses kernel TUN device directly, no fd injection needed".into())
+    }
 }
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -1186,5 +1191,10 @@ impl SpaceManager {
     /// 获取文件列表
     pub async fn list_space_files(&self, space_id: &str, limit: Option<u32>) -> Result<Vec<crate::db::models::FileRow>, String> {
         self.db.list_files(space_id, limit)
+    }
+
+    /// 设置 TUN 文件描述符（移动端专用：从 VpnService/NetworkExtension 获取 fd 后注入）
+    pub fn set_tun_fd(&self, space_id: &Uuid, fd: i32) -> Result<(), String> {
+        self.easytier.set_tun_fd(space_id, fd)
     }
 }

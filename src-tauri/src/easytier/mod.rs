@@ -993,6 +993,25 @@ impl EasyTierManager {
     pub async fn upgrade(&self, _version: &str, _source: Option<BinarySource>) -> Result<(), String> {
         Err("Mobile 不支持版本升级".into())
     }
+
+    /// 设置 TUN 文件描述符（移动端专用：从 VpnService/NetworkExtension 获取 fd 后注入）
+    pub fn set_tun_fd(&self, instance_id: &Uuid, fd: i32) -> Result<(), String> {
+        let entry = self.instances.get(instance_id)
+            .ok_or_else(|| format!("Instance not found: {}", instance_id))?;
+        
+        let running_instance = entry.value();
+        let instance = running_instance.instance.as_ref()
+            .ok_or_else(|| "Running instance not initialized".to_string())?;
+        
+        let sender = instance.get_tun_fd_sender()
+            .ok_or_else(|| "TUN fd sender not available".to_string())?;
+        
+        sender.try_send(Some(fd))
+            .map_err(|e| format!("Failed to send TUN fd: {}", e))?;
+        
+        crate::log_info!(format!("EasyTierManager: TUN fd {} injected for instance {}", fd, instance_id));
+        Ok(())
+    }
 }
 
 mod launcher_internal {
@@ -1147,7 +1166,7 @@ mod launcher_internal {
             crate::log_error!(&err_msg);
             #[cfg(any(target_os = "android", target_os = "ios"))]
             let err_msg = format!(
-                "{}（移动端 VPN 通道尚未集成：需要 NetworkExtension/VpnService 提供 TUN 设备，开发中）",
+                "{}（移动端需要先通过 set_tun_fd 注入 TUN 文件描述符）",
                 err_msg
             );
             err_msg

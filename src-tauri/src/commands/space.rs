@@ -3,6 +3,7 @@ use crate::types::{Space, ShareInfo, Member};
 use crate::space::manager::SpaceManager;
 use crate::db::Database;
 use std::sync::Arc;
+use uuid::Uuid;
 
 #[tauri::command]
 pub async fn get_space_config(
@@ -132,4 +133,15 @@ pub async fn patch_space_config(
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<(), String> {
     space_manager.patch_config(&space_id, patch).await
+}
+
+#[tauri::command]
+pub async fn set_tun_fd(
+    space_id: String,
+    fd: i32,
+    space_manager: State<'_, Arc<SpaceManager>>,
+) -> Result<(), String> {
+    let id = Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
+    crate::log_info!(format!("设置 TUN fd: space_id={}, fd={}", space_id, fd));
+    space_manager.inner().set_tun_fd(&id, fd)
 }
