@@ -204,6 +204,27 @@ jobs:
         shell: pwsh
         run: choco install protoc --yes --no-progress
 
+      - name: Install WinDivert (required by easytier windivert crate)
+        shell: pwsh
+        run: |
+          $url = "https://reqrypt.org/windivert/WinDivert_2.3.1.zip"
+          $out = "$env:TEMP/WinDivert.zip"
+          Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+          Expand-Archive -Path $out -DestinationPath "$env:TEMP/WinDivert" -Force
+          # Copy static lib to a location the linker can find
+          $libSrc = "$env:TEMP/WinDivert/WinDivert_2.3.1/lib/amd64/WinDivert.lib"
+          $libDst = "C:/WinDivert/lib/WinDivert.lib"
+          New-Item -ItemType Directory -Force -Path "C:/WinDivert/lib" | Out-Null
+          Copy-Item $libSrc -Destination $libDst -Force
+          # Also copy DLL for runtime
+          $dllSrc = "$env:TEMP/WinDivert/WinDivert_2.3.1/bin/amd64/WinDivert.dll"
+          $dllDst = "C:/WinDivert/bin/WinDivert.dll"
+          New-Item -ItemType Directory -Force -Path "C:/WinDivert/bin" | Out-Null
+          Copy-Item $dllSrc -Destination $dllDst -Force
+          # Add to LIB and PATH
+          echo "LIB=C:/WinDivert/lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "PATH=C:/WinDivert/bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
