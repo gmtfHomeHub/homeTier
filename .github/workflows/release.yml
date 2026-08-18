@@ -400,8 +400,7 @@ jobs:
         run: pnpm tauri android init
       - name: Limit Gradle parallelism
         run: |
-          echo "org.gradle.workers.max=2" >> src-tauri/gen/android/gradle.properties
-          echo "org.gradle.jvmargs=-Xmx2048m" >> src-tauri/gen/android/gradle.properties
+          printf '\norg.gradle.workers.max=2\norg.gradle.jvmargs=-Xmx2048m\n' >> src-tauri/gen/android/gradle.properties
       - name: Inject camera permissions
         run: bash scripts/mobile-permissions.sh
       - name: Build APK
