@@ -119,7 +119,9 @@
     "upgradedTo": "已升級到版本 {{version}}",
     "shortcuts": "全域快捷鍵",
     "shortcutsDesc": "應用不在前景時也可使用",
-    "shortcutsHelp": "全域生效，應用不在前景時也可使用；格式如 Ctrl+M",
+    "shortcutsHelp": "點擊編輯，按下所需組合鍵",
+    "shortcutEditHint": "按下組合鍵…Enter 確認 / Esc 取消",
+    "shortcutNotSet": "未設定",
     "micShortcut": "麥克風靜音快捷鍵",
     "speakerShortcut": "揚聲器靜音快捷鍵",
     "config": "設定檔"

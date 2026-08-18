@@ -119,7 +119,9 @@
     "upgradedTo": "已升级到版本 {{version}}",
     "shortcuts": "全局快捷键",
     "shortcutsDesc": "应用不在前台时也可使用",
-    "shortcutsHelp": "全局生效，应用不在前台时也可使用；格式如 Ctrl+M",
+    "shortcutsHelp": "点击编辑，按下所需组合键",
+    "shortcutEditHint": "按下组合键…Enter 确认 / Esc 取消",
+    "shortcutNotSet": "未设置",
     "micShortcut": "麦克风静音快捷键",
     "speakerShortcut": "扬声器静音快捷键",
     "config": "配置文件"

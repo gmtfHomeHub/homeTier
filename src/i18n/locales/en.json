@@ -119,7 +119,9 @@
     "upgradedTo": "Upgraded to version {{version}}",
     "shortcuts": "Global shortcuts",
     "shortcutsDesc": "Works even when app is not focused",
-    "shortcutsHelp": "Global shortcuts work even when the app is not focused; e.g. Ctrl+M",
+    "shortcutsHelp": "Click to edit, press desired key combination",
+    "shortcutEditHint": "Press combination…Enter confirm / Esc cancel",
+    "shortcutNotSet": "Not set",
     "micShortcut": "Microphone mute shortcut",
     "speakerShortcut": "Speaker mute shortcut",
     "config": "Config File"
