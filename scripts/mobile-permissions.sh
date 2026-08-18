@@ -49,26 +49,46 @@ if [ -f "$ANDROID_MANIFEST" ]; then
     if ! grep -q 'com.hometier.app.HomeTierVpnService' "$ANDROID_MANIFEST"; then
         # 使用 sed 在 </application> 之前插入 service 声明
         sed -i '/<\/application>/i \
-        <service\n            android:name="com.hometier.app.HomeTierVpnService"\n            android:permission="android.permission.BIND_VPN_SERVICE"\n            android:exported="true">\n            <intent-filter>\n                <action android:name="android.net.VpnService" />\n            </intent-filter>\n        </service>' "$ANDROID_MANIFEST"
+        <service\n            android:name="com.hometier.app.HomeTierVpnService"\n            android:permission="android.permission.BIND_VPN_SERVICE"\n            android:exported="false">\n            <intent-filter>\n                <action android:name="android.net.VpnService" />\n            </intent-filter>\n        </service>' "$ANDROID_MANIFEST"
         echo "[mobile-permissions] Injected HomeTierVpnService into AndroidManifest.xml"
     else
         echo "[mobile-permissions] HomeTierVpnService already registered in AndroidManifest.xml"
     fi
 fi
 
-# 复制 VpnService.kt 到生成的工程中
-VPN_SERVICE_SOURCE="src-tauri/scripts/android/VpnService.kt"
-VPN_SERVICE_DEST="$ANDROID_KOTLIN_DIR/VpnService.kt"
+# 复制 Kotlin VpnService 文件到生成的工程中
+KOTLIN_SOURCES=("HomeTierVpnService.kt" "HomeTierVpnServicePlugin.kt")
+for KF in "${KOTLIN_SOURCES[@]}"; do
+    KOTLIN_SOURCE="src-tauri/scripts/android/$KF"
+    KOTLIN_DEST="$ANDROID_KOTLIN_DIR/$KF"
 
-if [ -f "$VPN_SERVICE_SOURCE" ] && [ -d "$ANDROID_KOTLIN_DIR" ]; then
-    if [ ! -f "$VPN_SERVICE_DEST" ] || ! cmp -s "$VPN_SERVICE_SOURCE" "$VPN_SERVICE_DEST"; then
-        cp "$VPN_SERVICE_SOURCE" "$VPN_SERVICE_DEST"
-        echo "[mobile-permissions] Copied VpnService.kt to $VPN_SERVICE_DEST"
-    else
-        echo "[mobile-permissions] VpnService.kt already up to date"
+    if [ -f "$KOTLIN_SOURCE" ] && [ -d "$ANDROID_KOTLIN_DIR" ]; then
+        if [ ! -f "$KOTLIN_DEST" ] || ! cmp -s "$KOTLIN_SOURCE" "$KOTLIN_DEST"; then
+            cp "$KOTLIN_SOURCE" "$KOTLIN_DEST"
+            echo "[mobile-permissions] Copied $KF to $ANDROID_KOTLIN_DIR"
+        else
+            echo "[mobile-permissions] $KF already up to date"
+        fi
+    elif [ -f "$KOTLIN_SOURCE" ]; then
+        echo "[mobile-permissions] WARN: Kotlin directory $ANDROID_KOTLIN_DIR 不存在（tauri android init 可能未执行）"
     fi
-elif [ -f "$VPN_SERVICE_SOURCE" ]; then
-    echo "[mobile-permissions] WARN: Kotlin directory $ANDROID_KOTLIN_DIR 不存在（tauri android init 可能未执行）"
+done
+
+# 在 MainActivity.kt 中注册 VpnServicePlugin（幂等）
+MAIN_ACTIVITY="src-tauri/gen/android/app/src/main/java/com/hometier/app/MainActivity.kt"
+if [ -f "$MAIN_ACTIVITY" ]; then
+    if ! grep -q 'HomeTierVpnServicePlugin' "$MAIN_ACTIVITY"; then
+        if grep -q '\.plugin(' "$MAIN_ACTIVITY"; then
+            awk '/\.plugin\(/ { found=1 } found && !done { print; print "            .plugin(com.hometier.app.HomeTierVpnServicePlugin::new)"; done=1; next } { print }' "$MAIN_ACTIVITY" > "$MAIN_ACTIVITY.tmp" && mv "$MAIN_ACTIVITY.tmp" "$MAIN_ACTIVITY"
+            echo "[mobile-permissions] Registered HomeTierVpnServicePlugin in MainActivity.kt"
+        else
+            echo "[mobile-permissions] WARN: MainActivity.kt 中未找到 .plugin( 注册位置"
+        fi
+    else
+        echo "[mobile-permissions] HomeTierVpnServicePlugin already registered in MainActivity.kt"
+    fi
+else
+    echo "[mobile-permissions] WARN: MainActivity.kt 不存在（tauri android init 可能未执行）"
 fi
 
 if [ -f "$IOS_PLIST" ]; then

@@ -3,6 +3,10 @@ import { isTauri } from "../utils/api";
 import { isMobile } from "../utils/platform";
 import * as api from "../utils/api";
 import { listen, emit } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
+
+// The Tauri plugin name is derived from HomeTierVpnServicePlugin -> "hometiervpnservice"
+const PLUGIN = "hometiervpnservice";
 
 export interface VpnConfig {
   spaceId: string;
@@ -16,6 +20,15 @@ export interface VpnConfig {
 }
 
 /**
+ * Whether mobile VPN is supported on this platform.
+ * Android via VpnService. iOS via NetworkExtension (implemented natively).
+ */
+export async function supportsVpn(): Promise<boolean> {
+  if (!isTauri()) return false;
+  return isMobile();
+}
+
+/**
  * Request VPN authorization from the OS.
  * Returns true if the user granted permission.
  */
@@ -25,30 +38,10 @@ export async function prepareVpn(): Promise<boolean> {
   }
 
   try {
-    // For Android: VpnService.prepare(context) returns an Intent that needs to be started for result
-    // For iOS: NEVPNManager.shared().loadFromPreferences then saveToPreferences
-    // This is handled by the native VpnService via a Tauri event
-    const prepared = await new Promise<boolean>((resolve) => {
-      let resolved = false;
-      const timer = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          resolve(false);
-        }
-      }, 5000);
-
-      listen<{ prepared: boolean }>("vpn:prepared", (event) => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timer);
-          resolve(event.payload.prepared);
-        }
-      });
-
-      emit("vpn:prepare-request").catch(() => {});
-    });
-
-    return prepared;
+    const ret = await invoke<{ granted: boolean }>(
+      `plugin:${PLUGIN}|prepare_vpn`,
+    );
+    return ret?.granted === true;
   } catch (e) {
     console.error("Failed to prepare VPN:", e);
     return false;
@@ -57,7 +50,7 @@ export async function prepareVpn(): Promise<boolean> {
 
 /**
  * Start the VPN service with the given configuration.
- * Returns the file descriptor on success.
+ * The Kotlin VpnService will emit vpn_service_start with the tun fd.
  */
 export async function startVpn(config: VpnConfig): Promise<number | null> {
   if (!isTauri() || !(await isMobile())) {
@@ -65,33 +58,43 @@ export async function startVpn(config: VpnConfig): Promise<number | null> {
   }
 
   try {
-    const result = await new Promise<{ fd: number; success: boolean; error?: string }>(
-      (resolve) => {
-        let resolved = false;
-        const timer = setTimeout(() => {
-          if (!resolved) {
-            resolved = true;
-            resolve({ fd: -1, success: false, error: "VPN start timeout" });
-          }
-        }, 10000);
-
-        listen<{ fd: number; success: boolean; error?: string }>("vpn:tun-ready", (event) => {
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(timer);
-            resolve(event.payload);
-          }
+    // Listen for the tun-ready event first
+    const unlisten = await listen<{ fd: number }>("vpn_service_start", (event) => {
+      const fd = event.payload?.fd;
+      if (typeof fd === "number") {
+        // Inject fd into easytier
+        api.setTunFd(config.spaceId, fd).catch((e) => {
+          console.error("Failed to inject TUN fd:", e);
         });
+        stopPromiseResolver?.(fd);
+      }
+    });
 
-        emit("vpn:start", { config }).catch(() => {});
-      },
-    );
+    let stopPromiseResolver: ((fd: number) => void) | null = null;
+    const fdPromise = new Promise<number | null>((resolve) => {
+      stopPromiseResolver = (fd: number) => {
+        resolve(fd);
+        stopPromiseResolver = null;
+      };
+      setTimeout(() => {
+        if (stopPromiseResolver) {
+          stopPromiseResolver = null;
+          resolve(null);
+        }
+      }, 15000);
+    });
 
-    if (result.success && result.fd >= 0) {
-      return result.fd;
-    }
-    console.error("VPN start failed:", result.error);
-    return null;
+    // Start the VPN service via plugin
+    await invoke(`plugin:${PLUGIN}|start_vpn`, {
+      ipv4Addr: `${config.virtualIp}/${config.virtualIpCidr}`,
+      routes: config.routes,
+      dns: config.dnsServers[0] ?? null,
+      disallowedApplications: config.excludedApps,
+      mtu: config.mtu,
+    });
+
+    const fd = await fdPromise;
+    return fd;
   } catch (e) {
     console.error("Failed to start VPN:", e);
     return null;
@@ -107,7 +110,7 @@ export async function stopVpn(): Promise<boolean> {
   }
 
   try {
-    await emit("vpn:stop");
+    await invoke(`plugin:${PLUGIN}|stop_vpn`);
     return true;
   } catch (e) {
     console.error("Failed to stop VPN:", e);
@@ -116,8 +119,24 @@ export async function stopVpn(): Promise<boolean> {
 }
 
 /**
+ * Get current VPN status.
+ */
+export async function getVpnStatus(): Promise<{
+  running: boolean;
+  ipv4Addr: string | null;
+  routes: string[];
+  dns: string | null;
+}> {
+  try {
+    return await invoke(`plugin:${PLUGIN}|get_vpn_status`);
+  } catch {
+    return { running: false, ipv4Addr: null, routes: [], dns: null };
+  }
+}
+
+/**
  * Connect to a space with VPN on mobile.
- * Flow: prepare VPN -> start VPN -> get fd -> set fd on easytier -> connect.
+ * Flow: prepare VPN -> start easytier network -> start VPN -> get fd -> inject fd.
  */
 export async function connectWithVpn(
   spaceId: string,
@@ -137,7 +156,10 @@ export async function connectWithVpn(
     return false;
   }
 
-  // 2. Start VPN service and get fd
+  // 2. Start EasyTier network first (it waits for the tun fd)
+  await api.connectSpace(spaceId);
+
+  // 3. Start VPN service and get fd
   const fd = await startVpn({
     spaceId,
     networkName,
@@ -150,17 +172,7 @@ export async function connectWithVpn(
   });
 
   if (fd === null) {
-    return false;
-  }
-
-  // 3. Start EasyTier network
-  await api.connectSpace(spaceId);
-
-  // 4. Inject TUN fd
-  try {
-    await api.setTunFd(spaceId, fd);
-  } catch (e) {
-    console.error("Failed to inject TUN fd:", e);
+    console.error("Failed to get TUN fd");
     await stopVpn();
     return false;
   }
