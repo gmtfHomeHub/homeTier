@@ -76,8 +76,7 @@ export function AppVersionManager() {
             <Button
               onClick={handleUpdate}
               disabled={upgrading}
-              variant="solid"
-              color="blue"
+              variant="ghost"
               size="1"
               loading={upgrading}
             >

@@ -173,8 +173,8 @@ export function SettingsPage() {
 
               {/* EasyTier 引擎 / 当前应用（左右两栏） */}
               <Card size="3">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="md:border-r md:border-[var(--color-border)] md:pr-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="border-r border-[var(--color-border)] md:pr-4" style={{ borderRightStyle: 'solid'}}>
                     <EasyTierVersionManager />
                   </div>
                   <div>
