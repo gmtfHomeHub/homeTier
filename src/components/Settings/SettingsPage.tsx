@@ -235,22 +235,34 @@ export function SettingsPage() {
                     </Flex>
                   </Flex>
                   <Flex direction="column" gap="3" className="pl-12">
-                    <ShortcutEditor
-                      value={defMicShortcut}
-                      onChange={(v) => {
-                        storeSetMicShortcut(v);
-                        applyGlobalShortcuts().catch((e) => console.error(e));
-                      }}
-                      placeholder={t("settings.shortcutNotSet")}
-                    />
-                    <ShortcutEditor
-                      value={defSpeakerShortcut}
-                      onChange={(v) => {
-                        storeSetSpeakerShortcut(v);
-                        applyGlobalShortcuts().catch((e) => console.error(e));
-                      }}
-                      placeholder={t("settings.shortcutNotSet")}
-                    />
+                    <Flex direction="column" gap="1">
+                      <Flex align="center" justify="between" gap="2">
+                        <Text size="2">{t("settings.micShortcut")}</Text>
+                        <ShortcutEditor
+                          value={defMicShortcut}
+                          onChange={(v) => {
+                            storeSetMicShortcut(v);
+                            applyGlobalShortcuts().catch((e) => console.error(e));
+                          }}
+                          placeholder={t("settings.shortcutNotSet")}
+                        />
+                      </Flex>
+                      <Text size="1" color="gray">{t("settings.micShortcutDesc")}</Text>
+                    </Flex>
+                    <Flex direction="column" gap="1">
+                      <Flex align="center" justify="between" gap="2">
+                        <Text size="2">{t("settings.speakerShortcut")}</Text>
+                        <ShortcutEditor
+                          value={defSpeakerShortcut}
+                          onChange={(v) => {
+                            storeSetSpeakerShortcut(v);
+                            applyGlobalShortcuts().catch((e) => console.error(e));
+                          }}
+                          placeholder={t("settings.shortcutNotSet")}
+                        />
+                      </Flex>
+                      <Text size="1" color="gray">{t("settings.speakerShortcutDesc")}</Text>
+                    </Flex>
                     <Flex justify="end" gap="2" mt="1">
                       <Button
                         variant="outline"

@@ -124,6 +124,8 @@
     "shortcutNotSet": "Not set",
     "micShortcut": "Microphone mute shortcut",
     "speakerShortcut": "Speaker mute shortcut",
+    "micShortcutDesc": "Toggle global microphone mute/unmute, takes effect after editing",
+    "speakerShortcutDesc": "Toggle global speaker mute/unmute, takes effect after editing",
     "config": "Config File"
   },
   "shortcuts": {

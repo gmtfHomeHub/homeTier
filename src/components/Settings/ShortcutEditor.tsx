@@ -1,19 +1,27 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { Kbd, Flex, Text } from "@radix-ui/themes";
+import { useSettingsStore } from "../../stores/settingsStore";
 
 interface ShortcutEditorProps {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  description?: string;
 }
 
-export function ShortcutEditor({ value, onChange, placeholder = "未设置" }: ShortcutEditorProps) {
+export function ShortcutEditor({ value, onChange, placeholder = "未设置", description }: ShortcutEditorProps) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const containerRef = useRef<HTMLDivElement>(null);
   const initialValueRef = useRef(value);
+
+  // 编辑态标志：编辑中屏蔽全局/页面内快捷键触发
+  useEffect(() => {
+    useSettingsStore.getState().setShortcutEditing(editing);
+    return () => useSettingsStore.getState().setShortcutEditing(false);
+  }, [editing]);
 
   // 监听 keydown（编辑态时）
   useEffect(() => {
@@ -116,33 +124,40 @@ export function ShortcutEditor({ value, onChange, placeholder = "未设置" }: S
   };
 
   return (
-    <Flex
-      ref={containerRef}
-      align="center"
-      gap="2"
-      className="w-full max-w-xs cursor-pointer"
-      onClick={() => {
-        if (!editing) {
-          initialValueRef.current = value;
-          setDraft(value);
-          setEditing(true);
-        }
-      }}
-      onBlur={handleBlur}
-      tabIndex={0}
-      role="button"
-      aria-label={t("settings.shortcutsHelp")}
-    >
-      <Flex align="center" gap="1" className="flex-1 min-w-0">
-        {renderKbdChain(editing ? draft : value)}
-        {editing && (
-          <>
-            <Kbd size="1" className="text-[var(--color-text-tertiary)] opacity-40">
-              {t("settings.shortcutEditHint")}
-            </Kbd>
-          </>
-        )}
+    <>
+      <Flex
+        ref={containerRef}
+        align="center"
+        gap="2"
+        className="w-full max-w-xs cursor-pointer"
+        onClick={() => {
+          if (!editing) {
+            initialValueRef.current = value;
+            setDraft(value);
+            setEditing(true);
+          }
+        }}
+        onBlur={handleBlur}
+        tabIndex={0}
+        role="button"
+        aria-label={t("settings.shortcutsHelp")}
+      >
+        <Flex align="center" gap="1" className="flex-1 min-w-0">
+          {renderKbdChain(editing ? draft : value)}
+          {editing && (
+            <>
+              <Kbd size="1" className="text-[var(--color-text-tertiary)] opacity-40">
+                {t("settings.shortcutEditHint")}
+              </Kbd>
+            </>
+          )}
+        </Flex>
       </Flex>
-    </Flex>
+      {description && (
+        <Text size="1" color="gray" className="max-w-xs">
+          {description}
+        </Text>
+      )}
+    </>
   );
 }

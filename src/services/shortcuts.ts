@@ -4,7 +4,10 @@ import { voiceService } from "./voice";
 import { isTauri } from "../utils/api";
 
 function handlePressed(shortcut: string): void {
-  const { micShortcut, speakerShortcut } = useSettingsStore.getState();
+  const state = useSettingsStore.getState();
+  // 快捷键编辑中：忽略一切触发，避免录入过程误触功能
+  if (state.shortcutEditing) return;
+  const { micShortcut, speakerShortcut } = state;
   if (!voiceService.joined) {
     useShortcutOsdStore.getState().show("mic", true, true);
     return;
