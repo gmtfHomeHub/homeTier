@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxdo-dev \
     libayatana-appindicator3-dev \
     protobuf-compiler \
+    libprotobuf-dev \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
