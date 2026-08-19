@@ -4,6 +4,9 @@ import { useAppTabsStore } from "./appTabsStore";
 import type { Space } from "../types";
 import { SpaceStatus } from "../enum";
 import i18n from "../i18n";
+import { isMobile, getPlatform } from "../utils/platform";
+import { connectWithVpn, disconnectWithVpn } from "../services/mobileVpn";
+import { toastError } from "../utils/toast";
 
 interface SpaceStore {
   spaces: Space[];
@@ -100,6 +103,44 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
         return s;
       }),
     }));
+
+    // 移动端 VPN 特殊流程
+    const mobile = await isMobile();
+    if (mobile) {
+      try {
+        // 移动端：prepareVpn -> connectSpace -> startVpn (事件驱动 setTunFd)
+        const space = get().spaces.find((s) => s.id === spaceId);
+        if (!space) throw new Error("Space not found");
+
+        const success = await connectWithVpn(spaceId, space.name, space.virtual_ip ?? "10.144.144.1");
+        if (!success) {
+          throw new Error("VPN connection failed");
+        }
+
+        set((state) => ({
+          spaces: state.spaces.map((s) =>
+            s.id === spaceId ? { ...s, status: SpaceStatus.CED } : s
+          ),
+        }));
+        // 空间互斥：清空上一个已连接空间的打开标签
+        if (prevConnected && prevConnected.id !== spaceId) {
+          useAppTabsStore.getState().clearSpace(prevConnected.id);
+        }
+        syncTrayMenu(get().spaces);
+        return;
+      } catch (e) {
+        set((state) => ({
+          spaces: state.spaces.map((s) =>
+            s.id === spaceId ? { ...s, status: SpaceStatus.DIS } : s
+          ),
+          error: String(e),
+        }));
+        toastError(i18n.t("vpn.connectFailed", { error: String(e) }));
+        throw e;
+      }
+    }
+
+    // 桌面端原逻辑
     try {
       await api.connectSpace(spaceId);
       set((state) => ({
@@ -124,7 +165,16 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
   },
 
   disconnectSpace: async (spaceId) => {
-    await api.disconnectSpace(spaceId);
+    const mobile = await isMobile();
+    if (mobile) {
+      try {
+        await disconnectWithVpn(spaceId);
+      } catch (e) {
+        console.error("Mobile VPN disconnect failed:", e);
+      }
+    } else {
+      await api.disconnectSpace(spaceId);
+    }
     set((state) => ({
       spaces: state.spaces.map((s) =>
         s.id === spaceId ? { ...s, status: SpaceStatus.DIS, virtual_ip: undefined } : s
