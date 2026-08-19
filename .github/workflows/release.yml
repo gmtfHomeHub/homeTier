@@ -238,7 +238,7 @@ jobs:
               $env:INCLUDE = "$includePaths;$env:INCLUDE"
               echo "INCLUDE=$includePaths;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
               # Also set BINDGEN_EXTRA_CLANG_ARGS for kcp-sys bindgen
-              $clangArgs = ($ucrtInc, $sharedInc, $umInc) | ForEach-Object { "-I$_" } -join ' '
+              $clangArgs = "-I$ucrtInc -I$sharedInc -I$umInc"
               echo "BINDGEN_EXTRA_CLANG_ARGS=$clangArgs" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
               echo "[windows-sdk] Found SDK version $latestVersion"
               echo "[windows-sdk] INCLUDE paths: $includePaths"
