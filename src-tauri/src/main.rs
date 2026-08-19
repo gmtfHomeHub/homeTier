@@ -6,7 +6,7 @@
 fn is_elevated() -> bool {
     #[cfg(target_os = "windows")]
     {
-        use windows::Win32::Security::IsUserAnAdmin;
+        use windows::Win32::UI::Shell::IsUserAnAdmin;
         unsafe { IsUserAnAdmin().as_bool() }
     }
     #[cfg(not(windows))]
@@ -22,18 +22,18 @@ fn elevate_self() -> bool {
 
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
         use windows::Win32::UI::Shell::ShellExecuteW;
         use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
+        use windows::core::PCWSTR;
         let exe = exe.to_string_lossy();
         let exe_wide: Vec<u16> = exe.encode_utf16().chain(['\0' as u16]).collect();
         let args_wide: Vec<u16> = "--elevated\0".encode_utf16().collect();
         unsafe {
             ShellExecuteW(
                 None,
-                &windows::core::w!("runas"),
-                &exe_wide,
-                Some(&args_wide),
+                windows::core::w!("runas"),
+                PCWSTR::from_raw(exe_wide.as_ptr()),
+                Some(PCWSTR::from_raw(args_wide.as_ptr())),
                 None,
                 SW_HIDE,
             );

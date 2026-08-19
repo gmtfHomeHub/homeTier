@@ -226,10 +226,24 @@ jobs:
           echo "INCLUDE=C:/WpdPack/WpdPack/Include;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "[winpcap] Packet.lib at $libPath"
 
-      # 已删除：该步骤用 BINDGEN_EXTRA_CLANG_ARGS 传含空格的路径是无效的
-      # （bindgen 按空白字符拆分该变量，'C:/Program Files (x86)/...' 会被拆碎，
-      # 正是日志里那些 'linker' input unused 警告的来源），且缺少 VC include 目录
-      # 这个致命点；vcvars64 已一次性补全全部 include 路径，此步骤冗余。
+      - name: Configure MSVC include path (for vcruntime.h used by kcp-sys bindgen)
+        shell: pwsh
+        run: |
+          # Find MSVC include directory (contains vcruntime.h needed by ucrt/corecrt.h)
+          # Standard location: C:\Program Files\Microsoft Visual Studio\<VS>\<edition>\VC\Tools\MSVC\<ver>\include
+          $msvcRoot = "C:/Program Files/Microsoft Visual Studio"
+          if (Test-Path $msvcRoot) {
+            $msvcDirs = Get-ChildItem -Path "$msvcRoot/*/*/VC/Tools/MSVC/*/include" -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
+            if ($msvcDirs.Count -gt 0) {
+              $msvcInclude = $msvcDirs[0].FullName
+              echo "INCLUDE=$msvcInclude;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              echo "[msvc-include] Found: $msvcInclude"
+            } else {
+              echo "[msvc-include] WARNING: No MSVC include directory found"
+            }
+          } else {
+            echo "[msvc-include] WARNING: MSVC root not found at $msvcRoot"
+          }
 
       - name: Configure WinDivert (compile from vendored source)
         shell: bash
