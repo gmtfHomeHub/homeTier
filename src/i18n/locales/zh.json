@@ -127,7 +127,24 @@
     "micShortcutDesc": "全局静音/取消静音麦克风，编辑完成后即时生效",
     "speakerShortcutDesc": "全局静音/取消静音扬声器，编辑完成后即时生效",
     "config": "配置文件",
-    "shortcutUnsupported": "当前平台不支持全局快捷键（移动端无全局按键捕获）"
+    "shortcutUnsupported": "当前平台不支持全局快捷键（移动端无全局按键捕获）",
+    "vpn": {
+      "vpnStatus": "VPN 状态",
+      "virtualIp": "虚拟 IP",
+      "notAssigned": "未分配",
+      "vpnActive": "VPN 已激活",
+      "authorize": "请授权 VPN 权限以建立连接",
+      "authorizeDenied": "VPN 授权被拒绝，请在系统设置中允许 VPN 权限",
+      "connectFailed": "VPN 连接失败: {{error}}",
+      "disconnected": "VPN 已断开",
+      "status": {
+        "preparing": "准备中...",
+        "connected": "已连接",
+        "disconnected": "已断开",
+        "error": "错误"
+      },
+      "vpnUnsupported": "当前平台不支持 VPN 功能"
+    },
   },
   "shortcuts": {
     "micMuted": "麦克风已静音",

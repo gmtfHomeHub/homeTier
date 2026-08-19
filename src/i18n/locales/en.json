@@ -127,7 +127,24 @@
     "micShortcutDesc": "Toggle global microphone mute/unmute, takes effect after editing",
     "speakerShortcutDesc": "Toggle global speaker mute/unmute, takes effect after editing",
     "config": "Config File",
-    "shortcutUnsupported": "Global shortcuts are not supported on this platform (no global key capture on mobile)"
+    "shortcutUnsupported": "Global shortcuts are not supported on this platform (no global key capture on mobile)",
+    "vpn": {
+      "vpnStatus": "VPN Status",
+      "virtualIp": "Virtual IP",
+      "notAssigned": "Not assigned",
+      "vpnActive": "VPN Active",
+      "authorize": "Please authorize VPN permission to establish connection",
+      "authorizeDenied": "VPN authorization denied, please allow VPN permission in system settings",
+      "connectFailed": "VPN connection failed: {{error}}",
+      "disconnected": "VPN disconnected",
+      "status": {
+        "preparing": "Preparing...",
+        "connected": "Connected",
+        "disconnected": "Disconnected",
+        "error": "Error"
+      },
+      "vpnUnsupported": "VPN not supported on this platform"
+    },
   },
   "shortcuts": {
     "micMuted": "Microphone muted",

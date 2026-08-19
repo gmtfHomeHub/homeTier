@@ -5,20 +5,20 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.os.Bundle
-import app.tauri.plugin.JSObject
+import android.webkit.WebView
+import android.util.Log
 
 /**
  * HomeTier VpnService
  *
  * Creates a TUN interface and passes the file descriptor back to the app
- * via triggerCallback. Based on EasyTier's TauriVpnService.
+ * via TauriEventBus using evaluateJavascript. Based on EasyTier's TauriVpnService.
  *
  * The fd is an int and both Kotlin and Rust run in the same process on
  * Android, so the numeric fd is valid on the Rust side.
  */
 class HomeTierVpnService : VpnService() {
     companion object {
-        @JvmField var triggerCallback: (String, JSObject) -> Unit = { _, _ -> }
         @JvmField var self: HomeTierVpnService? = null
         @JvmField var ipv4Addr: String? = null
         @JvmField var routes: Array<String> = emptyArray()
@@ -34,17 +34,19 @@ class HomeTierVpnService : VpnService() {
     private lateinit var vpnInterface: ParcelFileDescriptor
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        println("hometier vpn on start command ${intent?.getExtras()} $intent")
-        val args = intent?.getExtras()
+        Log.d("HomeTierVpn", "onStartCommand: ${intent?.extras}")
+        val args = intent?.extras
         ipv4Addr = args?.getString(IPV4_ADDR)
         routes = args?.getStringArray(ROUTES) ?: emptyArray()
         dns = args?.getString(DNS)
 
         vpnInterface = createVpnInterface(args)
 
-        val eventData = JSObject()
-        eventData.put("fd", vpnInterface.fd)
-        triggerCallback("vpn_service_start", eventData)
+        // 发送 fd 到前端
+        val eventData = org.json.JSONObject().apply {
+            put("fd", vpnInterface.fd)
+        }
+        TauriEventBus.emit("vpn:tun-ready", eventData.toString())
 
         return START_STICKY
     }
@@ -68,7 +70,7 @@ class HomeTierVpnService : VpnService() {
 
     private fun disconnect() {
         if (self == this && this::vpnInterface.isInitialized) {
-            triggerCallback("vpn_service_stop", JSObject())
+            TauriEventBus.emit("vpn:status-changed", """{"status":"stopped"}""")
             vpnInterface.close()
         }
         clearStatus()
@@ -117,5 +119,43 @@ class HomeTierVpnService : VpnService() {
                 it.setMetered(false)
             }
         }.establish() ?: throw IllegalStateException("Failed to init VpnService")
+    }
+}
+
+/**
+ * TauriEventBus - 使用 evaluateJavascript 向 WebView 注入事件
+ * 避免依赖 triggerCallback 静态变量，更符合 Tauri 2 移动端事件桥标准
+ */
+object TauriEventBus {
+    private var webView: WebView? = null
+
+    fun attach(wv: WebView) {
+        webView = wv
+        Log.d("TauriEventBus", "WebView attached")
+    }
+
+    fun detach() {
+        webView = null
+        Log.d("TauriEventBus", "WebView detached")
+    }
+
+    fun emit(event: String, payload: String) {
+        val wv = webView ?: return
+        wv.post {
+            val js = """
+                (function(){
+                    if (window.__TAURI_INTERNALS__) {
+                        window.__TAURI_INTERNALS__.invoke('plugin:event|listen', {
+                            event: '$event',
+                            payload: $payload
+                        });
+                    } else {
+                        console.warn('Tauri internals not available');
+                    }
+                })();
+            """.trimIndent()
+            wv.evaluateJavascript(js, null)
+        }
+        Log.d("TauriEventBus", "Emitted event: $event, payload: $payload")
     }
 }

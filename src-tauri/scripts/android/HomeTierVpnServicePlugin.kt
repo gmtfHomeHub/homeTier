@@ -26,9 +26,7 @@ class StartVpnArgs {
 class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity) {
 
     override fun load(webView: WebView) {
-        HomeTierVpnService.triggerCallback = { event, data ->
-            trigger(event, data)
-        }
+        TauriEventBus.attach(webView)
     }
 
     @Command

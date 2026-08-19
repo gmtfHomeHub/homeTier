@@ -58,8 +58,8 @@ export async function startVpn(config: VpnConfig): Promise<number | null> {
   }
 
   try {
-    // Listen for the tun-ready event first
-    const unlisten = await listen<{ fd: number }>("vpn_service_start", (event) => {
+    // Listen for the tun-ready event first (emitted by Kotlin TauriEventBus)
+    const unlisten = await listen<{ fd: number }>("vpn:tun-ready", (event) => {
       const fd = event.payload?.fd;
       if (typeof fd === "number") {
         // Inject fd into easytier

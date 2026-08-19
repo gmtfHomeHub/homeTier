@@ -87,6 +87,31 @@ if [ -f "$MAIN_ACTIVITY" ]; then
     else
         echo "[mobile-permissions] HomeTierVpnServicePlugin already registered in MainActivity.kt"
     fi
+
+    # 确保 MainActivity 在 onCreate 时将 WebView 传给 TauriEventBus
+    if ! grep -q 'TauriEventBus.attach' "$MAIN_ACTIVITY"; then
+        if grep -q 'override fun onCreate' "$MAIN_ACTIVITY"; then
+            sed -i '/override fun onCreate/a \
+\        super.onCreate(savedInstanceState)\n\        TauriEventBus.attach(webView)' "$MAIN_ACTIVITY"
+            echo "[mobile-permissions] Injected TauriEventBus.attach(webView) in MainActivity.onCreate"
+        else
+            echo "[mobile-permissions] WARN: MainActivity.kt 中未找到 onCreate"
+        fi
+    fi
+
+    # 确保 MainActivity 在 onDestroy 时 detach WebView
+    if ! grep -q 'TauriEventBus.detach' "$MAIN_ACTIVITY"; then
+        if grep -q 'override fun onDestroy' "$MAIN_ACTIVITY"; then
+            sed -i '/override fun onDestroy/a \
+\        TauriEventBus.detach()\n\        super.onDestroy()' "$MAIN_ACTIVITY"
+            echo "[mobile-permissions] Injected TauriEventBus.detach() in MainActivity.onDestroy"
+        else
+            # 如果没有 onDestroy，添加一个
+            sed -i '/class MainActivity/a \
+\    override fun onDestroy() {\n        TauriEventBus.detach()\n        super.onDestroy()\n    }' "$MAIN_ACTIVITY"
+            echo "[mobile-permissions] Added onDestroy with TauriEventBus.detach() in MainActivity.kt"
+        fi
+    fi
 else
     echo "[mobile-permissions] WARN: MainActivity.kt 不存在（tauri android init 可能未执行）"
 fi
