@@ -24,6 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libayatana-appindicator3-dev \
     protobuf-compiler \
     libprotobuf-dev \
+    libclang-dev \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
