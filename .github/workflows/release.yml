@@ -469,11 +469,11 @@ jobs:
           if-no-files-found: warn
 
   # ---------------------------------------------------------------
-  # 5. iOS (无签名构建，需 macOS runner)
+  # 5. iOS (无签名构建，需 macOS runner) - 仅手动触发，tag 发布不自动构建
   # ---------------------------------------------------------------
   build-ios:
     needs: fetch-easytier
-    if: startsWith(github.ref, 'refs/tags/') || inputs.build_ios
+    if: inputs.build_ios
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
