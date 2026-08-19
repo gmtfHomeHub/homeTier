@@ -512,52 +512,52 @@ jobs:
           path: src-tauri/gen/apple/build/**/*.app
           if-no-files-found: warn
 
-# ---------------------------------------------------------------
-# 6. Docker 镜像（tag 发布 或 手动触发）
-# ---------------------------------------------------------------
-build-docker:
-  needs: fetch-easytier
-  if: startsWith(github.ref, 'refs/tags/') || inputs.build_docker
-  runs-on: ubuntu-latest
-  permissions:
-    contents: read
-    packages: write
-  steps:
-    - uses: actions/checkout@v4
-    - uses: actions/download-artifact@v4
-      with:
-        name: easytier-bin
-        path: src-tauri/resources/bin/
-    - name: Compute lowercase image repo
-      id: repo
-      run: echo "image_repo=ghcr.io/$(echo ${{ github.repository }} | tr 'A-Z' 'a-z')" >> "$GITHUB_OUTPUT"
-    - name: Log in to GHCR
-      uses: docker/login-action@v3
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    - name: Build and push
-      uses: docker/build-push-action@v6
-      with:
-        context: .
-        push: true
-        tags: |
-          ${{ steps.repo.outputs.image_repo }}:latest
-          ${{ steps.repo.outputs.image_repo }}:${{ github.ref_name }}
-        build-args: |
-          EASYTIER_CORE_VERSION=${{ env.EASYTIER_CORE_VERSION }}
+  # ---------------------------------------------------------------
+  # 6. Docker 镜像（tag 发布 或 手动触发）
+  # ---------------------------------------------------------------
+  build-docker:
+    needs: fetch-easytier
+    if: startsWith(github.ref, 'refs/tags/') || inputs.build_docker
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: easytier-bin
+          path: src-tauri/resources/bin/
+      - name: Compute lowercase image repo
+        id: repo
+        run: echo "image_repo=ghcr.io/$(echo ${{ github.repository }} | tr 'A-Z' 'a-z')" >> "$GITHUB_OUTPUT"
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.repo.outputs.image_repo }}:latest
+            ${{ steps.repo.outputs.image_repo }}:${{ github.ref_name }}
+          build-args: |
+            EASYTIER_CORE_VERSION=${{ env.EASYTIER_CORE_VERSION }}
 
   # ---------------------------------------------------------------
   # 7. 汇总发布到 GitHub Release（仅 tag 触发）
   # ---------------------------------------------------------------
-release:
-  needs: [build-desktop-macos, build-desktop-windows, build-desktop-linux, build-appimage, build-android, build-ios, build-docker]
-  if: startsWith(github.ref, 'refs/tags/')
-  runs-on: ubuntu-latest
-  permissions:
-    contents: write
-  steps:
+  release:
+    needs: [build-desktop-macos, build-desktop-windows, build-desktop-linux, build-appimage, build-android, build-ios, build-docker]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
