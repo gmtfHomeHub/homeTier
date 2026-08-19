@@ -200,6 +200,14 @@ jobs:
           name: easytier-bin
           path: src-tauri/resources/bin/
 
+      # 关键修复：运行 vcvars64 并导出完整的 MSVC 环境（INCLUDE/LIB/PATH）。
+      # bindgen（kcp-sys）用 clang 编译 wrapper.h，clang 在 MSVC 目标下只要读到
+      # INCLUDE 环境变量就不会再自动探测 VS 工具链——而 runner 镜像自带的 INCLUDE
+      # 只有 Windows SDK（ucrt/shared/um），缺少 VC\Tools\MSVC\<ver>\include，
+      # 导致找不到 vcruntime.h。这一步把环境补齐到与本地 Developer PowerShell 一致。
+      - name: Set up MSVC development environment (vcvars64)
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Install Windows deps
         shell: pwsh
         run: choco install protoc --yes --no-progress
@@ -218,37 +226,10 @@ jobs:
           echo "INCLUDE=C:/WpdPack/WpdPack/Include;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "[winpcap] Packet.lib at $libPath"
 
-      - name: Configure Windows SDK includes (for kcp-sys bindgen)
-        shell: pwsh
-        run: |
-          # The windows-latest GitHub runner has the Windows SDK installed,
-          # but its include paths aren't automatically in the cargo/bindgen
-          # environment. Find the SDK version and add UCRT/shared include dirs
-          # so bindgen can find <stdlib.h> and other C stdlib headers.
-          $sdkRoot = "C:/Program Files (x86)/Windows Kits/10/Include"
-          if (Test-Path $sdkRoot) {
-            $versions = Get-ChildItem -Path $sdkRoot -Directory | Sort-Object Name -Descending
-            if ($versions.Count -gt 0) {
-              $latestVersion = $versions[0].Name
-              $ucrtInc = "$sdkRoot/$latestVersion/ucrt"
-              $sharedInc = "$sdkRoot/$latestVersion/shared"
-              $umInc = "$sdkRoot/$latestVersion/um"
-              $includePaths = @($ucrtInc, $sharedInc, $umInc) -join ';'
-              # Prepend to existing INCLUDE
-              $env:INCLUDE = "$includePaths;$env:INCLUDE"
-              echo "INCLUDE=$includePaths;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-              # Also set BINDGEN_EXTRA_CLANG_ARGS for kcp-sys bindgen
-              $clangArgs = "-I$ucrtInc -I$sharedInc -I$umInc"
-              echo "BINDGEN_EXTRA_CLANG_ARGS=$clangArgs" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-              echo "[windows-sdk] Found SDK version $latestVersion"
-              echo "[windows-sdk] INCLUDE paths: $includePaths"
-              echo "[windows-sdk] BINDGEN_EXTRA_CLANG_ARGS: $clangArgs"
-            } else {
-              echo "[windows-sdk] WARNING: No SDK versions found in $sdkRoot"
-            }
-          } else {
-            echo "[windows-sdk] WARNING: SDK root not found at $sdkRoot"
-          }
+      # 已删除：该步骤用 BINDGEN_EXTRA_CLANG_ARGS 传含空格的路径是无效的
+      # （bindgen 按空白字符拆分该变量，'C:/Program Files (x86)/...' 会被拆碎，
+      # 正是日志里那些 'linker' input unused 警告的来源），且缺少 VC include 目录
+      # 这个致命点；vcvars64 已一次性补全全部 include 路径，此步骤冗余。
 
       - name: Configure WinDivert (compile from vendored source)
         shell: bash
