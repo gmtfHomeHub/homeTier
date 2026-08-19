@@ -1046,7 +1046,7 @@ mod launcher_internal {
         pub config_path: Option<PathBuf>,
         config_content: Arc<RwLock<Option<String>>>,
         status: Arc<RwLock<InstanceStatus>>,
-        instance: Option<easytier::launcher::NetworkInstance>,
+        pub instance: Option<easytier::launcher::NetworkInstance>,
     }
 
     struct InstanceStatus {
