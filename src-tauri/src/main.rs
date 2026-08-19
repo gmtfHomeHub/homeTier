@@ -33,8 +33,8 @@ fn elevate_self() -> bool {
                 None,
                 windows::core::w!("runas"),
                 PCWSTR::from_raw(exe_wide.as_ptr()),
-                Some(PCWSTR::from_raw(args_wide.as_ptr())),
-                None,
+                PCWSTR::from_raw(args_wide.as_ptr()),
+                PCWSTR::null(),
                 SW_HIDE,
             );
         }
