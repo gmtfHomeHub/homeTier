@@ -126,7 +126,8 @@
     "speakerShortcut": "扬声器静音快捷键",
     "micShortcutDesc": "全局静音/取消静音麦克风，编辑完成后即时生效",
     "speakerShortcutDesc": "全局静音/取消静音扬声器，编辑完成后即时生效",
-    "config": "配置文件"
+    "config": "配置文件",
+    "shortcutUnsupported": "当前平台不支持全局快捷键（移动端无全局按键捕获）"
   },
   "shortcuts": {
     "micMuted": "麦克风已静音",

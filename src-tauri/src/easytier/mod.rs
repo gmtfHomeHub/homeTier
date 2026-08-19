@@ -929,7 +929,7 @@ impl EasyTierManager {
     }
 
     /// 获取网络状态
-    pub async fn get_status(&self, instance_id: &Uuid) -> Result<NetworkStatus, String> {
+    pub async fn get_status(&self, instance_id: &Uuid) -> Result<crate::types::NetworkStatus, String> {
         let instance = self.instances.get(instance_id)
             .ok_or_else(|| {
                 crate::log_warn!(format!("EasyTierManager: 获取状态失败, 实例未找到 (Mobile), id={}", instance_id));
@@ -970,9 +970,47 @@ impl EasyTierManager {
         Ok(env!("CARGO_PKG_VERSION").into())
     }
 
+    /// 获取详细网络统计（Mobile: 基于库实例状态组装）
+    pub async fn get_network_stats(&self, instance_id: &Uuid) -> Option<crate::daemon::ipc::SpaceRuntimeStatus> {
+        let status = self.get_status(instance_id).await.ok()?;
+        Some(crate::daemon::ipc::SpaceRuntimeStatus {
+            space_id: instance_id.to_string(),
+            is_running: true,
+            virtual_ip: status.virtual_ip.clone(),
+            connected_peers: status.connected_peers,
+            rx_bytes: 0,
+            tx_bytes: 0,
+            avg_latency_ms: status.latency_ms.unwrap_or(0.0),
+        })
+    }
+
+    /// 获取空间运行时状态（Mobile: 基于库实例状态组装）
+    pub async fn get_space_status(&self, instance_id: &Uuid) -> Option<crate::daemon::ipc::SpaceRuntimeStatus> {
+        self.get_network_stats(instance_id).await
+    }
+
     /// 升级版本（Mobile 不支持）
-    pub async fn upgrade(&self, _version: &str, _source: BinarySource) -> Result<(), String> {
+    pub async fn upgrade(&self, _version: &str, _source: Option<BinarySource>) -> Result<(), String> {
         Err("Mobile 不支持版本升级".into())
+    }
+
+    /// 设置 TUN 文件描述符（移动端专用：从 VpnService/NetworkExtension 获取 fd 后注入）
+    pub fn set_tun_fd(&self, instance_id: &Uuid, fd: i32) -> Result<(), String> {
+        let entry = self.instances.get(instance_id)
+            .ok_or_else(|| format!("Instance not found: {}", instance_id))?;
+        
+        let running_instance = entry.value();
+        let instance = running_instance.instance.as_ref()
+            .ok_or_else(|| "Running instance not initialized".to_string())?;
+        
+        let sender = instance.get_tun_fd_sender()
+            .ok_or_else(|| "TUN fd sender not available".to_string())?;
+        
+        sender.try_send(Some(fd))
+            .map_err(|e| format!("Failed to send TUN fd: {}", e))?;
+        
+        crate::log_info!(format!("EasyTierManager: TUN fd {} injected for instance {}", fd, instance_id));
+        Ok(())
     }
 }
 
@@ -1008,7 +1046,7 @@ mod launcher_internal {
         pub config_path: Option<PathBuf>,
         config_content: Arc<RwLock<Option<String>>>,
         status: Arc<RwLock<InstanceStatus>>,
-        instance: Option<easytier::launcher::NetworkInstance>,
+        pub instance: Option<easytier::launcher::NetworkInstance>,
     }
 
     struct InstanceStatus {
@@ -1126,6 +1164,11 @@ mod launcher_internal {
         instance.start().map_err(|e| {
             let err_msg = format!("EasyTier 启动失败: {:?}", e);
             crate::log_error!(&err_msg);
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            let err_msg = format!(
+                "{}（移动端需要先通过 set_tun_fd 注入 TUN 文件描述符）",
+                err_msg
+            );
             err_msg
         })?;
 

@@ -101,6 +101,10 @@ export async function disconnectSpace(spaceId: string): Promise<void> {
   return request<void>(`/space/${spaceId}/disconnect`, { method: "POST" });
 }
 
+export async function setTunFd(_spaceId: string, _fd: number): Promise<void> {
+  throw new Error("setTunFd is not supported on web platform");
+}
+
 export async function getSpaceStatus(spaceId: string): Promise<unknown> {
   return request<unknown>(`/space/${spaceId}/status`);
 }

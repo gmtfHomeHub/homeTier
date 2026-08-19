@@ -3,6 +3,9 @@ use std::process::Stdio;
 use std::sync::Mutex;
 use tokio::process::{Child, Command};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 /// EasyTier core 进程包装
 ///
 /// daemon 以 root 运行（macOS 经 osascript 提权启动 daemon），
@@ -30,7 +33,6 @@ impl EasyTierProcess {
 
         #[cfg(target_os = "windows")]
         {
-            use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
@@ -81,7 +83,6 @@ impl EasyTierProcess {
 
         #[cfg(target_os = "windows")]
         {
-            use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
             cmd.creation_flags(CREATE_NO_WINDOW);
         }

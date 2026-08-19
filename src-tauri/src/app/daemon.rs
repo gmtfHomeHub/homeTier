@@ -40,6 +40,7 @@ pub fn get_daemon_child() -> Option<Arc<Mutex<Option<DaemonChild>>>> {
     DAEMON_CHILD.get().cloned()
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl DaemonChild {
     /// 新建 Child 型句柄
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

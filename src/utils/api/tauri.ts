@@ -61,6 +61,10 @@ export async function disconnectSpace(spaceId: string): Promise<void> {
   return invoke("disconnect_space", { spaceId });
 }
 
+export async function setTunFd(spaceId: string, fd: number): Promise<void> {
+  return invoke("set_tun_fd", { spaceId, fd });
+}
+
 export async function listMembers(spaceId: string): Promise<Member[]> {
   return invoke("list_members", { spaceId });
 }

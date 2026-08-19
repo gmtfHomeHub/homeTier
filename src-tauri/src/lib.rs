@@ -13,6 +13,7 @@ pub mod log;
 pub mod platform;
 pub mod proxy;
 pub mod screen;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod server;
 pub mod space;
 pub mod types;
@@ -33,8 +34,10 @@ pub fn run() -> std::process::ExitCode {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build());
+        .plugin(tauri_plugin_dialog::init());
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
 
     let builder = builder.setup(|app| crate::app::setup::setup(app))
         .invoke_handler(tauri::generate_handler![
@@ -52,6 +55,7 @@ pub fn run() -> std::process::ExitCode {
             commands::space::disconnect_space,
             commands::space::get_space_status,
             commands::space::patch_space_config,
+            commands::space::set_tun_fd,
             commands::network::get_network_stats,
             commands::network::update_group_config,
             commands::network::get_space_peers,
@@ -91,17 +95,25 @@ pub fn run() -> std::process::ExitCode {
             commands::app::delete_app,
              commands::app::list_apps,
              commands::app::share_app,
-             commands::app::get_system_apps,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            commands::app::get_system_apps,
             commands::config::get_app_config,
             commands::config::set_app_config,
             commands::config::get_config_file_path,
             commands::config::get_config_template_path,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::get_proxy_url,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::get_proxy_status,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::register_proxy_key,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::set_proxy_source,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::set_device_mode,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::get_pending_downloads,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::tray::update_tray_menu,
             commands::daemon::is_daemon_ready,
             commands::daemon::get_daemon_error_reason,
@@ -194,6 +206,7 @@ pub fn run_with_args(_elevated: bool) -> std::process::ExitCode {
 }
 
 /// 守护进程入口点（--daemon 模式，路径从 CLI 参数传入）
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn run_daemon(
     config_dir: std::path::PathBuf,
     data_dir: std::path::PathBuf,
@@ -216,6 +229,7 @@ pub fn run_daemon(
 }
 
 /// 服务器模式入口点（--server 模式，Web 管理界面 + REST API + 静态文件服务）
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn run_server(
     bind: Option<String>,
     port: Option<u16>,

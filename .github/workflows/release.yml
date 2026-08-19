@@ -2,6 +2,42 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      build_macos:
+        description: '打包 macOS（dmg，aarch64 + x86_64）'
+        required: false
+        default: true
+        type: boolean
+      build_windows:
+        description: '打包 Windows（msi，x86_64）'
+        required: false
+        default: true
+        type: boolean
+      build_linux:
+        description: '打包 Linux（deb，x86_64 + aarch64）'
+        required: false
+        default: true
+        type: boolean
+      build_appimage:
+        description: '打包 Linux AppImage'
+        required: false
+        default: true
+        type: boolean
+      build_android:
+        description: '打包 Android（apk）'
+        required: false
+        default: true
+        type: boolean
+      build_ios:
+        description: '打包 iOS（无签名构建，未完成平台隔离，默认跳过）'
+        required: false
+        default: false
+        type: boolean
+      build_docker:
+        description: '构建 Docker 镜像并推送到 GHCR'
+        required: false
+        default: false
+        type: boolean
   push:
     tags:
       - 'v*'
@@ -56,10 +92,11 @@ jobs:
           retention-days: 1
 
   # ---------------------------------------------------------------
-  # 2. 桌面端打包矩阵
+  # 2. 桌面端打包（tag 发布全量打包；手动触发按平台开关选择）
   # ---------------------------------------------------------------
-  build-desktop:
+  build-desktop-macos:
     needs: fetch-easytier
+    if: startsWith(github.ref, 'refs/tags/') || inputs.build_macos
     strategy:
       fail-fast: false
       matrix:
@@ -72,10 +109,186 @@ jobs:
             target: x86_64-apple-darwin
             bundle: dmg
             artifact: homeTier-x86_64.dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: easytier-bin
+          path: src-tauri/resources/bin/
+
+      - name: Install macOS deps
+        run: brew install protobuf
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Tauri bundle
+        run: |
+          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+
+      - name: Locate artifacts
+        id: locate
+        shell: bash
+        run: |
+          find src-tauri/target -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.deb' -o -name '*.AppImage' \) | head -20
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/${{ matrix.bundle }}/*
+            src-tauri/target/release/bundle/${{ matrix.bundle }}/*
+          if-no-files-found: warn
+
+  build-desktop-windows:
+    needs: fetch-easytier
+    if: startsWith(github.ref, 'refs/tags/') || inputs.build_windows
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             bundle: msi
             artifact: homeTier-x86_64.msi
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: easytier-bin
+          path: src-tauri/resources/bin/
+
+      # 关键修复：运行 vcvars64 并导出完整的 MSVC 环境（INCLUDE/LIB/PATH）。
+      # bindgen（kcp-sys）用 clang 编译 wrapper.h，clang 在 MSVC 目标下只要读到
+      # INCLUDE 环境变量就不会再自动探测 VS 工具链——而 runner 镜像自带的 INCLUDE
+      # 只有 Windows SDK（ucrt/shared/um），缺少 VC\Tools\MSVC\<ver>\include，
+      # 导致找不到 vcruntime.h。这一步把环境补齐到与本地 Developer PowerShell 一致。
+      - name: Set up MSVC development environment (vcvars64)
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Windows deps
+        shell: pwsh
+        run: choco install protoc --yes --no-progress
+
+      - name: Install WinPcap dev pack (Packet.lib for pnet crate)
+        shell: pwsh
+        run: |
+          $url = "https://www.winpcap.org/install/bin/WpdPack_4_1_2.zip"
+          $out = "$env:TEMP/WpdPack.zip"
+          Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+          Expand-Archive -Path $out -DestinationPath "C:/WpdPack" -Force
+          # x64 lib: C:/WpdPack/WpdPack/Lib/x64/Packet.lib
+          # Add to LIB so linker finds Packet.lib
+          $libPath = "C:/WpdPack/WpdPack/Lib/x64"
+          echo "LIB=$libPath;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "INCLUDE=C:/WpdPack/WpdPack/Include;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "[winpcap] Packet.lib at $libPath"
+
+      - name: Configure MSVC include path (for vcruntime.h used by kcp-sys bindgen)
+        shell: pwsh
+        run: |
+          # Find MSVC include directory (contains vcruntime.h needed by ucrt/corecrt.h)
+          # Standard location: C:\Program Files\Microsoft Visual Studio\<VS>\<edition>\VC\Tools\MSVC\<ver>\include
+          $msvcRoot = "C:/Program Files/Microsoft Visual Studio"
+          if (Test-Path $msvcRoot) {
+            $msvcDirs = Get-ChildItem -Path "$msvcRoot/*/*/VC/Tools/MSVC/*/include" -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
+            if ($msvcDirs.Count -gt 0) {
+              $msvcInclude = $msvcDirs[0].FullName
+              echo "INCLUDE=$msvcInclude;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              echo "[msvc-include] Found: $msvcInclude"
+            } else {
+              echo "[msvc-include] WARNING: No MSVC include directory found"
+            }
+          } else {
+            echo "[msvc-include] WARNING: MSVC root not found at $msvcRoot"
+          }
+
+      - name: Configure WinDivert (compile from vendored source)
+        shell: bash
+        run: |
+          # The windivert-rust crate (used by easytier) has a "static" feature that
+          # compiles WinDivert from the vendored source (vendor/dll/windivert.c)
+          # instead of linking a pre-built binary. Setting WINDIVERT_STATIC=1
+          # activates this path, avoiding broken external download URLs.
+          echo "WINDIVERT_STATIC=1" >> "$GITHUB_ENV"
+          echo "[windivert] Using vendored source build (WINDIVERT_STATIC=1)"
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Tauri bundle
+        run: |
+          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+
+      - name: Locate artifacts
+        id: locate
+        shell: bash
+        run: |
+          find src-tauri/target -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.deb' -o -name '*.AppImage' \) | head -20
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/${{ matrix.bundle }}/*
+            src-tauri/target/release/bundle/${{ matrix.bundle }}/*
+          if-no-files-found: warn
+
+  build-desktop-linux:
+    needs: fetch-easytier
+    if: startsWith(github.ref, 'refs/tags/') || inputs.build_linux
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             bundle: deb
@@ -115,15 +328,10 @@ jobs:
           path: src-tauri/resources/bin/
 
       - name: Install Linux deps
-        if: startsWith(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
           sudo apt-get install -y libssl-dev libxdo-dev protobuf-compiler
-
-      - name: Install macOS deps
-        if: startsWith(matrix.os, 'macos')
-        run: brew install protobuf
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
@@ -152,6 +360,7 @@ jobs:
   # ---------------------------------------------------------------
   build-appimage:
     needs: fetch-easytier
+    if: startsWith(github.ref, 'refs/tags/') || inputs.build_appimage
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -191,6 +400,7 @@ jobs:
   # ---------------------------------------------------------------
   build-android:
     needs: fetch-easytier
+    if: startsWith(github.ref, 'refs/tags/') || inputs.build_android
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -205,13 +415,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
       - uses: actions/download-artifact@v4
         with:
           name: easytier-bin
           path: src-tauri/resources/bin/
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/share/swift
+          sudo rm -rf /opt/hostedtoolcache/CodeQL /usr/local/lib/android/m2repository
+          df -h / | tail -1
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
@@ -219,16 +431,36 @@ jobs:
           java-version: 17
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-      - name: Install protoc
-        run: sudo apt-get install -y protobuf-compiler
+        with:
+          ndk: 25.2.9519653
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler libclang-dev
+      - name: Configure bindgen for Android NDK
+        shell: bash
+        run: |
+          NDK_HOME="${ANDROID_NDK_HOME:-}"
+          if [ -z "$NDK_HOME" ] || [ ! -d "$NDK_HOME" ]; then
+            NDK_HOME="$(ls -d /usr/local/lib/android/sdk/ndk/*/ 2>/dev/null | sort -V | tail -1 | sed 's:/*$::')"
+          fi
+          SYSROOT="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+          echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
+          echo "BINDGEN_EXTRA_CLANG_ARGS_armv7_linux_androideabi=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
+          echo "BINDGEN_EXTRA_CLANG_ARGS_x86_64_linux_android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
+          echo "BINDGEN_EXTRA_CLANG_ARGS_i686_linux_android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
+          echo "[bindgen] NDK sysroot: $SYSROOT"
       - name: Install deps
         run: pnpm install --frozen-lockfile
       - name: Init Android project
         run: pnpm tauri android init
+      - name: Limit Gradle parallelism
+        run: |
+          printf '\norg.gradle.workers.max=2\norg.gradle.jvmargs=-Xmx2048m\n' >> src-tauri/gen/android/gradle.properties
       - name: Inject camera permissions
         run: bash scripts/mobile-permissions.sh
       - name: Build APK
-        run: pnpm tauri android build --apk
+        run: pnpm tauri android build --apk --target aarch64
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
@@ -241,6 +473,7 @@ jobs:
   # ---------------------------------------------------------------
   build-ios:
     needs: fetch-easytier
+    if: startsWith(github.ref, 'refs/tags/') || inputs.build_ios
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -280,11 +513,11 @@ jobs:
           if-no-files-found: warn
 
   # ---------------------------------------------------------------
-  # 6. Docker 镜像
+  # 6. Docker 镜像（tag 发布 或 手动触发）
   # ---------------------------------------------------------------
   build-docker:
     needs: fetch-easytier
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || inputs.build_docker
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -316,10 +549,10 @@ jobs:
             EASYTIER_CORE_VERSION=${{ env.EASYTIER_CORE_VERSION }}
 
   # ---------------------------------------------------------------
-  # 7. 汇总发布到 GitHub Release
+  # 7. 汇总发布到 GitHub Release（仅 tag 触发）
   # ---------------------------------------------------------------
   release:
-    needs: [build-desktop, build-appimage, build-android, build-ios]
+    needs: [build-desktop-macos, build-desktop-windows, build-desktop-linux, build-appimage, build-android, build-ios, build-docker]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:

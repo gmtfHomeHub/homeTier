@@ -42,7 +42,7 @@ pub fn activate_main_window(app: &tauri::AppHandle) {
     });
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn toggle_window_visibility(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         if window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(true) {
