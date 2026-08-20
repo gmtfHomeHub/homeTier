@@ -240,24 +240,27 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         let space_manager_tun = space_manager_vpn.clone();
         app_handle.listen("vpn:tun-ready", move |event| {
             if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
-                if let (Some(space_id_str), Some(fd_val)) = (payload.get("spaceId"), payload.get("fd")) {
-                    if let (Some(space_id_str), Some(fd)) = (space_id_str.as_str(), fd_val.as_i64()) {
-                        if let Ok(space_id) = Uuid::parse_str(space_id_str) {
+                if let (Some(space_id_val), Some(fd_val)) = (payload.get("spaceId"), payload.get("fd")) {
+                    let space_id_str = space_id_val.as_str().map(|s| s.to_string());
+                    let fd = fd_val.as_i64();
+                    if let (Some(space_id_str), Some(fd)) = (space_id_str, fd) {
+                        if let Ok(space_id) = Uuid::parse_str(&space_id_str) {
                             let sm = space_manager_tun.clone();
                             let ah = app_handle_tun.clone();
+                            let space_id_clone = space_id_str.clone();
                             tauri::async_runtime::spawn(async move {
                                 match sm.set_tun_fd(&space_id, fd as i32) {
                                     Ok(()) => {
                                         crate::log_info!(format!("VPN: TUN fd {} injected for space {}", fd, space_id));
                                         let _ = ah.emit("vpn:state", serde_json::json!({
-                                            "spaceId": space_id_str,
+                                            "spaceId": space_id_clone,
                                             "state": "connected"
                                         }));
                                     }
                                     Err(e) => {
                                         crate::log_error!(format!("VPN: Failed to inject TUN fd: {}", e));
                                         let _ = ah.emit("vpn:state", serde_json::json!({
-                                            "spaceId": space_id_str,
+                                            "spaceId": space_id_clone,
                                             "state": "failed",
                                             "error": e
                                         }));
@@ -274,10 +277,11 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         let app_handle_status = app_handle.clone();
         app_handle.listen("vpn:status-changed", move |event| {
             if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
-                if let Some(space_id_str) = payload.get("spaceId").and_then(|v| v.as_str()) {
-                    let status = payload.get("status").and_then(|v| v.as_str()).unwrap_or("unknown");
-                    let error = payload.get("error").and_then(|v| v.as_str());
-                    
+                let space_id_str = payload.get("spaceId").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let status = payload.get("status").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let error = payload.get("error").and_then(|v| v.as_str()).map(|s| s.to_string());
+                
+                if let Some(space_id_str) = space_id_str {
                     let state = match status {
                         "ready" => "connected",
                         "stopped" => "disconnected",
@@ -290,7 +294,7 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                         "state": state
                     });
                     if let Some(err) = error {
-                        json["error"] = serde_json::Value::String(err.to_string());
+                        json["error"] = serde_json::Value::String(err);
                     }
                     let _ = app_handle_status.emit("vpn:state", json);
                 }
