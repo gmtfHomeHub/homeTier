@@ -137,3 +137,10 @@ async-trait = "0.1"
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 # 无 feature 开关 — include_dir 始终可用，static_file_handler 自动检测 dist/ 存在与否
+
+# 发布体积优化：LTO + 单 codegen unit + strip 符号 + 体积优先优化级别
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+opt-level = "s"
