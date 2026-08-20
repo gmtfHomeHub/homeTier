@@ -41,3 +41,6 @@ Frontend (`src/types/index.ts`) and backend (`src-tauri/src/types.rs`) define pa
 - Platform abstraction via `PlatformAdapter` trait in `src-tauri/src/platform/`, with `#[cfg]`-gated impls for windows, macos, android, ios.
 - Android/iOS stubs exist; voice and screen-share have placeholder implementations and may be incomplete.
 - `tauri.conf.json` identifier: `com.hometier.app`, version `0.1.0`, window 1000×700 (min 800×600).
+
+## ⛔ Forbidden: easytier_lib read-only
+**绝对不允许编辑、修改、创建或删除 `src-tauri/resources/easytier_lib/` 下的任何文件。** 该目录是 vendored 的第三方 EasyTier 库源码，必须保持与上游一致。如果发现编译错误（如 edition 版本不匹配），只允许修改其 `Cargo.toml` 中的 `edition` / `rust-version` 字段以匹配上游要求，不允许改动任何 `.rs` 源文件、`build.rs`、或其他配置。遇到 easytier_lib 相关编译问题时，应先查上游仓库确认正确配置。

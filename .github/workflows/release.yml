@@ -26,7 +26,7 @@ on:
       build_android:
         description: '打包 Android（apk）'
         required: false
-        default: true
+        default: false
         type: boolean
       build_ios:
         description: '打包 iOS（无签名构建，未完成平台隔离，默认跳过）'
@@ -415,6 +415,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: android-aarch64
       - uses: actions/download-artifact@v4
         with:
           name: easytier-bin
@@ -423,6 +427,7 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/share/swift
           sudo rm -rf /opt/hostedtoolcache/CodeQL /usr/local/lib/android/m2repository
+          sudo rm -rf /opt/hostedtoolcache/Go /opt/hostedtoolcache/Python
           df -h / | tail -1
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -454,6 +459,12 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Init Android project
         run: pnpm tauri android init
+      - name: Fix MainActivity for Tauri 2.x
+        run: bash scripts/fix-android-mainactivity.sh
+      - name: Fix Kotlin version for JDK 17 compatibility
+        run: |
+          # Kotlin 1.6.21 doesn't support JDK 17; upgrade to 1.9.22
+          sed -i 's/classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1\.6\.21")/classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.22")/' src-tauri/gen/android/build.gradle.kts
       - name: Limit Gradle parallelism
         run: |
           printf '\norg.gradle.workers.max=2\norg.gradle.jvmargs=-Xmx2048m\n' >> src-tauri/gen/android/gradle.properties
@@ -469,11 +480,11 @@ jobs:
           if-no-files-found: warn
 
   # ---------------------------------------------------------------
-  # 5. iOS (无签名构建，需 macOS runner)
+  # 5. iOS (无签名构建，需 macOS runner) - 仅手动触发，tag 发布不自动构建
   # ---------------------------------------------------------------
   build-ios:
     needs: fetch-easytier
-    if: startsWith(github.ref, 'refs/tags/') || inputs.build_ios
+    if: inputs.build_ios
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -503,8 +514,27 @@ jobs:
         run: bash scripts/mobile-permissions.sh
       - name: Install protoc
         run: brew install protobuf
-      - name: Build iOS (no sign)
-        run: pnpm tauri ios build --no-sign
+      - name: Install mod_pbxproj for Xcode project injection
+        run: pip3 install mod-pbxproj
+      - name: Build easytier-ios-staticlib for iOS
+        run: |
+          cd src-tauri
+          cargo build --target aarch64-apple-ios --manifest-path easytier-ios-staticlib/Cargo.toml --release
+      - name: Inject NetworkExtension target into Xcode project
+        run: |
+          python3 src-tauri/gen-scripts/ios/inject_ne_target.py \
+            src-tauri/gen/apple/HomeTier.xcodeproj \
+            src-tauri/gen-scripts/ios
+      - name: Build iOS with NetworkExtension (no sign)
+        run: |
+          xcodebuild -project src-tauri/gen/apple/HomeTier.xcodeproj \
+            -scheme HomeTier \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
       - name: Upload iOS app
         uses: actions/upload-artifact@v4
         with:

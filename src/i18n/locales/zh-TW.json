@@ -127,7 +127,24 @@
     "micShortcutDesc": "全域靜音/取消靜音麥克風，編輯完成後立即生效",
     "speakerShortcutDesc": "全域靜音/取消靜音揚聲器，編輯完成後立即生效",
     "config": "設定檔",
-    "shortcutUnsupported": "目前平台不支援全域快捷鍵（行動裝置無全域按鍵擷取）"
+    "shortcutUnsupported": "目前平台不支援全域快捷鍵（行動裝置無全域按鍵擷取）",
+    "vpn": {
+      "vpnStatus": "VPN 狀態",
+      "virtualIp": "虛擬 IP",
+      "notAssigned": "未分配",
+      "vpnActive": "VPN 已啟用",
+      "authorize": "請授權 VPN 權限以建立連線",
+      "authorizeDenied": "VPN 授權被拒絕，請在系統設定中允許 VPN 權限",
+      "connectFailed": "VPN 連線失敗: {{error}}",
+      "disconnected": "VPN 已斷線",
+      "status": {
+        "preparing": "準備中...",
+        "connected": "已連線",
+        "disconnected": "已斷線",
+        "error": "錯誤"
+      },
+      "vpnUnsupported": "目前平台不支援 VPN 功能"
+    }
   },
   "shortcuts": {
     "micMuted": "麥克風已靜音",

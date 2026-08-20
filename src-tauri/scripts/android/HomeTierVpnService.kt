@@ -1,24 +1,29 @@
 package com.hometier.app
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.os.Bundle
-import app.tauri.plugin.JSObject
+import android.webkit.WebView
+import android.util.Log
 
 /**
  * HomeTier VpnService
  *
  * Creates a TUN interface and passes the file descriptor back to the app
- * via triggerCallback. Based on EasyTier's TauriVpnService.
+ * via TauriEventBus using evaluateJavascript. Based on EasyTier's TauriVpnService.
  *
  * The fd is an int and both Kotlin and Rust run in the same process on
  * Android, so the numeric fd is valid on the Rust side.
  */
 class HomeTierVpnService : VpnService() {
     companion object {
-        @JvmField var triggerCallback: (String, JSObject) -> Unit = { _, _ -> }
         @JvmField var self: HomeTierVpnService? = null
         @JvmField var ipv4Addr: String? = null
         @JvmField var routes: Array<String> = emptyArray()
@@ -29,22 +34,41 @@ class HomeTierVpnService : VpnService() {
         const val DNS = "DNS"
         const val DISALLOWED_APPLICATIONS = "DISALLOWED_APPLICATIONS"
         const val MTU = "MTU"
+        const val SPACE_ID = "SPACE_ID"
+        const val CHANNEL_ID = "homeTierVpnChannel"
+        const val NOTIFICATION_ID = 1001
     }
 
     private lateinit var vpnInterface: ParcelFileDescriptor
+    private var currentSpaceId: String = ""
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        println("hometier vpn on start command ${intent?.getExtras()} $intent")
-        val args = intent?.getExtras()
+        Log.d("HomeTierVpn", "onStartCommand: ${intent?.extras}")
+        val args = intent?.extras
+        currentSpaceId = args?.getString(SPACE_ID) ?: ""
         ipv4Addr = args?.getString(IPV4_ADDR)
         routes = args?.getStringArray(ROUTES) ?: emptyArray()
         dns = args?.getString(DNS)
 
+        // Create notification channel and start foreground service (Android 14+ requirement)
+        createNotificationChannel()
+        val notification = buildNotification("准备连接…")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+
         vpnInterface = createVpnInterface(args)
 
-        val eventData = JSObject()
-        eventData.put("fd", vpnInterface.fd)
-        triggerCallback("vpn_service_start", eventData)
+        // 发送 fd 到前端
+        val eventData = org.json.JSONObject().apply {
+            put("spaceId", currentSpaceId)
+            put("fd", vpnInterface.fd)
+        }
+        TauriEventBus.emit("vpn:tun-ready", eventData.toString())
+
+        updateNotification("已连接")
 
         return START_STICKY
     }
@@ -68,10 +92,20 @@ class HomeTierVpnService : VpnService() {
 
     private fun disconnect() {
         if (self == this && this::vpnInterface.isInitialized) {
-            triggerCallback("vpn_service_stop", JSObject())
+            val eventData = org.json.JSONObject().apply {
+                put("spaceId", currentSpaceId)
+                put("status", "stopped")
+            }
+            TauriEventBus.emit("vpn:status-changed", eventData.toString())
             vpnInterface.close()
         }
         clearStatus()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION") stopForeground(true)
+        }
+        stopSelf()
     }
 
     private fun clearStatus() {
@@ -117,5 +151,81 @@ class HomeTierVpnService : VpnService() {
                 it.setMetered(false)
             }
         }.establish() ?: throw IllegalStateException("Failed to init VpnService")
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val nm = getSystemService(NotificationManager::class.java)
+            if (nm.getNotificationChannel(CHANNEL_ID) == null) {
+                val channel = NotificationChannel(
+                    CHANNEL_ID, "homeTier VPN",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "homeTier VPN 连接状态"
+                    setShowBadge(false)
+                }
+                nm.createNotificationChannel(channel)
+            }
+        }
+    }
+
+    private fun buildNotification(text: String): Notification {
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        val pi = launchIntent?.let {
+            PendingIntent.getActivity(
+                this, 0, it,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+        }
+        return Notification.Builder(this, CHANNEL_ID)
+            .setContentTitle("homeTier")
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setContentIntent(pi)
+            .setOngoing(true)
+            .build()
+    }
+
+    private fun updateNotification(text: String) {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.notify(NOTIFICATION_ID, buildNotification(text))
+    }
+}
+
+/**
+ * TauriEventBus - 使用 evaluateJavascript 向 WebView 注入事件
+ * 避免依赖 triggerCallback 静态变量，更符合 Tauri 2 移动端事件桥标准
+ */
+object TauriEventBus {
+    private var webView: WebView? = null
+
+    fun attach(wv: WebView) {
+        webView = wv
+        Log.d("TauriEventBus", "WebView attached")
+    }
+
+    fun detach() {
+        webView = null
+        Log.d("TauriEventBus", "WebView detached")
+    }
+
+    fun emit(event: String, payload: String) {
+        val wv = webView ?: return
+        wv.post {
+            val js = """
+                (function(){
+                    if (window.__TAURI_INTERNALS__) {
+                        window.__TAURI_INTERNALS__.invoke('plugin:event|listen', {
+                            event: '$event',
+                            payload: $payload
+                        });
+                    } else {
+                        console.warn('Tauri internals not available');
+                    }
+                })();
+            """.trimIndent()
+            wv.evaluateJavascript(js, null)
+        }
+        Log.d("TauriEventBus", "Emitted event: $event, payload: $payload")
     }
 }

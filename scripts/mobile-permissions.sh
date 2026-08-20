@@ -45,11 +45,18 @@ if [ -f "$ANDROID_MANIFEST" ]; then
         echo "[mobile-permissions] Injected FOREGROUND_SERVICE permission into AndroidManifest.xml"
     fi
 
-    # 5. 在 <application> 中注册 VpnService
+    # 5. FOREGROUND_SERVICE_SYSTEM_EXEMPTED 权限（Android 14+ VpnService 前台服务需要）
+    if ! grep -q 'android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED' "$ANDROID_MANIFEST"; then
+        sed -i '/<\/manifest>/i \
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />' "$ANDROID_MANIFEST"
+        echo "[mobile-permissions] Injected FOREGROUND_SERVICE_SYSTEM_EXEMPTED permission into AndroidManifest.xml"
+    fi
+
+    # 6. 在 <application> 中注册 VpnService
     if ! grep -q 'com.hometier.app.HomeTierVpnService' "$ANDROID_MANIFEST"; then
         # 使用 sed 在 </application> 之前插入 service 声明
         sed -i '/<\/application>/i \
-        <service\n            android:name="com.hometier.app.HomeTierVpnService"\n            android:permission="android.permission.BIND_VPN_SERVICE"\n            android:exported="false">\n            <intent-filter>\n                <action android:name="android.net.VpnService" />\n            </intent-filter>\n        </service>' "$ANDROID_MANIFEST"
+        <service\n            android:name="com.hometier.app.HomeTierVpnService"\n            android:permission="android.permission.BIND_VPN_SERVICE"\n            android:exported="false"\n            android:foregroundServiceType="systemExempted">\n            <intent-filter>\n                <action android:name="android.net.VpnService" />\n            </intent-filter>\n        </service>' "$ANDROID_MANIFEST"
         echo "[mobile-permissions] Injected HomeTierVpnService into AndroidManifest.xml"
     else
         echo "[mobile-permissions] HomeTierVpnService already registered in AndroidManifest.xml"
@@ -74,22 +81,8 @@ for KF in "${KOTLIN_SOURCES[@]}"; do
     fi
 done
 
-# 在 MainActivity.kt 中注册 VpnServicePlugin（幂等）
-MAIN_ACTIVITY="src-tauri/gen/android/app/src/main/java/com/hometier/app/MainActivity.kt"
-if [ -f "$MAIN_ACTIVITY" ]; then
-    if ! grep -q 'HomeTierVpnServicePlugin' "$MAIN_ACTIVITY"; then
-        if grep -q '\.plugin(' "$MAIN_ACTIVITY"; then
-            awk '/\.plugin\(/ { found=1 } found && !done { print; print "            .plugin(com.hometier.app.HomeTierVpnServicePlugin::new)"; done=1; next } { print }' "$MAIN_ACTIVITY" > "$MAIN_ACTIVITY.tmp" && mv "$MAIN_ACTIVITY.tmp" "$MAIN_ACTIVITY"
-            echo "[mobile-permissions] Registered HomeTierVpnServicePlugin in MainActivity.kt"
-        else
-            echo "[mobile-permissions] WARN: MainActivity.kt 中未找到 .plugin( 注册位置"
-        fi
-    else
-        echo "[mobile-permissions] HomeTierVpnServicePlugin already registered in MainActivity.kt"
-    fi
-else
-    echo "[mobile-permissions] WARN: MainActivity.kt 不存在（tauri android init 可能未执行）"
-fi
+# MainActivity.kt 由 fix-android-mainactivity.sh 统一生成（含 plugin 注册、WebView attach/detach）
+# 此处不再修改 MainActivity.kt
 
 if [ -f "$IOS_PLIST" ]; then
     if ! grep -q 'NSCameraUsageDescription' "$IOS_PLIST"; then
@@ -130,5 +123,43 @@ if(c.indexOf('com.apple.developer.networking.networkextension')===-1){
         echo "[mobile-permissions] Injected NetworkExtension entitlement into Info.plist"
     else
         echo "[mobile-permissions] NetworkExtension entitlement already exists in Info.plist"
+    fi
+
+    # iOS NSNetworkExtensionUsageDescription
+    if ! grep -q 'NSNetworkExtensionUsageDescription' "$IOS_PLIST"; then
+        NODE_=$(which node || true)
+        if [ -n "$NODE_" ]; then
+            node -e "
+const f=require('fs');
+let c=f.readFileSync('$IOS_PLIST','utf8');
+if(c.indexOf('NSNetworkExtensionUsageDescription')===-1){
+  c=c.replace('</dict></plist>',
+    '<key>NSNetworkExtensionUsageDescription</key><string>homeTier 需要使用网络扩展来建立 VPN 连接</string></dict></plist>');
+  f.writeFileSync('$IOS_PLIST',c);
+}
+"
+        fi
+        echo "[mobile-permissions] Injected NSNetworkExtensionUsageDescription into Info.plist"
+    else
+        echo "[mobile-permissions] NSNetworkExtensionUsageDescription already exists in Info.plist"
+    fi
+
+    # iOS App Group entitlement
+    if ! grep -q 'com.apple.security.application-groups' "$IOS_PLIST"; then
+        NODE_=$(which node || true)
+        if [ -n "$NODE_" ]; then
+            node -e "
+const f=require('fs');
+let c=f.readFileSync('$IOS_PLIST','utf8');
+if(c.indexOf('com.apple.security.application-groups')===-1){
+  c=c.replace('</dict></plist>',
+    '<key>com.apple.security.application-groups</key><array><string>group.com.hometier.app</string></array></dict></plist>');
+  f.writeFileSync('$IOS_PLIST',c);
+}
+"
+        fi
+        echo "[mobile-permissions] Injected App Group entitlement into Info.plist"
+    else
+        echo "[mobile-permissions] App Group entitlement already exists in Info.plist"
     fi
 fi

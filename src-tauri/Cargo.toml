@@ -2,9 +2,11 @@
 name = "homeTier"
 version = "0.1.0"
 description = "A cross-platform virtual LAN application based on EasyTier"
-authors = ["you"]
+authors = ["homeTier Authors"]
 edition = "2021"
 rust-version = "1.75"
+license = "GPL-3.0-or-later"
+license-file = "../../LICENSE"
 
 [lib]
 name = "home_tier_lib"
@@ -125,6 +127,11 @@ objc2-app-kit = "0.3.2"
 # 移动端桩代码：voice/screen 返回 None，Tauri 2 通过 cfg 条件编译。
 # 完整 Android build 需额外 tauri-android / tauri-ios crates（platform native linking），
 # 由 tauri-cli 在 build 时自动注入，无需在此声明。
+
+[dev-dependencies]
+tokio-test = "0.4"
+proptest = "1.0"
+async-trait = "0.1"
 
 [features]
 default = ["custom-protocol"]

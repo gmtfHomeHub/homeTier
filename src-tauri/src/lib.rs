@@ -39,6 +39,9 @@ pub fn run() -> std::process::ExitCode {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
 
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(mobile_vpn_plugin());
+
     let builder = builder.setup(|app| crate::app::setup::setup(app))
         .invoke_handler(tauri::generate_handler![
             commands::space::create_space,
@@ -56,6 +59,10 @@ pub fn run() -> std::process::ExitCode {
             commands::space::get_space_status,
             commands::space::patch_space_config,
             commands::space::set_tun_fd,
+            #[cfg(target_os = "ios")]
+            commands::ios_vpn::start_ios_vpn,
+            #[cfg(target_os = "ios")]
+            commands::ios_vpn::stop_ios_vpn,
             commands::network::get_network_stats,
             commands::network::update_group_config,
             commands::network::get_space_peers,
@@ -406,4 +413,14 @@ pub fn run_server(
             std::process::ExitCode::FAILURE
         }
     }
+}
+
+#[cfg(target_os = "android")]
+fn mobile_vpn_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri::plugin::Builder::new("hometiervpnservice")
+        .setup(|_app, api| {
+            api.register_android_plugin("com.hometier.app", "HomeTierVpnServicePlugin")?;
+            Ok(())
+        })
+        .build()
 }

@@ -13,6 +13,7 @@ use crate::voice::server::VoiceServer;
 use crate::screen::server::ScreenShareSignalServer;
 use crate::easytier::config::NetworkConfig;
 use crate::file::FileServer;
+use tauri::Emitter;
 
 /// 空间管理器
 pub struct SpaceManager {
@@ -21,6 +22,8 @@ pub struct SpaceManager {
     easytier: Arc<crate::easytier::EasyTierManager>,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     ipc_client: Arc<crate::daemon::client::IpcClient>,
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    app_handle: Option<tauri::AppHandle>,
     pub(crate) spaces: Arc<RwLock<Vec<Space>>>,
     /// 聊天服务器映射: space_id -> ChatServer
     pub(crate) chat_servers: Arc<RwLock<HashMap<Uuid, ChatServer>>>,
@@ -65,6 +68,7 @@ impl Clone for SpaceManager {
         Self {
             db: self.db.clone(),
             easytier: self.easytier.clone(),
+            app_handle: self.app_handle.clone(),
             spaces: self.spaces.clone(),
             chat_servers: self.chat_servers.clone(),
             chat_clients: self.chat_clients.clone(),
@@ -809,7 +813,7 @@ Self {
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 impl SpaceManager {
-    pub fn new(db: Arc<Database>, easytier: Arc<crate::easytier::EasyTierManager>) -> Self {
+    pub fn new(db: Arc<Database>, easytier: Arc<crate::easytier::EasyTierManager>, app_handle: Option<tauri::AppHandle>) -> Self {
         let storage_dir = std::env::var("APPDATA_DIR")
             .or_else(|_| std::env::var("HOME"))
             .map(|p| PathBuf::from(p).join("homeTier/files"))
@@ -820,6 +824,7 @@ impl SpaceManager {
         Self {
             db,
             easytier,
+            app_handle,
             spaces: Arc::new(RwLock::new(Vec::new())),
             chat_servers: Arc::new(RwLock::new(HashMap::new())),
             chat_clients: Arc::new(RwLock::new(HashMap::new())),
@@ -1034,15 +1039,36 @@ impl SpaceManager {
             ..Default::default()
         };
 
+        // Emit VPN pending state for mobile
+        self.emit_vpn_state(space_id, "pending-vpn", None).await;
+
         self.easytier.start_network(&cfg, *space_id, existing_config).await?;
         crate::log_info!(format!("连接空间: {}", space.name), &space_id.to_string());
         Ok(())
+    }
+
+    /// Emit VPN state event to frontend (mobile only)
+    async fn emit_vpn_state(&self, space_id: &Uuid, state: &str, error: Option<String>) {
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        {
+            if let Some(app_handle) = &self.app_handle {
+                let mut payload = serde_json::json!({
+                    "spaceId": space_id.to_string(),
+                    "state": state
+                });
+                if let Some(err) = error {
+                    payload["error"] = serde_json::Value::String(err);
+                }
+                let _ = app_handle.emit("vpn:state", payload);
+            }
+        }
     }
 
     /// 断开空间
     pub async fn disconnect(&self, space_id: &Uuid) -> Result<(), String> {
         crate::log_info!(format!("断开空间: {}", space_id), &space_id.to_string());
         self.easytier.stop_network(space_id).await?;
+        self.emit_vpn_state(space_id, "disconnected", None).await;
         Ok(())
     }
 

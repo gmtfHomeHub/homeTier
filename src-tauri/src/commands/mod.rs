@@ -5,6 +5,7 @@ pub mod config_store;
 pub mod daemon;
 pub mod easytier;
 pub mod file;
+pub mod ios_vpn;
 pub mod log;
 pub mod network;
 pub mod network_acls;

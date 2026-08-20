@@ -15,6 +15,7 @@ import android.webkit.WebView
 
 @InvokeArg
 class StartVpnArgs {
+    var spaceId: String? = null
     var ipv4Addr: String? = null
     var routes: Array<String> = emptyArray()
     var dns: String? = null
@@ -26,9 +27,7 @@ class StartVpnArgs {
 class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity) {
 
     override fun load(webView: WebView) {
-        HomeTierVpnService.triggerCallback = { event, data ->
-            trigger(event, data)
-        }
+        TauriEventBus.attach(webView)
     }
 
     @Command
@@ -64,6 +63,7 @@ class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity
                 ret.put("errorMsg", "need_prepare")
             } else {
                 val intent = Intent(activity, HomeTierVpnService::class.java)
+                intent.putExtra(HomeTierVpnService.SPACE_ID, args.spaceId)
                 intent.putExtra(HomeTierVpnService.IPV4_ADDR, args.ipv4Addr)
                 intent.putExtra(HomeTierVpnService.ROUTES, args.routes)
                 intent.putExtra(HomeTierVpnService.DNS, args.dns)
