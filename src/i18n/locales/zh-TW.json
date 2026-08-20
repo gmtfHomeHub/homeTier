@@ -144,7 +144,7 @@
         "error": "錯誤"
       },
       "vpnUnsupported": "目前平台不支援 VPN 功能"
-    },
+    }
   },
   "shortcuts": {
     "micMuted": "麥克風已靜音",
