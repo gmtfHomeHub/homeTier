@@ -21,10 +21,16 @@ cp "$MAIN_ACTIVITY" "$MAIN_ACTIVITY.bak"
 cat > "$MAIN_ACTIVITY" <<'EOF'
 package com.hometier.app
 
-import app.tauri.TauriActivity
+import android.os.Bundle
 import android.webkit.WebView
+import androidx.activity.enableEdgeToEdge
 
 class MainActivity : TauriActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
+        super.onCreate(savedInstanceState)
+    }
+
     override fun onWebViewCreate(webView: WebView) {
         super.onWebViewCreate(webView)
         TauriEventBus.attach(webView)
@@ -33,11 +39,6 @@ class MainActivity : TauriActivity() {
     override fun onDestroy() {
         TauriEventBus.detach()
         super.onDestroy()
-    }
-
-    override fun loadPlugins(pluginManager: app.tauri.plugin.PluginManager) {
-        pluginManager
-            .plugin(com.hometier.app.HomeTierVpnServicePlugin::new)
     }
 }
 EOF

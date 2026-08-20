@@ -39,6 +39,16 @@ pub fn run() -> std::process::ExitCode {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
 
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(
+        tauri::plugin::Builder::new("hometiervpnservice")
+            .setup(|_app, api| {
+                api.register_android_plugin("com.hometier.app", "HomeTierVpnServicePlugin")?;
+                Ok(())
+            })
+            .build(),
+    );
+
     let builder = builder.setup(|app| crate::app::setup::setup(app))
         .invoke_handler(tauri::generate_handler![
             commands::space::create_space,
