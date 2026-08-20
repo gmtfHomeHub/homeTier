@@ -1,3 +1,12 @@
+[workspace]
+members = [
+    "easytier-ios-staticlib",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.75"
+
 [package]
 name = "homeTier"
 version = "0.1.0"
