@@ -13,6 +13,7 @@ use crate::voice::server::VoiceServer;
 use crate::screen::server::ScreenShareSignalServer;
 use crate::easytier::config::NetworkConfig;
 use crate::file::FileServer;
+use tauri::Emitter;
 
 /// 空间管理器
 pub struct SpaceManager {
@@ -67,6 +68,7 @@ impl Clone for SpaceManager {
         Self {
             db: self.db.clone(),
             easytier: self.easytier.clone(),
+            app_handle: self.app_handle.clone(),
             spaces: self.spaces.clone(),
             chat_servers: self.chat_servers.clone(),
             chat_clients: self.chat_clients.clone(),

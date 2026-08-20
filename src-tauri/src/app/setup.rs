@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tauri::{Emitter, Manager, async_runtime};
+use tauri::{Emitter, Listener, Manager, async_runtime};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 use serde_json;

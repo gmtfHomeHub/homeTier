@@ -1,6 +1,6 @@
 // iOS NetworkExtension VPN commands
 use tauri::State;
-use crate::types::NetworkConfig;
+use crate::easytier::config::NetworkConfig;
 use crate::space::manager::SpaceManager;
 use std::sync::Arc;
 use uuid::Uuid;
