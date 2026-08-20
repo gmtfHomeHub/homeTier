@@ -459,6 +459,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Init Android project
         run: pnpm tauri android init
+      - name: Fix MainActivity for Tauri 2.x
+        run: bash scripts/fix-android-mainactivity.sh
       - name: Fix Kotlin version for JDK 17 compatibility
         run: |
           # Kotlin 1.6.21 doesn't support JDK 17; upgrade to 1.9.22
