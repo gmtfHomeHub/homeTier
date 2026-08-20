@@ -26,7 +26,7 @@ on:
       build_android:
         description: '打包 Android（apk）'
         required: false
-        default: true
+        default: false
         type: boolean
       build_ios:
         description: '打包 iOS（无签名构建，未完成平台隔离，默认跳过）'
@@ -415,6 +415,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: android-aarch64
       - uses: actions/download-artifact@v4
         with:
           name: easytier-bin
@@ -423,6 +427,7 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/share/swift
           sudo rm -rf /opt/hostedtoolcache/CodeQL /usr/local/lib/android/m2repository
+          sudo rm -rf /opt/hostedtoolcache/Go /opt/hostedtoolcache/Python
           df -h / | tail -1
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -503,8 +508,27 @@ jobs:
         run: bash scripts/mobile-permissions.sh
       - name: Install protoc
         run: brew install protobuf
-      - name: Build iOS (no sign)
-        run: pnpm tauri ios build --no-sign
+      - name: Install mod_pbxproj for Xcode project injection
+        run: pip3 install mod-pbxproj
+      - name: Build easytier-ios-staticlib for iOS
+        run: |
+          cd src-tauri
+          cargo build --target aarch64-apple-ios --manifest-path easytier-ios-staticlib/Cargo.toml --release
+      - name: Inject NetworkExtension target into Xcode project
+        run: |
+          python3 src-tauri/gen-scripts/ios/inject_ne_target.py \
+            src-tauri/gen/apple/HomeTier.xcodeproj \
+            src-tauri/gen-scripts/ios
+      - name: Build iOS with NetworkExtension (no sign)
+        run: |
+          xcodebuild -project src-tauri/gen/apple/HomeTier.xcodeproj \
+            -scheme HomeTier \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
       - name: Upload iOS app
         uses: actions/upload-artifact@v4
         with:
