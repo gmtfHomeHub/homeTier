@@ -40,14 +40,7 @@ pub fn run() -> std::process::ExitCode {
     let builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
 
     #[cfg(target_os = "android")]
-    let builder = builder.plugin(
-        tauri::plugin::Builder::new("hometiervpnservice")
-            .setup(|_app, api| {
-                api.register_android_plugin("com.hometier.app", "HomeTierVpnServicePlugin")?;
-                Ok(())
-            })
-            .build(),
-    );
+    let builder = builder.plugin(mobile_vpn_plugin());
 
     let builder = builder.setup(|app| crate::app::setup::setup(app))
         .invoke_handler(tauri::generate_handler![
@@ -420,4 +413,14 @@ pub fn run_server(
             std::process::ExitCode::FAILURE
         }
     }
+}
+
+#[cfg(target_os = "android")]
+fn mobile_vpn_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri::plugin::Builder::new("hometiervpnservice")
+        .setup(|_app, api| {
+            api.register_android_plugin("com.hometier.app", "HomeTierVpnServicePlugin")?;
+            Ok(())
+        })
+        .build()
 }
