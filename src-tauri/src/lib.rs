@@ -56,6 +56,10 @@ pub fn run() -> std::process::ExitCode {
             commands::space::get_space_status,
             commands::space::patch_space_config,
             commands::space::set_tun_fd,
+            #[cfg(target_os = "ios")]
+            commands::ios_vpn::start_ios_vpn,
+            #[cfg(target_os = "ios")]
+            commands::ios_vpn::stop_ios_vpn,
             commands::network::get_network_stats,
             commands::network::update_group_config,
             commands::network::get_space_peers,

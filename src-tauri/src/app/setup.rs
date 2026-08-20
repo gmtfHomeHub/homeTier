@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::{Emitter, Manager, async_runtime};
 use tokio::sync::RwLock;
+use uuid::Uuid;
+use serde_json;
 
 use crate::app::daemon::DaemonReadyState;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -219,10 +221,82 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(crate::space::manager::SpaceManager::new(db.clone(), instance_manager, ipc_client))
     };
     #[cfg(any(target_os = "android", target_os = "ios"))]
-    let space_manager = Arc::new(crate::space::manager::SpaceManager::new(db.clone(), instance_manager));
+    let space_manager = Arc::new(crate::space::manager::SpaceManager::new(
+        db.clone(),
+        instance_manager,
+        Some(app.handle().clone()),
+    ));
     let space_manager_clone = space_manager.clone();
     app.manage(space_manager);
     log_info!("[GUI] 空间管理器已创建");
+
+    // Mobile: VPN event listeners (Kotlin/Swift → Rust → frontend)
+    #[cfg(any(target_os = "android", target_os = "ios"))] {
+        let app_handle = app.handle().clone();
+        let space_manager_vpn = space_manager_clone.clone();
+        
+        // Listen for vpn:tun-ready event from Kotlin/Swift
+        let app_handle_tun = app_handle.clone();
+        let space_manager_tun = space_manager_vpn.clone();
+        app_handle.listen("vpn:tun-ready", move |event| {
+            if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+                if let (Some(space_id_str), Some(fd_val)) = (payload.get("spaceId"), payload.get("fd")) {
+                    if let (Some(space_id_str), Some(fd)) = (space_id_str.as_str(), fd_val.as_i64()) {
+                        if let Ok(space_id) = Uuid::parse_str(space_id_str) {
+                            let sm = space_manager_tun.clone();
+                            let ah = app_handle_tun.clone();
+                            tauri::async_runtime::spawn(async move {
+                                match sm.set_tun_fd(&space_id, fd as i32) {
+                                    Ok(()) => {
+                                        crate::log_info!(format!("VPN: TUN fd {} injected for space {}", fd, space_id));
+                                        let _ = ah.emit("vpn:state", serde_json::json!({
+                                            "spaceId": space_id_str,
+                                            "state": "connected"
+                                        }));
+                                    }
+                                    Err(e) => {
+                                        crate::log_error!(format!("VPN: Failed to inject TUN fd: {}", e));
+                                        let _ = ah.emit("vpn:state", serde_json::json!({
+                                            "spaceId": space_id_str,
+                                            "state": "failed",
+                                            "error": e
+                                        }));
+                                    }
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Listen for vpn:status-changed event from Kotlin/Swift
+        let app_handle_status = app_handle.clone();
+        app_handle.listen("vpn:status-changed", move |event| {
+            if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+                if let Some(space_id_str) = payload.get("spaceId").and_then(|v| v.as_str()) {
+                    let status = payload.get("status").and_then(|v| v.as_str()).unwrap_or("unknown");
+                    let error = payload.get("error").and_then(|v| v.as_str());
+                    
+                    let state = match status {
+                        "ready" => "connected",
+                        "stopped" => "disconnected",
+                        "error" => "failed",
+                        _ => "pending-vpn",
+                    };
+                    
+                    let mut json = serde_json::json!({
+                        "spaceId": space_id_str,
+                        "state": state
+                    });
+                    if let Some(err) = error {
+                        json["error"] = serde_json::Value::String(err.to_string());
+                    }
+                    let _ = app_handle_status.emit("vpn:state", json);
+                }
+            }
+        });
+    }
 
     // 初始化配置存储服务（P2P 分布式配置同步：本地队列 + TCP 监听；移动端不监听端口）
     let config_store_root = app_data.join("config_store");

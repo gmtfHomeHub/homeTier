@@ -1,6 +1,11 @@
 package com.hometier.app
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -29,24 +34,41 @@ class HomeTierVpnService : VpnService() {
         const val DNS = "DNS"
         const val DISALLOWED_APPLICATIONS = "DISALLOWED_APPLICATIONS"
         const val MTU = "MTU"
+        const val SPACE_ID = "SPACE_ID"
+        const val CHANNEL_ID = "homeTierVpnChannel"
+        const val NOTIFICATION_ID = 1001
     }
 
     private lateinit var vpnInterface: ParcelFileDescriptor
+    private var currentSpaceId: String = ""
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d("HomeTierVpn", "onStartCommand: ${intent?.extras}")
         val args = intent?.extras
+        currentSpaceId = args?.getString(SPACE_ID) ?: ""
         ipv4Addr = args?.getString(IPV4_ADDR)
         routes = args?.getStringArray(ROUTES) ?: emptyArray()
         dns = args?.getString(DNS)
+
+        // Create notification channel and start foreground service (Android 14+ requirement)
+        createNotificationChannel()
+        val notification = buildNotification("准备连接…")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
 
         vpnInterface = createVpnInterface(args)
 
         // 发送 fd 到前端
         val eventData = org.json.JSONObject().apply {
+            put("spaceId", currentSpaceId)
             put("fd", vpnInterface.fd)
         }
         TauriEventBus.emit("vpn:tun-ready", eventData.toString())
+
+        updateNotification("已连接")
 
         return START_STICKY
     }
@@ -70,10 +92,20 @@ class HomeTierVpnService : VpnService() {
 
     private fun disconnect() {
         if (self == this && this::vpnInterface.isInitialized) {
-            TauriEventBus.emit("vpn:status-changed", """{"status":"stopped"}""")
+            val eventData = org.json.JSONObject().apply {
+                put("spaceId", currentSpaceId)
+                put("status", "stopped")
+            }
+            TauriEventBus.emit("vpn:status-changed", eventData.toString())
             vpnInterface.close()
         }
         clearStatus()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION") stopForeground(true)
+        }
+        stopSelf()
     }
 
     private fun clearStatus() {
@@ -119,6 +151,44 @@ class HomeTierVpnService : VpnService() {
                 it.setMetered(false)
             }
         }.establish() ?: throw IllegalStateException("Failed to init VpnService")
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val nm = getSystemService(NotificationManager::class.java)
+            if (nm.getNotificationChannel(CHANNEL_ID) == null) {
+                val channel = NotificationChannel(
+                    CHANNEL_ID, "homeTier VPN",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "homeTier VPN 连接状态"
+                    setShowBadge(false)
+                }
+                nm.createNotificationChannel(channel)
+            }
+        }
+    }
+
+    private fun buildNotification(text: String): Notification {
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        val pi = launchIntent?.let {
+            PendingIntent.getActivity(
+                this, 0, it,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+        }
+        return Notification.Builder(this, CHANNEL_ID)
+            .setContentTitle("homeTier")
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setContentIntent(pi)
+            .setOngoing(true)
+            .build()
+    }
+
+    private fun updateNotification(text: String) {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.notify(NOTIFICATION_ID, buildNotification(text))
     }
 }
 

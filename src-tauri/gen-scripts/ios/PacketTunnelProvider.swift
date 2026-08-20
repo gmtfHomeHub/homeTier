@@ -378,11 +378,22 @@ class HomeTierTunnelProvider: NEPacketTunnelProvider {
     }
 
     private func readConfigFromAppGroup() -> String? {
-        guard let defaults = UserDefaults(suiteName: APP_GROUP_ID),
-              let configJson = defaults.string(forKey: "VPNConfig") else {
+        // Method 1: Try reading from UserDefaults (legacy)
+        if let defaults = UserDefaults(suiteName: APP_GROUP_ID),
+           let configJson = defaults.string(forKey: "VPNConfig") {
+            return configJson
+        }
+        
+        // Method 2: Read from shared file in App Group container
+        guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: APP_GROUP_ID) else {
             return nil
         }
-        return configJson
+        let configPath = container.appendingPathComponent("Library/Preferences/VPNConfig.json")
+        if let data = try? Data(contentsOf: configPath),
+           let json = String(data: data, encoding: .utf8) {
+            return json
+        }
+        return nil
     }
 
     private func extractError(_ errPtr: UnsafePointer<CChar>?) -> String {

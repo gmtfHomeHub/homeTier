@@ -50,7 +50,8 @@ export async function prepareVpn(): Promise<boolean> {
 
 /**
  * Start the VPN service with the given configuration.
- * The Kotlin VpnService will emit vpn_service_start with the tun fd.
+ * The Kotlin VpnService will emit vpn:tun-ready with the tun fd.
+ * The Rust backend handles fd injection and emits vpn:state event.
  */
 export async function startVpn(config: VpnConfig): Promise<number | null> {
   if (!isTauri() || !(await isMobile())) {
@@ -58,21 +59,26 @@ export async function startVpn(config: VpnConfig): Promise<number | null> {
   }
 
   try {
-    // Listen for the tun-ready event first (emitted by Kotlin TauriEventBus)
-    const unlisten = await listen<{ fd: number }>("vpn:tun-ready", (event) => {
-      const fd = event.payload?.fd;
-      if (typeof fd === "number") {
-        // Inject fd into easytier
-        api.setTunFd(config.spaceId, fd).catch((e) => {
-          console.error("Failed to inject TUN fd:", e);
-        });
-        stopPromiseResolver?.(fd);
+    // Listen for the vpn:state event from Rust (which handles fd injection)
+    const unlisten = await listen<{ spaceId: string; state: string; error?: string }>(
+      "vpn:state",
+      (event) => {
+        if (event.payload?.spaceId === config.spaceId) {
+          const state = event.payload.state;
+          if (state === "connected") {
+            // VPN connected successfully, fd was injected by Rust
+            stopPromiseResolver?.(0); // fd not needed here, just signal success
+          } else if (state === "failed") {
+            console.error("VPN connection failed:", event.payload.error);
+            stopPromiseResolver?.(null);
+          }
+        }
       }
-    });
+    );
 
-    let stopPromiseResolver: ((fd: number) => void) | null = null;
+    let stopPromiseResolver: ((fd: number | null) => void) | null = null;
     const fdPromise = new Promise<number | null>((resolve) => {
-      stopPromiseResolver = (fd: number) => {
+      stopPromiseResolver = (fd: number | null) => {
         resolve(fd);
         stopPromiseResolver = null;
       };
@@ -86,6 +92,7 @@ export async function startVpn(config: VpnConfig): Promise<number | null> {
 
     // Start the VPN service via plugin
     await invoke(`plugin:${PLUGIN}|start_vpn`, {
+      spaceId: config.spaceId,
       ipv4Addr: `${config.virtualIp}/${config.virtualIpCidr}`,
       routes: config.routes,
       dns: config.dnsServers[0] ?? null,
