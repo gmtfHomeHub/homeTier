@@ -90,19 +90,21 @@ webpki-roots = "0.26"
 # TUN 设备管理（与 EasyTier 内部使用的 tun-easytier 同源）
 tun-easytier = { git = "https://github.com/EasyTier/rust-tun", features = ["async"] }
 
-# EasyTier (本地引用)
-easytier = { path = "./resources/easytier_lib/easytier", features = [
-    "wireguard",
-    "websocket",
-    "tun",
-    "socks5",
-    "kcp",
-    "quic",
-    "zstd",
-] }
-
-# WebRTC
+# WebRTC (桌面端 voice/screen-share 需要)
 webrtc = "0.11"
+
+# EasyTier (本地引用) — 桌面端无需完整 features，仅移动端需要
+# 通过互斥的 target cfg 避免重复定义
+# 桌面端：无 features（仅用 proto/rpc/tcp 层）
+# 移动端：完整 features（Android easytier-ffi + iOS easytier-ios-staticlib 需要完整 VPN 引擎）
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+easytier = { path = "./resources/easytier_lib/easytier", features = [] }
+
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+easytier = { path = "./resources/easytier_lib/easytier", features = ["wireguard", "websocket", "tun", "socks5", "kcp", "quic", "zstd"] }
+# 移动端桩代码：voice/screen 返回 None，Tauri 2 通过 cfg 条件编译。
+# 完整 Android build 需额外 tauri-android / tauri-ios crates（platform native linking），
+# 由 tauri-cli 在 build 时自动注入，无需在此声明。
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62", features = [
@@ -121,11 +123,6 @@ security-framework-sys = "2.9"
 [target.'cfg(target_os = "macos")'.dependencies]
 # macOS 托盘窗口激活（NSRunningApplication activateWithOptions）
 objc2-app-kit = "0.3.2"
-
-[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
-# 移动端桩代码：voice/screen 返回 None，Tauri 2 通过 cfg 条件编译。
-# 完整 Android build 需额外 tauri-android / tauri-ios crates（platform native linking），
-# 由 tauri-cli 在 build 时自动注入，无需在此声明。
 
 [dev-dependencies]
 tokio-test = "0.4"
