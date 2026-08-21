@@ -85,14 +85,42 @@ jobs:
             echo "verified: $name"
           done
 
-      - uses: actions/upload-artifact@v4
+      # 每个平台归档单独上传：各打包 job 只取本平台文件，
+      # 避免把 5 个平台的 easytier-core（合计约 142MB）全部打进同一个安装包
+      - name: Upload per-platform artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: easytier-bin
-          path: src-tauri/resources/bin/
+          name: easytier-bin-linux-x86_64
+          path: src-tauri/resources/bin/easytier-linux-x86_64-${{ env.EASYTIER_CORE_VERSION }}.zip
+          retention-days: 1
+      - name: Upload per-platform artifacts (linux-aarch64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: easytier-bin-linux-aarch64
+          path: src-tauri/resources/bin/easytier-linux-aarch64-${{ env.EASYTIER_CORE_VERSION }}.zip
+          retention-days: 1
+      - name: Upload per-platform artifacts (macos-x86_64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: easytier-bin-macos-x86_64
+          path: src-tauri/resources/bin/easytier-macos-x86_64-${{ env.EASYTIER_CORE_VERSION }}.zip
+          retention-days: 1
+      - name: Upload per-platform artifacts (macos-aarch64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: easytier-bin-macos-aarch64
+          path: src-tauri/resources/bin/easytier-macos-aarch64-${{ env.EASYTIER_CORE_VERSION }}.zip
+          retention-days: 1
+      - name: Upload per-platform artifacts (windows-x86_64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: easytier-bin-windows-x86_64
+          path: src-tauri/resources/bin/easytier-windows-x86_64-${{ env.EASYTIER_CORE_VERSION }}.zip
           retention-days: 1
 
   # ---------------------------------------------------------------
   # 2. 桌面端打包（tag 发布全量打包；手动触发按平台开关选择）
+  #    各 job 仅下载并嵌入本平台的 easytier-core 归档
   # ---------------------------------------------------------------
   build-desktop-macos:
     needs: fetch-easytier
@@ -105,10 +133,12 @@ jobs:
             target: aarch64-apple-darwin
             bundle: dmg
             artifact: homeTier-aarch64.dmg
+            bin: macos-aarch64
           - os: macos-latest
             target: x86_64-apple-darwin
             bundle: dmg
             artifact: homeTier-x86_64.dmg
+            bin: macos-x86_64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -136,7 +166,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: easytier-bin
+          name: easytier-bin-${{ matrix.bin }}
           path: src-tauri/resources/bin/
 
       - name: Install macOS deps
@@ -175,6 +205,7 @@ jobs:
             target: x86_64-pc-windows-msvc
             bundle: msi
             artifact: homeTier-x86_64.msi
+            bin: windows-x86_64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -202,7 +233,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: easytier-bin
+          name: easytier-bin-${{ matrix.bin }}
           path: src-tauri/resources/bin/
 
       # 关键修复：运行 vcvars64 并导出完整的 MSVC 环境（INCLUDE/LIB/PATH）。
@@ -293,10 +324,12 @@ jobs:
             target: x86_64-unknown-linux-gnu
             bundle: deb
             artifact: homeTier-x86_64.deb
+            bin: linux-x86_64
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             bundle: deb
             artifact: homeTier-aarch64.deb
+            bin: linux-aarch64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -324,7 +357,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: easytier-bin
+          name: easytier-bin-${{ matrix.bin }}
           path: src-tauri/resources/bin/
 
       - name: Install Linux deps
@@ -378,7 +411,7 @@ jobs:
           workspaces: src-tauri -> target
       - uses: actions/download-artifact@v4
         with:
-          name: easytier-bin
+          name: easytier-bin-linux-x86_64
           path: src-tauri/resources/bin/
       - name: Install Linux deps
         run: |
@@ -399,7 +432,6 @@ jobs:
   # 4. Android APK
   # ---------------------------------------------------------------
   build-android:
-    needs: fetch-easytier
     if: startsWith(github.ref, 'refs/tags/') || inputs.build_android
     runs-on: ubuntu-latest
     steps:
@@ -419,10 +451,6 @@ jobs:
         with:
           workspaces: src-tauri -> target
           key: android-aarch64
-      - uses: actions/download-artifact@v4
-        with:
-          name: easytier-bin
-          path: src-tauri/resources/bin/
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/share/swift
@@ -483,7 +511,6 @@ jobs:
   # 5. iOS (无签名构建，需 macOS runner) - 仅手动触发，tag 发布不自动构建
   # ---------------------------------------------------------------
   build-ios:
-    needs: fetch-easytier
     if: inputs.build_ios
     runs-on: macos-latest
     steps:
@@ -502,10 +529,6 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-      - uses: actions/download-artifact@v4
-        with:
-          name: easytier-bin
-          path: src-tauri/resources/bin/
       - name: Install deps
         run: pnpm install --frozen-lockfile
       - name: Init iOS project
@@ -556,7 +579,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: easytier-bin
+          name: easytier-bin-linux-x86_64
           path: src-tauri/resources/bin/
       - name: Compute lowercase image repo
         id: repo
