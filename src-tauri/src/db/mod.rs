@@ -21,11 +21,6 @@ impl Database {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.execute_batch(migrations::SCHEMA_SQL)
             .map_err(|e| format!("Migration error: {}", e))?;
-
-        // 兼容性迁移：逐个执行 ALTER TABLE，忽略重复列错误
-        for sql in migrations::SCHEMA_MIGRATIONS {
-            let _ = conn.execute(sql, []);
-        }
         Ok(())
     }
 

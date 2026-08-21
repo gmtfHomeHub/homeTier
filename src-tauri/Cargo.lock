@@ -3438,6 +3438,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "include_dir",
+ "jni 0.21.1",
  "lazy_static",
  "libc",
  "objc2-app-kit",
@@ -3452,6 +3453,7 @@ dependencies = [
  "rustls",
  "rustls-pemfile",
  "rustls-pki-types",
+ "rusty-opus",
  "security-framework-sys",
  "serde",
  "serde_json",
@@ -6747,6 +6749,12 @@ dependencies = [
  "tempfile",
  "wait-timeout",
 ]
+
+[[package]]
+name = "rusty-opus"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa2cbb720cf9bed36712efbae9ffc89d8977bf51b05687b792c1f98a33add8e2"
 
 [[package]]
 name = "ryu"

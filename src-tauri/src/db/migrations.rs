@@ -65,6 +65,20 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS proxy_cookies (
+    host_key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    value TEXT NOT NULL,
+    path TEXT NOT NULL DEFAULT '/',
+    domain TEXT,
+    expires_at INTEGER,
+    http_only INTEGER NOT NULL DEFAULT 0,
+    secure INTEGER NOT NULL DEFAULT 0,
+    same_site TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (host_key, name, path)
+);
+
 CREATE TABLE IF NOT EXISTS space_apps (
     id TEXT PRIMARY KEY,
     space_id TEXT NOT NULL,
@@ -110,29 +124,3 @@ CREATE TABLE IF NOT EXISTS port_forward_rules (
 );
 ";
 
-// 兼容性迁移：对已存在的旧数据库添加新列（幂等执行）
-pub const SCHEMA_MIGRATIONS: &[&str] = &[
-    "ALTER TABLE spaces ADD COLUMN owner_id TEXT",
-    "ALTER TABLE members ADD COLUMN is_owner INTEGER DEFAULT 0",
-    "CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        config_json TEXT,
-        updated_at TEXT NOT NULL
-    )",
-    "ALTER TABLE spaces DROP COLUMN local_config_json",
-    // 代理 Cookie 持久化（登录状态跨重启保留）
-    "CREATE TABLE IF NOT EXISTS proxy_cookies (
-        host_key TEXT NOT NULL,
-        name TEXT NOT NULL,
-        value TEXT NOT NULL,
-        path TEXT NOT NULL DEFAULT '/',
-        domain TEXT,
-        expires_at INTEGER,
-        http_only INTEGER NOT NULL DEFAULT 0,
-        secure INTEGER NOT NULL DEFAULT 0,
-        same_site TEXT,
-        updated_at TEXT NOT NULL,
-        PRIMARY KEY (host_key, name, path)
-    )",
-];

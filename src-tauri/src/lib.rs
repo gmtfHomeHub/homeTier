@@ -69,9 +69,13 @@ pub fn run() -> std::process::ExitCode {
             commands::chat::send_message,
             commands::chat::get_message_history,
             commands::signal::send_signal,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::voice::join_voice_channel,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::voice::leave_voice_channel,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::voice::toggle_mic,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::voice::toggle_speaker,
             commands::file::send_file,
             commands::file::receive_file,
@@ -79,13 +83,51 @@ pub fn run() -> std::process::ExitCode {
             commands::file::get_transfer_progress,
             commands::file::record_received_file,
             commands::file::delete_file,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::screen::start_screen_share,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::screen::stop_screen_share,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::screen::is_screen_sharing,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::screen::get_screen_share_viewers,
             commands::util::get_app_version,
             commands::update_app::check_app_update_cmd,
             commands::update_app::upgrade_app_cmd,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_init,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_join,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_leave,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_toggle_mic,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_toggle_speaker,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_get_mic_status,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_get_speaker_status,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_send_audio,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_receive_audio,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_screen::mobile_screen_init,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_screen::mobile_screen_request_permission,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_screen::mobile_screen_open_settings,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_screen::mobile_screen_start,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_screen::mobile_screen_stop,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_screen::mobile_screen_set_quality,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_screen::mobile_screen_get_status,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_screen::mobile_screen_request_camera_permission,
             commands::util::get_system_config,
             commands::util::set_system_config,
             commands::util::get_log_enabled,

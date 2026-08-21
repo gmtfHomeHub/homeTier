@@ -1,4 +1,39 @@
 {
+  "mobile": {
+    "voice": {
+      "toolbar": "Voice Control",
+      "connecting": "Connecting…",
+      "connected": "Connected",
+      "disconnected": "Disconnected",
+      "controls": "Voice Controls",
+      "muted": "Microphone muted",
+      "active": "Microphone on",
+      "speaker_off": "Speaker off",
+      "speaker_on": "Speaker on",
+      "latency": "Latency",
+      "quality": "Quality",
+      "duration": "Duration"
+    },
+    "screen": {
+      "controls": "Screen Share",
+      "sharing": "Sharing",
+      "start_sharing": "Start Sharing",
+      "quality": {
+        "low": "Smooth",
+        "medium": "Standard",
+        "high": "HD",
+        "ultra": "Ultra HD"
+      }
+    },
+    "permission": {
+      "step": "Step {{current}} / {{total}}",
+      "next": "Next",
+      "back": "Back",
+      "cancel": "Cancel",
+      "done": "Done",
+      "footer": "Permissions are used only for screen sharing/voice features. No private data is uploaded."
+    }
+  },
   "common": {
     "loading": "Loading...",
     "save": "Save",
