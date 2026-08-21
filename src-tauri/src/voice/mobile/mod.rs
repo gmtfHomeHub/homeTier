@@ -8,6 +8,12 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
+#[cfg(target_os = "android")]
+pub mod android;
+
+#[cfg(target_os = "ios")]
+pub mod ios;
+
 /// 语音状态
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VoiceStatus {
@@ -86,100 +92,17 @@ impl VoicePlatformFactory {
     pub fn create() -> Box<dyn VoicePlatform> {
         #[cfg(target_os = "android")]
         {
-            Box::new(AndroidVoicePlatform::new())
+            Box::new(android::AndroidVoicePlatform::new())
         }
         #[cfg(target_os = "ios")]
         {
-            Box::new(IOSVoicePlatform::new())
+            Box::new(ios::IOSVoicePlatform::new())
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
             // 桌面端使用现有的 WebRTC 实现
             Box::new(DesktopVoicePlatform::new())
         }
-    }
-}
-
-/// Android 语音平台实现 (stub)
-#[cfg(target_os = "android")]
-pub struct AndroidVoicePlatform {
-    config: Option<VoiceConfig>,
-    status: VoiceStatus,
-    mic_muted: bool,
-    speaker_muted: bool,
-}
-
-#[cfg(target_os = "android")]
-impl AndroidVoicePlatform {
-    pub fn new() -> Self {
-        Self {
-            config: None,
-            status: VoiceStatus::Disconnected,
-            mic_muted: false,
-            speaker_muted: false,
-        }
-    }
-}
-
-#[cfg(target_os = "android")]
-#[async_trait::async_trait]
-impl VoicePlatform for AndroidVoicePlatform {
-    async fn initialize(&mut self, config: VoiceConfig) -> Result<(), String> {
-        self.config = Some(config);
-        self.status = VoiceStatus::Connecting;
-        crate::log_info!("AndroidVoicePlatform: 初始化完成");
-        Ok(())
-    }
-
-    async fn start(&mut self) -> Result<(), String> {
-        self.status = VoiceStatus::Connected;
-        crate::log_info!("AndroidVoicePlatform: 启动语音");
-        // TODO: 实现 AudioRecord/AudioTrack 采集和播放
-        Ok(())
-    }
-
-    async fn stop(&mut self) -> Result<(), String> {
-        self.status = VoiceStatus::Disconnected;
-        crate::log_info!("AndroidVoicePlatform: 停止语音");
-        Ok(())
-    }
-
-    async fn set_mic_muted(&mut self, muted: bool) -> Result<(), String> {
-        self.mic_muted = muted;
-        crate::log_info!(format!("AndroidVoicePlatform: 麦克风静音 = {}", muted));
-        Ok(())
-    }
-
-    async fn set_speaker_muted(&mut self, muted: bool) -> Result<(), String> {
-        self.speaker_muted = muted;
-        crate::log_info!(format!("AndroidVoicePlatform: 扬声器静音 = {}", muted));
-        Ok(())
-    }
-
-    async fn is_mic_muted(&self) -> bool {
-        self.mic_muted
-    }
-
-    async fn is_speaker_muted(&self) -> bool {
-        self.speaker_muted
-    }
-
-    async fn send_audio(&mut self, data: &[u8]) -> Result<(), String> {
-        // TODO: 通过 easytier P2P 发送音频数据
-        Ok(())
-    }
-
-    async fn receive_audio(&mut self, data: &[u8]) -> Result<(), String> {
-        // TODO: 播放接收到的音频数据
-        Ok(())
-    }
-
-    fn status(&self) -> VoiceStatus {
-        self.status
-    }
-
-    async fn shutdown(&mut self) -> Result<(), String> {
-        self.stop().await
     }
 }
 
