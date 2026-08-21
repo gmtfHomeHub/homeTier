@@ -69,9 +69,13 @@ pub fn run() -> std::process::ExitCode {
             commands::chat::send_message,
             commands::chat::get_message_history,
             commands::signal::send_signal,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::voice::join_voice_channel,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::voice::leave_voice_channel,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::voice::toggle_mic,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::voice::toggle_speaker,
             commands::file::send_file,
             commands::file::receive_file,
@@ -79,9 +83,13 @@ pub fn run() -> std::process::ExitCode {
             commands::file::get_transfer_progress,
             commands::file::record_received_file,
             commands::file::delete_file,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::screen::start_screen_share,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::screen::stop_screen_share,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::screen::is_screen_sharing,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::screen::get_screen_share_viewers,
             commands::util::get_app_version,
             commands::update_app::check_app_update_cmd,
