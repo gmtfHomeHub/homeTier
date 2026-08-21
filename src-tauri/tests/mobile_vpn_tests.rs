@@ -3,9 +3,9 @@
 // These tests verify the mobile VPN flow works correctly
 // Run with: cargo test --test mobile_vpn
 
-use hometier_lib::mobile::{TunConfig, build_vpn_config, TunProvider};
-use hometier_lib::easytier::{EasyTierManager, launcher::NetworkInstance};
-use hometier_lib::easytier::config::Config as EasyTierConfig;
+use home_tier_lib::mobile::{TunConfig, build_vpn_config, TunProvider};
+use home_tier_lib::easytier::{EasyTierManager, launcher::NetworkInstance};
+use home_tier_lib::easytier::config::Config as EasyTierConfig;
 use std::sync::Arc;
 use std::path::PathBuf;
 use uuid::Uuid;

@@ -55,12 +55,8 @@ export const useMobileScreenStore = create<
       },
       
       stopSharing: async (spaceId: string) => {
-        try {
-          // await invoke('mobile_screen_stop', { spaceId });
-          set({ screenStatus: 'disconnected', isSharing: false });
-        } catch (e) {
-          throw e;
-        }
+        // await invoke('mobile_screen_stop', { spaceId });
+        set({ screenStatus: 'disconnected', isSharing: false });
       },
       
       setQualityLevel: async (quality: 'low' | 'medium' | 'high' | 'ultra') => {

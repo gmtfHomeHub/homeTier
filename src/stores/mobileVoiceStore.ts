@@ -55,12 +55,8 @@ export const useMobileVoiceStore = create<MobileVoiceState>()(
       },
       
       leaveVoice: async (spaceId: string) => {
-        try {
-          // await invoke('mobile_voice_leave', { spaceId });
-          set({ voiceStatus: 'disconnected' });
-        } catch (e) {
-          throw e;
-        }
+        // await invoke('mobile_voice_leave', { spaceId });
+        set({ voiceStatus: 'disconnected' });
       },
     }),
     {
