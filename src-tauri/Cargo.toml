@@ -33,6 +33,7 @@ async-trait = "0.1"
 anyhow = "1"
 thiserror = "1"
 bytes = "1"
+rusty-opus = "0.9"
 fs2 = "0.4"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
