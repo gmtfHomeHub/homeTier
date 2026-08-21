@@ -94,6 +94,24 @@ pub fn run() -> std::process::ExitCode {
             commands::util::get_app_version,
             commands::update_app::check_app_update_cmd,
             commands::update_app::upgrade_app_cmd,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_init,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_join,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_leave,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_toggle_mic,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_toggle_speaker,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_get_mic_status,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_get_speaker_status,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_send_audio,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_voice::mobile_voice_receive_audio,
             commands::util::get_system_config,
             commands::util::set_system_config,
             commands::util::get_log_enabled,

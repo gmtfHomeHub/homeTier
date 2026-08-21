@@ -7,6 +7,8 @@ pub mod easytier;
 pub mod file;
 pub mod ios_vpn;
 pub mod log;
+#[cfg(any(target_os = "android", target_os = "ios"))]
+pub mod mobile_voice;
 pub mod network;
 pub mod network_acls;
 pub mod network_port_forwards;

@@ -318,6 +318,13 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let voice_manager = crate::voice::engine::VoiceManager::new();
     app.manage(voice_manager);
 
+    // 初始化移动端语音管理器
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let mobile_voice_state = crate::commands::mobile_voice::MobileVoiceState::new();
+        app.manage(mobile_voice_state);
+    }
+
     // 初始化文件传输管理器
     let file_manager = Arc::new(crate::file::transfer::FileTransferManager::new());
     app.manage(file_manager);
