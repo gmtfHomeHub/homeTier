@@ -3438,6 +3438,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "include_dir",
+ "jni 0.21.1",
  "lazy_static",
  "libc",
  "objc2-app-kit",

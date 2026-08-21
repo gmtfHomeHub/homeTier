@@ -74,7 +74,6 @@ http-body-util = "0.1"
 urlencoding = "2"
 regex = "1"
 encoding_rs = "0.8"
-async-trait = "0.1"
 
 # HTTP 服务器 (server mode)
 axum = { version = "0.8", features = ["macros", "ws"] }
@@ -129,7 +128,6 @@ objc2-app-kit = "0.3.2"
 [dev-dependencies]
 tokio-test = "0.4"
 proptest = "1.0"
-async-trait = "0.1"
 
 [features]
 default = ["custom-protocol"]
