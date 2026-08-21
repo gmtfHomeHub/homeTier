@@ -8,6 +8,8 @@ pub mod file;
 pub mod ios_vpn;
 pub mod log;
 #[cfg(any(target_os = "android", target_os = "ios"))]
+pub mod mobile_screen;
+#[cfg(any(target_os = "android", target_os = "ios"))]
 pub mod mobile_voice;
 pub mod network;
 pub mod network_acls;

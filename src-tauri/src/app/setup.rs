@@ -325,6 +325,13 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         app.manage(mobile_voice_state);
     }
 
+    // 初始化移动端屏幕共享管理器
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let mobile_screen_state = crate::commands::mobile_screen::MobileScreenState::new();
+        app.manage(mobile_screen_state);
+    }
+
     // 初始化文件传输管理器
     let file_manager = Arc::new(crate::file::transfer::FileTransferManager::new());
     app.manage(file_manager);

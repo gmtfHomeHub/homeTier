@@ -1,4 +1,39 @@
 {
+  "mobile": {
+    "voice": {
+      "toolbar": "語音控制",
+      "connecting": "連線中…",
+      "connected": "已連線",
+      "disconnected": "未連線",
+      "controls": "語音控制",
+      "muted": "麥克風已靜音",
+      "active": "麥克風開啟",
+      "speaker_off": "喇叭已關閉",
+      "speaker_on": "喇叭已開啟",
+      "latency": "延遲",
+      "quality": "音質",
+      "duration": "時長"
+    },
+    "screen": {
+      "controls": "螢幕共享",
+      "sharing": "共享中",
+      "start_sharing": "開始共享",
+      "quality": {
+        "low": "流暢",
+        "medium": "標清",
+        "high": "高清",
+        "ultra": "超清"
+      }
+    },
+    "permission": {
+      "step": "第 {{current}} / {{total}} 步",
+      "next": "下一步",
+      "back": "上一步",
+      "cancel": "取消",
+      "done": "完成",
+      "footer": "權限僅用於螢幕共享/語音功能，不會上傳任何私人資料。"
+    }
+  },
   "common": {
     "loading": "載入中...",
     "save": "儲存",

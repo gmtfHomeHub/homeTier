@@ -103,7 +103,7 @@ easytier = { path = "./resources/easytier_lib/easytier", features = [] }
 
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 easytier = { path = "./resources/easytier_lib/easytier", features = ["wireguard", "websocket", "tun", "socks5", "kcp", "quic", "zstd"] }
-jni = { version = "0.21", optional = true }
+jni = { version = "0.21" }
 # 移动端桩代码：voice/screen 返回 None，Tauri 2 通过 cfg 条件编译。
 # 完整 Android build 需额外 tauri-android / tauri-ios crates（platform native linking），
 # 由 tauri-cli 在 build 时自动注入，无需在此声明。

@@ -112,6 +112,22 @@ pub fn run() -> std::process::ExitCode {
             commands::mobile_voice::mobile_voice_send_audio,
             #[cfg(any(target_os = "android", target_os = "ios"))]
             commands::mobile_voice::mobile_voice_receive_audio,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_screen::mobile_screen_init,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_screen::mobile_screen_request_permission,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_screen::mobile_screen_open_settings,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_screen::mobile_screen_start,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_screen::mobile_screen_stop,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_screen::mobile_screen_set_quality,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_screen::mobile_screen_get_status,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_screen::mobile_screen_request_camera_permission,
             commands::util::get_system_config,
             commands::util::set_system_config,
             commands::util::get_log_enabled,

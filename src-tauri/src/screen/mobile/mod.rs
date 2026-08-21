@@ -21,6 +21,17 @@ pub enum ScreenShareStatus {
     Paused,
 }
 
+impl ScreenShareStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ScreenShareStatus::Disconnected => "disconnected",
+            ScreenShareStatus::Connecting => "connecting",
+            ScreenShareStatus::Connected => "connected",
+            ScreenShareStatus::Paused => "paused",
+        }
+    }
+}
+
 /// 屏幕共享配置
 #[derive(Debug, Clone)]
 pub struct ScreenShareConfig {
@@ -103,6 +114,24 @@ pub trait ScreenSharePlatform: Send + Sync {
 
     /// 获取当前状态
     fn status(&self) -> ScreenShareStatus;
+
+    /// 请求屏幕共享权限（Android MediaProjection 对话框 / iOS ReplayKit 引导）
+    /// 默认实现：不触发任何系统交互，返回 Ok
+    async fn request_permission(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// 打开系统设置（iOS ReplayKit 需手动开启屏幕录制）
+    /// 默认实现：不打开任何设置页，返回 Ok
+    async fn open_settings(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// 请求相机权限（视频通话使用）
+    /// 默认实现：不触发运行时权限，返回 Ok
+    async fn request_camera_permission(&mut self) -> Result<(), String> {
+        Ok(())
+    }
 
     /// 清理资源
     async fn shutdown(&mut self) -> Result<(), String>;
@@ -248,6 +277,18 @@ impl MobileScreenShareManager {
 
     pub async fn stop_sharing(&mut self) -> Result<(), String> {
         self.platform.stop().await
+    }
+
+    pub async fn request_permission(&mut self) -> Result<(), String> {
+        self.platform.request_permission().await
+    }
+
+    pub async fn open_settings(&mut self) -> Result<(), String> {
+        self.platform.open_settings().await
+    }
+
+    pub async fn request_camera_permission(&mut self) -> Result<(), String> {
+        self.platform.request_camera_permission().await
     }
 
     pub async fn set_quality(&mut self, quality: ScreenQuality) -> Result<(), String> {

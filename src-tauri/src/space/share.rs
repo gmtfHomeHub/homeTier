@@ -13,7 +13,7 @@ pub const SHARE_KEY_VERSION: &str = "homeTier-share-link-v2";
 /// 加密载荷参数名
 const PARAM_VERSION: &str = "v";
 const PARAM_DATA: &str = "d";
-/// 链接版本号（v3: 加密+压缩；v2: 仅加密；v1: 明文）
+/// 当前链接版本号，仅支持 v3（zstd 压缩 + AES-256-GCM 加密）
 const LINK_VERSION: u8 = 3;
 /// zstd 压缩级别（速度优先，分享载荷通常很小）
 const ZSTD_LEVEL: i32 = 3;
@@ -55,7 +55,8 @@ pub fn encrypt_share_payload(info: &ShareInfo) -> Result<String, String> {
     ))
 }
 
-/// 解密分享链接（支持 v3 加密+压缩、v2 加密与 v1 明文链接）
+/// 解密分享链接（仅支持 v3: zstd 压缩 + AES-256-GCM 加密）
+/// 链接格式: homeTier://join?v=3&d={base64url([nonce 12B][ciphertext of compressed payload])}
 pub fn decrypt_share_link(link: &str) -> Result<ShareInfo, String> {
     let url = url::Url::parse(link.trim()).map_err(|_| "无效的分享链接".to_string())?;
     // 注意：url crate 会把 scheme 规范化为小写（homeTier -> hometier）
@@ -68,24 +69,15 @@ pub fn decrypt_share_link(link: &str) -> Result<ShareInfo, String> {
         .find(|(k, _)| k == PARAM_VERSION)
         .map(|(_, v)| v.into_owned());
 
-    match version.as_deref() {
-        Some(v) if v == "3" => {
-            let data = url
-                .query_pairs()
-                .find(|(k, _)| k == PARAM_DATA)
-                .map(|(_, v)| v.into_owned())
-                .ok_or_else(|| "分享链接缺少加密数据".to_string())?;
-            decrypt_v3(&data)
-        }
-        Some(v) if v == "2" => {
-            let data = url
-                .query_pairs()
-                .find(|(k, _)| k == PARAM_DATA)
-                .map(|(_, v)| v.into_owned())
-                .ok_or_else(|| "分享链接缺少加密数据".to_string())?;
-            decrypt_v2(&data)
-        }
-        _ => decrypt_v1(&url),
+    if version.as_deref() == Some("3") {
+        let data = url
+            .query_pairs()
+            .find(|(k, _)| k == PARAM_DATA)
+            .map(|(_, v)| v.into_owned())
+            .ok_or_else(|| "分享链接缺少加密数据".to_string())?;
+        decrypt_v3(&data)
+    } else {
+        Err("不支持的分享链接版本".to_string())
     }
 }
 
@@ -111,52 +103,6 @@ fn decrypt_v3(data: &str) -> Result<ShareInfo, String> {
 
     serde_json::from_slice::<ShareInfo>(&payload)
         .map_err(|e| format!("解析分享信息失败: {}", e))
-}
-
-/// 解密 v2 加密载荷
-fn decrypt_v2(data: &str) -> Result<ShareInfo, String> {
-    let raw = URL_SAFE_NO_PAD
-        .decode(data)
-        .map_err(|e| format!("分享数据解码失败: {}", e))?;
-    if raw.len() < NONCE_LEN {
-        return Err("无效的加密数据".to_string());
-    }
-
-    let key = fixed_key();
-    let cipher = Aes256Gcm::new_from_slice(&key)
-        .map_err(|e| format!("Key init error: {}", e))?;
-    let nonce = Nonce::from_slice(&raw[..NONCE_LEN]);
-    let plaintext = cipher
-        .decrypt(nonce, &raw[NONCE_LEN..])
-        .map_err(|_| "解密失败，链接无效或已损坏".to_string())?;
-
-    serde_json::from_slice::<ShareInfo>(&plaintext)
-        .map_err(|e| format!("解析分享信息失败: {}", e))
-}
-
-/// 解析 v1 明文链接: homeTier://join?name=X&secret=Y
-fn decrypt_v1(url: &url::Url) -> Result<ShareInfo, String> {
-    let pairs: std::collections::HashMap<_, _> = url.query_pairs().collect();
-    let network_name = pairs
-        .get("name")
-        .map(|v| v.to_string())
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| "分享链接缺少网络名称".to_string())?;
-    let network_secret = pairs
-        .get("secret")
-        .map(|v| v.to_string())
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| "分享链接缺少网络密钥".to_string())?;
-    Ok(ShareInfo {
-        name: None,
-        network_name,
-        network_secret,
-        host_hint: None,
-        virtual_ip: None,
-        dhcp: None,
-        peer_urls: Vec::new(),
-        listener_urls: Vec::new(),
-    })
 }
 
 #[cfg(test)]
@@ -188,11 +134,4 @@ mod tests {
         assert_eq!(decrypted.virtual_ip, info.virtual_ip);
     }
 
-    #[test]
-    fn share_link_v1_fallback() {
-        let link = "homeTier://join?name=legacy&secret=legacy-secret";
-        let decrypted = decrypt_share_link(link).unwrap();
-        assert_eq!(decrypted.network_name, "legacy");
-        assert_eq!(decrypted.network_secret, "legacy-secret");
-    }
 }
