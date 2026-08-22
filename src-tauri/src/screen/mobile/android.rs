@@ -4,7 +4,7 @@
 
 #[cfg(target_os = "android")]
 use crate::screen::mobile::{
-    ScreenShareConfig, ScreenSharePlatform, ScreenShareStatus, AndroidScreenSharePlatform,
+    ScreenShareConfig, ScreenSharePlatform, ScreenShareStatus,
 };
 
 #[cfg(target_os = "android")]

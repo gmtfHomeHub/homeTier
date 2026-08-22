@@ -221,11 +221,11 @@ pub fn run() -> std::process::ExitCode {
         }
     };
 
-    app.run(|app_handle, event| {
+    app.run(|_app_handle, event| {
         match event {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             tauri::RunEvent::Exit => {
-                crate::app::exit::on_exit_cleanup(app_handle);
+                crate::app::exit::on_exit_cleanup(_app_handle);
             }
             _ => {}
         }
