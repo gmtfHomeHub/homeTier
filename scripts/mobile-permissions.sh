@@ -63,7 +63,9 @@ if [ -f "$ANDROID_MANIFEST" ]; then
     fi
 fi
 
-# 复制 Kotlin VpnService 文件到生成的工程中
+# 复制 Kotlin VpnService/插件/屏幕共享文件到生成的工程中
+# HomeTierVpnService.kt / HomeTierVpnServicePlugin.kt 在 com.hometier.app 包（根目录）
+# ScreenShareManager.kt 在 com.hometier.app.screen 包（screen/ 子目录）
 KOTLIN_SOURCES=("HomeTierVpnService.kt" "HomeTierVpnServicePlugin.kt")
 for KF in "${KOTLIN_SOURCES[@]}"; do
     KOTLIN_SOURCE="src-tauri/scripts/android/$KF"
@@ -80,6 +82,22 @@ for KF in "${KOTLIN_SOURCES[@]}"; do
         echo "[mobile-permissions] WARN: Kotlin directory $ANDROID_KOTLIN_DIR 不存在（tauri android init 可能未执行）"
     fi
 done
+
+# ScreenShareManager.kt：package com.hometier.app.screen，需复制到 screen/ 子目录
+SCREEN_KOTLIN_SOURCE="src-tauri/scripts/android/screen/ScreenShareManager.kt"
+SCREEN_KOTLIN_DIR="$ANDROID_KOTLIN_DIR/screen"
+SCREEN_KOTLIN_DEST="$SCREEN_KOTLIN_DIR/ScreenShareManager.kt"
+if [ -f "$SCREEN_KOTLIN_SOURCE" ] && [ -d "$ANDROID_KOTLIN_DIR" ]; then
+    mkdir -p "$SCREEN_KOTLIN_DIR"
+    if [ ! -f "$SCREEN_KOTLIN_DEST" ] || ! cmp -s "$SCREEN_KOTLIN_SOURCE" "$SCREEN_KOTLIN_DEST"; then
+        cp "$SCREEN_KOTLIN_SOURCE" "$SCREEN_KOTLIN_DEST"
+        echo "[mobile-permissions] Copied ScreenShareManager.kt to $SCREEN_KOTLIN_DIR"
+    else
+        echo "[mobile-permissions] ScreenShareManager.kt already up to date"
+    fi
+elif [ -f "$SCREEN_KOTLIN_SOURCE" ]; then
+    echo "[mobile-permissions] WARN: Kotlin directory $ANDROID_KOTLIN_DIR 不存在（tauri android init 可能未执行）"
+fi
 
 # MainActivity.kt 由 fix-android-mainactivity.sh 统一生成（含 plugin 注册、WebView attach/detach）
 # 此处不再修改 MainActivity.kt
