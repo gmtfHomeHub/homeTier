@@ -31,7 +31,7 @@ pub async fn mobile_voice_init(
     let space_id = Uuid::parse_str(&space_id)
         .map_err(|e| format!("无效的 space_id: {}", e))?;
 
-    let config = VoiceConfig {
+    let _config = VoiceConfig {
         space_id: space_id.to_string(),
         ..Default::default()
     };

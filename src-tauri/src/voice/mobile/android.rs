@@ -9,7 +9,7 @@ use crate::voice::mobile::{
 
 #[cfg(target_os = "android")]
 use jni::{
-    objects::{GlobalRef, JClass, JObject, JString},
+    objects::{GlobalRef, JClass, JObject, JString, JByteArray},
     sys::{jboolean, jint, jlong},
     JNIEnv, JavaVM,
 };
@@ -18,7 +18,6 @@ use jni::{
 use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "android")]
-use std::os::raw::c_void;
 
 /// Android 语音平台实现
 #[cfg(target_os = "android")]
@@ -268,5 +267,5 @@ pub extern "system" fn Java_com_hometier_app_voice_VoiceManager_nativeOnPlayback
 ) -> JByteArray<'a> {
     // 请求播放数据（播放回调）
     // 从网络接收队列获取数据并返回给 AudioTrack
-    JNIEnv::new().unwrap().byte_array_from_slice(&[]).unwrap()
+    env.byte_array_from_slice(&[]).unwrap()
 }

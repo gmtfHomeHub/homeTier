@@ -86,7 +86,7 @@ impl AndroidScreenSharePlatform {
         let mut env = self.get_env().ok_or("无法获取 JNIEnv")?;
         let manager = self.screen_share_manager.as_ref().ok_or("ScreenShareManager 未初始化")?;
 
-        let config = self.config.as_ref().ok_or("配置未初始化")?;
+        let _config = self.config.as_ref().ok_or("配置未初始化")?;
 
         let result = env.call_method(
             manager.as_obj(),
@@ -217,7 +217,7 @@ impl ScreenSharePlatform for AndroidScreenSharePlatform {
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_hometier_app_screen_ScreenShareManager_nativeInit(
-    mut env: JNIEnv,
+    _env: JNIEnv,
     _this: JObject,
     _java_vm: jlong,
     screen_share_manager: JObject,
