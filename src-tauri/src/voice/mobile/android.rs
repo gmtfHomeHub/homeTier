@@ -3,7 +3,7 @@
 //! 使用 JNI 调用 Kotlin 端的 AudioRecord/AudioTrack 实现
 
 #[cfg(target_os = "android")]
-use crate::voice::mobile::mod::{
+use crate::voice::mobile::{
     VoiceConfig, VoicePlatform, VoiceStatus, AndroidVoicePlatform,
 };
 

@@ -2,7 +2,7 @@
 //!
 //! 使用 AVAudioEngine 实现音频采集和播放
 
-use crate::voice::mobile::mod::{
+use crate::voice::mobile::{
     VoiceConfig, VoicePlatform, VoiceStatus,
 };
 

@@ -7,7 +7,7 @@
 
 use tauri::State;
 use uuid::Uuid;
-use crate::screen::mobile::mod::{MobileScreenShareManager, ScreenShareConfig, ScreenQuality};
+use crate::screen::mobile::{MobileScreenShareManager, ScreenShareConfig, ScreenQuality};
 
 /// 移动端屏幕共享管理器状态
 pub struct MobileScreenState {

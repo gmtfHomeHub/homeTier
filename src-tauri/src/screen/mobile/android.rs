@@ -3,7 +3,7 @@
 //! 使用 MediaProjection API 实现屏幕采集
 
 #[cfg(target_os = "android")]
-use crate::screen::mobile::mod::{
+use crate::screen::mobile::{
     ScreenShareConfig, ScreenSharePlatform, ScreenShareStatus, AndroidScreenSharePlatform,
 };
 

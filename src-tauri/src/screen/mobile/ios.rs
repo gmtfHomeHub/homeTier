@@ -8,7 +8,7 @@
 //! 3. App Group: 共享数据容器 (App Group 容器)
 //! 4. 共享内存/文件: 传输视频帧数据
 
-use crate::screen::mobile::mod::{
+use crate::screen::mobile::{
     ScreenShareConfig, ScreenSharePlatform, ScreenShareStatus, ScreenQuality,
 };
 
@@ -98,7 +98,7 @@ impl IOSScreenSharePlatform {
 }
 
 #[async_trait::async_trait]
-impl crate::screen::mobile::mod::ScreenSharePlatform for IOSScreenSharePlatform {
+impl crate::screen::mobile::ScreenSharePlatform for IOSScreenSharePlatform {
     async fn initialize(&mut self, config: ScreenShareConfig) -> Result<(), String> {
         self.config = Some(config.clone());
         self.status = ScreenShareStatus::Connecting;
@@ -158,8 +158,8 @@ impl crate::screen::mobile::mod::ScreenSharePlatform for IOSScreenSharePlatform 
 ///
 /// 负责协调 Broadcast Extension 和主 App 的通信
 pub struct IOSScreenShareManager {
-    platform: Box<dyn crate::screen::mobile::mod::ScreenSharePlatform>,
-    config: crate::screen::mobile::mod::ScreenShareConfig,
+    platform: Box<dyn crate::screen::mobile::ScreenSharePlatform>,
+    config: crate::screen::mobile::ScreenShareConfig,
     // 广播控制器
     // broadcast_controller: Option<RPBroadcastController>,
     // 样本处理器
@@ -167,9 +167,9 @@ pub struct IOSScreenShareManager {
 }
 
 impl IOSScreenShareManager {
-    pub fn new(config: crate::screen::mobile::mod::ScreenShareConfig) -> Self {
+    pub fn new(config: crate::screen::mobile::ScreenShareConfig) -> Self {
         Self {
-            platform: crate::screen::mobile::mod::ScreenSharePlatformFactory::create(),
+            platform: crate::screen::mobile::ScreenSharePlatformFactory::create(),
             config,
         }
     }
@@ -186,7 +186,7 @@ impl IOSScreenShareManager {
         self.platform.stop().await
     }
 
-    pub async fn set_quality(&mut self, quality: crate::screen::mobile::mod::ScreenQuality) -> Result<(), String> {
+    pub async fn set_quality(&mut self, quality: crate::screen::mobile::ScreenQuality) -> Result<(), String> {
         self.config = quality.to_config();
         self.platform.set_encoding_params(
             self.config.width,

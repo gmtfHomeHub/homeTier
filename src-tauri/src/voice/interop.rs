@@ -4,7 +4,7 @@
 //! 实现跨平台语音/屏幕共享互通
 
 use crate::voice::opus::{OpusEncoder, OpusDecoder, VoiceConfig, AudioPacket, AudioQueue};
-use crate::voice::mobile::mod::{VoicePlatform, VoiceConfig, VoiceStatus};
+use crate::voice::mobile::{VoicePlatform, VoiceConfig, VoiceStatus};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
