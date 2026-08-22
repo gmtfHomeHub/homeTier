@@ -262,6 +262,28 @@ jobs:
           echo "INCLUDE=C:/WpdPack/WpdPack/Include;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "[winpcap] Packet.lib at $libPath"
 
+      - name: Download Npcap runtime DLLs
+        shell: pwsh
+        run: |
+          $npcapUrl = "https://nmap.org/npcap/dist/npcap-1.80.exe"
+          $out = "$env:TEMP/npcap.exe"
+          Write-Host "Downloading Npcap SDK..."
+          Invoke-WebRequest -Uri $npcapUrl -OutFile $out -UseBasicParsing
+          7z x $out -o./npcap_extract | Out-Null
+          $dlls = @("packet.dll", "wpcap.dll", "Packet.dll", "Wpcap.dll")
+          foreach ($dll in $dlls) {
+            $found = Get-ChildItem -Path "./npcap_extract" -Recurse -Filter $dll -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($null -ne $found) {
+              Copy-Item $found.FullName "$env:GITHUB_WORKSPACE/src-tauri/resources/bin/$dll" -Force
+              Write-Host "Copied $dll"
+            } else {
+              Write-Warning "DLL not found: $dll"
+            }
+          }
+          Remove-Item -Recurse -Force ./npcap_extract
+          Remove-Item $env:TEMP/npcap.exe -ErrorAction SilentlyContinue
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
       - name: Configure MSVC include path (for vcruntime.h used by kcp-sys bindgen)
         shell: pwsh
         run: |
@@ -280,7 +302,6 @@ jobs:
           } else {
             echo "[msvc-include] WARNING: MSVC root not found at $msvcRoot"
           }
-
       - name: Configure WinDivert (compile from vendored source)
         shell: bash
         run: |
@@ -290,7 +311,6 @@ jobs:
           # activates this path, avoiding broken external download URLs.
           echo "WINDIVERT_STATIC=1" >> "$GITHUB_ENV"
           echo "[windivert] Using vendored source build (WINDIVERT_STATIC=1)"
-
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
@@ -466,6 +486,14 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           ndk: 25.2.9519653
+      - name: Set up Android Keystore
+        run: |
+          # 从 GitHub Secrets 创建 keystore
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > src-tauri/keystore/release.keystore
+          echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
+          echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
       - name: Install build deps
         run: |
           sudo apt-get update
@@ -495,13 +523,34 @@ jobs:
         run: |
           # Kotlin 1.6.21 doesn't support JDK 17; upgrade to 1.9.22
           sed -i 's/classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1\.6\.21")/classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.22")/' src-tauri/gen/android/build.gradle.kts
+      - name: Configure Android signing
+        run: |
+          cat >> src-tauri/gen/android/app/build.gradle.kts << 'EOF'
+      android {
+          signingConfigs {
+              create("release") {
+                  storeFile = file("../keystore/release.keystore")
+                  storePassword = System.getenv("KEYSTORE_PASSWORD")
+                  keyAlias = "hometier"
+                  keyPassword = System.getenv("KEY_PASSWORD")
+              }
+          }
+          buildTypes {
+              release {
+                  signingConfig = signingConfigs.getByName("release")
+                  minifyEnabled = false
+                  proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+              }
+          }
+      }
+      EOF
       - name: Limit Gradle parallelism
         run: |
           printf '\norg.gradle.workers.max=2\norg.gradle.jvmargs=-Xmx2048m\n' >> src-tauri/gen/android/gradle.properties
       - name: Inject camera permissions
         run: bash scripts/mobile-permissions.sh
       - name: Build APK
-        run: pnpm tauri android build --apk --target aarch64
+        run: pnpm tauri android build --apk --target aarch64,armv7,x86_64
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
