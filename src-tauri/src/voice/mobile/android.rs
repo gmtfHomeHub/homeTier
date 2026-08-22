@@ -236,7 +236,7 @@ impl VoicePlatform for AndroidVoicePlatform {
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_hometier_app_voice_VoiceManager_nativeInit<'a>(
-    _env: JNIEnv<'a>,
+    env: JNIEnv<'a>,
     _class: JClass<'a>,
     _java_vm: jlong,
     _voice_manager: JObject<'a>,
@@ -250,7 +250,7 @@ pub extern "system" fn Java_com_hometier_app_voice_VoiceManager_nativeInit<'a>(
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_hometier_app_voice_VoiceManager_nativeOnAudioData<'a>(
-    _env: JNIEnv<'a>,
+    env: JNIEnv<'a>,
     _class: JClass<'a>,
     _data: jni::objects::JByteArray<'a>,
 ) -> jboolean {
@@ -262,7 +262,7 @@ pub extern "system" fn Java_com_hometier_app_voice_VoiceManager_nativeOnAudioDat
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_hometier_app_voice_VoiceManager_nativeOnPlaybackData<'a>(
-    _env: JNIEnv<'a>,
+    env: JNIEnv<'a>,
     _class: JClass<'a>,
 ) -> JByteArray<'a> {
     // 请求播放数据（播放回调）

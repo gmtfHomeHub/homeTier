@@ -217,7 +217,7 @@ impl ScreenSharePlatform for AndroidScreenSharePlatform {
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_hometier_app_screen_ScreenShareManager_nativeInit(
-    _env: JNIEnv,
+    env: JNIEnv,
     _this: JObject,
     _java_vm: jlong,
     screen_share_manager: JObject,
@@ -252,7 +252,7 @@ pub extern "system" fn Java_com_hometier_app_screen_ScreenShareManager_nativeIni
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_hometier_app_screen_ScreenShareManager_nativeOnPermissionResult(
-    _env: JNIEnv,
+    env: JNIEnv,
     _this: JObject,
     granted: jboolean,
 ) {
@@ -263,7 +263,7 @@ pub extern "system" fn Java_com_hometier_app_screen_ScreenShareManager_nativeOnP
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_hometier_app_screen_ScreenShareManager_nativeOnFrameData<'a>(
-    _env: JNIEnv<'a>,
+    env: JNIEnv<'a>,
     _this: JObject<'a>,
     _data: jni::objects::JByteArray<'a>,
     _width: jint,
