@@ -305,3 +305,11 @@ impl MobileScreenShareManager {
         self.platform.status()
     }
 }
+
+// Re-export platform types for external use
+#[cfg(target_os = "android")]
+pub use android::AndroidScreenSharePlatform;
+#[cfg(target_os = "ios")]
+pub use ios::IOSScreenSharePlatform;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub use self::DesktopScreenSharePlatform;

@@ -265,8 +265,8 @@ pub extern "system" fn Java_com_hometier_app_voice_VoiceManager_nativeOnAudioDat
 pub extern "system" fn Java_com_hometier_app_voice_VoiceManager_nativeOnPlaybackData<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
-) -> jni::objects::JByteArray<'a> {
+) -> JByteArray<'a> {
     // 请求播放数据（播放回调）
     // 从网络接收队列获取数据并返回给 AudioTrack
-    env.byte_array_from_slice(&[]).unwrap().into_raw()
+    env.byte_array_from_slice(&[]).unwrap()
 }

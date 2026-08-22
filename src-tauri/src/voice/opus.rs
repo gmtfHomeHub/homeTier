@@ -1,10 +1,11 @@
 //! Opus 音频编解码器封装
-//!
+//! 
 //! 使用 rusty-opus (纯 Rust 实现) 提供 Opus 编码/解码功能
 //! 无需 cmake，纯 Rust 实现，适合跨平台编译
 
-use rusty_opus::{Encoder, Decoder, Application, Channels, Bitrate, Signal, Error as OpusError};
+use rusty_opus::{Encoder, Decoder, Application, Channels, Bitrate, SignalType};
 use std::sync::Arc;
+use std::collections::VecDeque;
 
 /// Opus 编码器封装
 pub struct OpusEncoder {
@@ -36,7 +37,7 @@ impl OpusEncoder {
         encoder.set_complexity(10).map_err(|e| format!("设置复杂度失败: {:?}", e))?;
 
         // 设置信号类型为语音
-        encoder.set_signal(rusty_opus::Signal::Voice)
+        encoder.set_signal(SignalType::Voice)
             .map_err(|e| format!("设置信号类型失败: {:?}", e))?;
 
         // 启用 DTX (不传输静音)
@@ -241,8 +242,6 @@ pub struct AudioQueue {
     max_size: usize,
 }
 
-use std::collections::VecDeque;
-use std::sync::Arc;
 
 impl AudioQueue {
     pub fn new(max_size: usize) -> Self {

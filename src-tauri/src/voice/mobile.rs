@@ -7,7 +7,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
-use crate::voice::opus::{OpusEncoder, OpusDecoder, VoiceConfig, AudioPacket, AudioQueue};
 
 #[cfg(target_os = "android")]
 pub mod android;
@@ -310,3 +309,11 @@ impl MobileVoiceManager {
         self.platform.receive_audio(data).await
     }
 }
+
+// Re-export platform types for external use
+#[cfg(target_os = "android")]
+pub use android::AndroidVoicePlatform;
+#[cfg(target_os = "ios")]
+pub use ios::IOSVoicePlatform;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub use self::DesktopVoicePlatform;
