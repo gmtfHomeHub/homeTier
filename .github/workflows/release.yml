@@ -489,6 +489,8 @@ jobs:
         run: |
           rm -rf src-tauri/gen/android
           pnpm tauri android init
+      - name: Fix Android plugin imports
+        run: bash scripts/fix-android-plugin.sh
       - name: Fix MainActivity for Tauri 2.x
         run: bash scripts/fix-android-mainactivity.sh
       - name: Fix Kotlin version for JDK 17 compatibility
