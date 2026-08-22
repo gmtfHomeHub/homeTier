@@ -54,7 +54,7 @@ pub async fn mobile_voice_join(
     let space_id = Uuid::parse_str(&space_id)
         .map_err(|e| format!("无效的 space_id: {}", e))?;
 
-    let manager = state.managers.get_mut(&space_id.to_string())
+    let mut manager = state.managers.get_mut(&space_id.to_string())
         .ok_or_else(|| format!("语音管理器不存在: {}", space_id))?;
 
     manager.join().await?;
@@ -89,7 +89,7 @@ pub async fn mobile_voice_toggle_mic(
     let space_id = Uuid::parse_str(&space_id)
         .map_err(|e| format!("无效的 space_id: {}", e))?;
 
-    let manager = state.managers.get_mut(&space_id.to_string())
+    let mut manager = state.managers.get_mut(&space_id.to_string())
         .ok_or_else(|| format!("语音管理器不存在: {}", space_id))?;
 
     let muted = manager.toggle_mic().await?;
@@ -106,7 +106,7 @@ pub async fn mobile_voice_toggle_speaker(
     let space_id = Uuid::parse_str(&space_id)
         .map_err(|e| format!("无效的 space_id: {}", e))?;
 
-    let manager = state.managers.get_mut(&space_id.to_string())
+    let mut manager = state.managers.get_mut(&space_id.to_string())
         .ok_or_else(|| format!("语音管理器不存在: {}", space_id))?;
 
     let muted = manager.toggle_speaker().await?;
@@ -156,7 +156,7 @@ pub async fn mobile_voice_send_audio(
     let space_id = Uuid::parse_str(&space_id)
         .map_err(|e| format!("无效的 space_id: {}", e))?;
 
-    let manager = state.managers.get_mut(&space_id.to_string())
+    let mut manager = state.managers.get_mut(&space_id.to_string())
         .ok_or_else(|| format!("语音管理器不存在: {}", space_id))?;
 
     manager.send_audio(&data).await
@@ -173,7 +173,7 @@ pub async fn mobile_voice_receive_audio(
     let space_id = Uuid::parse_str(&space_id)
         .map_err(|e| format!("无效的 space_id: {}", e))?;
 
-    let manager = state.managers.get_mut(&space_id.to_string())
+    let mut manager = state.managers.get_mut(&space_id.to_string())
         .ok_or_else(|| format!("语音管理器不存在: {}", space_id))?;
 
     manager.receive_audio(&data).await

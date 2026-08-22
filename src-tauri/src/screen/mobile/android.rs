@@ -77,13 +77,13 @@ impl AndroidScreenSharePlatform {
     }
 
     /// 获取 JNIEnv（自动附着到当前线程，支持 tokio 异步线程）
-    fn get_env(&self) -> Option<JNIEnv> {
+    fn get_env(&self) -> Option<jni::AttachGuard<'_>> {
         self.java_vm.as_ref().and_then(|vm| vm.attach_current_thread().ok())
     }
 
     /// 调用 Kotlin 方法开始屏幕共享
     fn call_start_sharing(&self) -> Result<(), String> {
-        let env = self.get_env().ok_or("无法获取 JNIEnv")?;
+        let mut env = self.get_env().ok_or("无法获取 JNIEnv")?;
         let manager = self.screen_share_manager.as_ref().ok_or("ScreenShareManager 未初始化")?;
 
         let config = self.config.as_ref().ok_or("配置未初始化")?;
@@ -109,7 +109,7 @@ impl AndroidScreenSharePlatform {
 
     /// 调用 Kotlin 方法停止屏幕共享
     fn call_stop_sharing(&self) -> Result<(), String> {
-        let env = self.get_env().ok_or("无法获取 JNIEnv")?;
+        let mut env = self.get_env().ok_or("无法获取 JNIEnv")?;
         let manager = self.screen_share_manager.as_ref().ok_or("ScreenShareManager 未初始化")?;
 
         env.call_method(
@@ -125,7 +125,7 @@ impl AndroidScreenSharePlatform {
 
     /// 调用 Kotlin 方法设置编码参数
     fn call_set_encoding_params(&self) -> Result<(), String> {
-        let env = self.get_env().ok_or("无法获取 JNIEnv")?;
+        let mut env = self.get_env().ok_or("无法获取 JNIEnv")?;
         let manager = self.screen_share_manager.as_ref().ok_or("ScreenShareManager 未初始化")?;
 
         env.call_method(
@@ -262,10 +262,10 @@ pub extern "system" fn Java_com_hometier_app_screen_ScreenShareManager_nativeOnP
 /// Kotlin ScreenShareManager.nativeOnFrameData(data, width, height) 回调
 #[cfg(target_os = "android")]
 #[no_mangle]
-pub extern "system" fn Java_com_hometier_app_screen_ScreenShareManager_nativeOnFrameData(
-    _env: JNIEnv,
-    _this: JObject,
-    _data: jni::objects::JByteArray,
+pub extern "system" fn Java_com_hometier_app_screen_ScreenShareManager_nativeOnFrameData<'a>(
+    _env: JNIEnv<'a>,
+    _this: JObject<'a>,
+    _data: jni::objects::JByteArray<'a>,
     _width: jint,
     _height: jint,
 ) -> jboolean {

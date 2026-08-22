@@ -66,14 +66,14 @@ impl AndroidVoicePlatform {
         self.voice_manager = Some(voice_manager);
     }
 
-    /// 获取 JNIEnv
-    fn get_env(&self) -> Option<JNIEnv> {
-        self.java_vm.as_ref().and_then(|vm| vm.get_env().ok())
+    /// 获取 JNIEnv（自动附着到当前线程，支持 tokio 异步线程）
+    fn get_env(&self) -> Option<jni::AttachGuard<'_>> {
+        self.java_vm.as_ref().and_then(|vm| vm.attach_current_thread().ok())
     }
 
     /// 调用 Kotlin 方法启动音频
     fn call_start_audio(&self) -> Result<(), String> {
-        let env = self.get_env().ok_or("无法获取 JNIEnv")?;
+        let mut env = self.get_env().ok_or("无法获取 JNIEnv")?;
         let voice_manager = self.voice_manager.as_ref().ok_or("VoiceManager 未初始化")?;
 
         let config = self.config.as_ref().ok_or("配置未初始化")?;
@@ -99,7 +99,7 @@ impl AndroidVoicePlatform {
 
     /// 调用 Kotlin 方法停止音频
     fn call_stop_audio(&self) -> Result<(), String> {
-        let env = self.get_env().ok_or("无法获取 JNIEnv")?;
+        let mut env = self.get_env().ok_or("无法获取 JNIEnv")?;
         let voice_manager = self.voice_manager.as_ref().ok_or("VoiceManager 未初始化")?;
 
         env.call_method(
@@ -115,7 +115,7 @@ impl AndroidVoicePlatform {
 
     /// 设置麦克风静音
     fn call_set_mic_muted(&self, muted: bool) -> Result<(), String> {
-        let env = self.get_env().ok_or("无法获取 JNIEnv")?;
+        let mut env = self.get_env().ok_or("无法获取 JNIEnv")?;
         let voice_manager = self.voice_manager.as_ref().ok_or("VoiceManager 未初始化")?;
 
         env.call_method(
@@ -130,7 +130,7 @@ impl AndroidVoicePlatform {
 
     /// 设置扬声器静音
     fn call_set_speaker_muted(&self, muted: bool) -> Result<(), String> {
-        let env = self.get_env().ok_or("无法获取 JNIEnv")?;
+        let mut env = self.get_env().ok_or("无法获取 JNIEnv")?;
         let voice_manager = self.voice_manager.as_ref().ok_or("VoiceManager 未初始化")?;
 
         env.call_method(
@@ -145,7 +145,7 @@ impl AndroidVoicePlatform {
 
     /// 发送音频数据到 Kotlin 端
     fn call_send_audio(&self, data: &[u8]) -> Result<(), String> {
-        let env = self.get_env().ok_or("无法获取 JNIEnv")?;
+        let mut env = self.get_env().ok_or("无法获取 JNIEnv")?;
         let voice_manager = self.voice_manager.as_ref().ok_or("VoiceManager 未初始化")?;
 
         let byte_array = env.byte_array_from_slice(data)
@@ -236,11 +236,11 @@ impl VoicePlatform for AndroidVoicePlatform {
 /// 这些函数将由 Kotlin 端调用
 #[cfg(target_os = "android")]
 #[no_mangle]
-pub extern "system" fn Java_com_hometier_app_voice_VoiceManager_nativeInit(
-    mut env: JNIEnv,
-    _class: JClass,
+pub extern "system" fn Java_com_hometier_app_voice_VoiceManager_nativeInit<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass<'a>,
     java_vm: jlong,
-    voice_manager: JObject,
+    voice_manager: JObject<'a>,
 ) -> jboolean {
     // 这里需要通过全局状态来存储 JavaVM 和 VoiceManager 引用
     // 实际实现需要全局单例或通过 Tauri 插件传递
@@ -250,10 +250,10 @@ pub extern "system" fn Java_com_hometier_app_voice_VoiceManager_nativeInit(
 
 #[cfg(target_os = "android")]
 #[no_mangle]
-pub extern "system" fn Java_com_hometier_app_voice_VoiceManager_nativeOnAudioData(
-    mut env: JNIEnv,
-    _class: JClass,
-    data: jni::objects::JByteArray,
+pub extern "system" fn Java_com_hometier_app_voice_VoiceManager_nativeOnAudioData<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass<'a>,
+    data: jni::objects::JByteArray<'a>,
 ) -> jboolean {
     // 从 Kotlin 接收音频数据（录音回调）
     // 需要转发到 easytier P2P 网络
@@ -262,10 +262,10 @@ pub extern "system" fn Java_com_hometier_app_voice_VoiceManager_nativeOnAudioDat
 
 #[cfg(target_os = "android")]
 #[no_mangle]
-pub extern "system" fn Java_com_hometier_app_voice_VoiceManager_nativeOnPlaybackData(
-    mut env: JNIEnv,
-    _class: JClass,
-) -> jni::objects::JByteArray {
+pub extern "system" fn Java_com_hometier_app_voice_VoiceManager_nativeOnPlaybackData<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass<'a>,
+) -> jni::objects::JByteArray<'a> {
     // 请求播放数据（播放回调）
     // 从网络接收队列获取数据并返回给 AudioTrack
     env.byte_array_from_slice(&[]).unwrap().into_raw()

@@ -60,7 +60,7 @@ pub async fn mobile_screen_request_permission(
     space_id: String,
     state: State<'_, MobileScreenState>,
 ) -> Result<(), String> {
-    let manager = state
+    let mut manager = state
         .managers
         .get_mut(&space_id)
         .ok_or_else(|| format!("屏幕共享管理器不存在: {}", space_id))?;
@@ -74,7 +74,7 @@ pub async fn mobile_screen_open_settings(
     space_id: String,
     state: State<'_, MobileScreenState>,
 ) -> Result<(), String> {
-    let manager = state
+    let mut manager = state
         .managers
         .get_mut(&space_id)
         .ok_or_else(|| format!("屏幕共享管理器不存在: {}", space_id))?;
@@ -88,7 +88,7 @@ pub async fn mobile_screen_start(
     space_id: String,
     state: State<'_, MobileScreenState>,
 ) -> Result<(), String> {
-    let manager = state
+    let mut manager = state
         .managers
         .get_mut(&space_id)
         .ok_or_else(|| format!("屏幕共享管理器不存在: {}", space_id))?;
@@ -102,7 +102,7 @@ pub async fn mobile_screen_stop(
     space_id: String,
     state: State<'_, MobileScreenState>,
 ) -> Result<(), String> {
-    let manager = state
+    let mut manager = state
         .managers
         .get_mut(&space_id)
         .ok_or_else(|| format!("屏幕共享管理器不存在: {}", space_id))?;
@@ -118,7 +118,7 @@ pub async fn mobile_screen_set_quality(
     state: State<'_, MobileScreenState>,
 ) -> Result<(), String> {
     let quality = parse_quality(&quality)?;
-    let manager = state
+    let mut manager = state
         .managers
         .get_mut(&space_id)
         .ok_or_else(|| format!("屏幕共享管理器不存在: {}", space_id))?;
@@ -146,7 +146,7 @@ pub async fn mobile_screen_request_camera_permission(
     space_id: String,
     state: State<'_, MobileScreenState>,
 ) -> Result<(), String> {
-    let manager = state
+    let mut manager = state
         .managers
         .get_mut(&space_id)
         .ok_or_else(|| format!("屏幕共享管理器不存在: {}", space_id))?;

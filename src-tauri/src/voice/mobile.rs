@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
-pub mod opus;
+use crate::voice::opus::{OpusEncoder, OpusDecoder, VoiceConfig, AudioPacket, AudioQueue};
 
 #[cfg(target_os = "android")]
 pub mod android;
