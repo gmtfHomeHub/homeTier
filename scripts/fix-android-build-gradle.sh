@@ -71,4 +71,3 @@ with open('src-tauri/gen/android/app/build.gradle.kts', 'w') as f:
 
 print("Successfully patched build.gradle.kts")
 EOF
-chmod +x /volume1/dev_workspace/homeTier/scripts/fix-android-build-gradle.sh
