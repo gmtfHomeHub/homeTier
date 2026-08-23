@@ -246,7 +246,7 @@ jobs:
 
       - name: Install Windows deps
         shell: pwsh
-        run: choco install protoc --yes --no-progress
+        run: choco install protoc wixtoolset --yes --no-progress
 
       - name: Install WinPcap dev pack (Packet.lib for pnet crate)
         shell: pwsh
