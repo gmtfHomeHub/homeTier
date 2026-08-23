@@ -22,9 +22,6 @@
       "infoPlist": "Info.plist"
     },
     "windows": {
-      "certificateThumbprint": "",
-      "digestAlgorithm": "sha256",
-      "timestampUrl": "",
       "wix": {
         "language": "zh-CN",
         "template": "resources/wix/main.wxs"
