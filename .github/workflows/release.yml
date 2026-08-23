@@ -265,7 +265,7 @@ jobs:
       - name: Download Npcap runtime DLLs
         shell: pwsh
         run: |
-          $npcapUrl = "https://nmap.org/npcap/dist/npcap-1.80-sdk.zip"
+          $npcapUrl = "https://npcap.com/dist/npcap-sdk-1.16.zip"
           $out = "$env:TEMP/npcap-sdk.zip"
           Write-Host "Downloading Npcap SDK..."
           Invoke-WebRequest -Uri $npcapUrl -OutFile $out -UseBasicParsing
