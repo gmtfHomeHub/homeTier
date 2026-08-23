@@ -271,10 +271,18 @@ jobs:
           Invoke-WebRequest -Uri $npcapUrl -OutFile $out -UseBasicParsing
           $extractDir = "$env:GITHUB_WORKSPACE/src-tauri/npcap_extract"
           Write-Host "Extracting Npcap SDK to $extractDir..."
-          7z x "$out" -o"$extractDir" | Out-Null
+          # Create extraction directory
+          New-Item -ItemType Directory -Force -Path "$extractDir" | Out-Null
+          # Extract with 7z - use absolute path for output directory
+          $extractResult = 7z x "$out" -o"$extractDir"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "7z extraction failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+          Write-Host "Extraction completed successfully to $extractDir"
           $dlls = @("packet.dll", "wpcap.dll", "Packet.dll", "Wpcap.dll")
           foreach ($dll in $dlls) {
-            $found = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/src-tauri/npcap_extract" -Recurse -Filter $dll -ErrorAction SilentlyContinue | Select-Object -First 1
+            $found = Get-ChildItem -Path "$extractDir" -Recurse -Filter $dll -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($null -ne $found) {
               Copy-Item $found.FullName "$env:GITHUB_WORKSPACE/src-tauri/resources/bin/$dll" -Force
               Write-Host "Copied $dll"
@@ -282,7 +290,7 @@ jobs:
               Write-Warning "DLL not found: $dll"
             }
           }
-          Remove-Item -Recurse -Force "$env:GITHUB_WORKSPACE/src-tauri/npcap_extract" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "$extractDir" -ErrorAction SilentlyContinue
           Remove-Item $env:TEMP/npcap.exe -ErrorAction SilentlyContinue
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
