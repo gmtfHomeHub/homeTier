@@ -246,7 +246,14 @@ jobs:
 
       - name: Install Windows deps
         shell: pwsh
-        run: choco install protoc wixtoolset --yes --no-progress
+        run: choco install protoc --yes --no-progress
+
+      - name: Enable VBSCRIPT for WiX MSI bundling
+        shell: pwsh
+        run: |
+          # Tauri MSI builds require VBSCRIPT enabled (Tauri docs prerequisite)
+          dism /online /enable-feature /featurename:VBScripts /all /norestart
+          echo "[wix] VBSCRIPT feature enabled"
 
       - name: Install WinPcap dev pack (Packet.lib for pnet crate)
         shell: pwsh
@@ -326,7 +333,7 @@ jobs:
 
       - name: Build Tauri bundle
         run: |
-          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} --verbose
 
       - name: Stage artifact
         shell: bash

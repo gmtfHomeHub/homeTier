@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="*" Name="homeTier" Language="2052" Version="0.1.0" Manufacturer="homeTier" UpgradeCode="PUT-GUID-HERE">
+  <Product Id="*" Name="homeTier" Language="2052" Version="0.1.0" Manufacturer="homeTier" UpgradeCode="1952EC1F-8A87-4555-849F-1040A4C5CB9C">
     <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
     
     <MajorUpgrade DowngradeErrorMessage="已安装较新版本的 homeTier。" />
