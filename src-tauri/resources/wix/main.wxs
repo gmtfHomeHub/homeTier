@@ -16,10 +16,11 @@
       <Directory Id="ProgramFilesFolder">
         <Directory Id="INSTALLFOLDER" Name="homeTier" />
       </Directory>
-    </Fragment>
+    </Directory>
+  </Fragment>
 
-    <Fragment>
-      <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+  <Fragment>
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
         <!-- 主程序 -->
         <Component Id="homeTier.exe">
           <File Source="$(var.TauriBundleOutput)homeTier.exe" KeyPath="yes" />
@@ -47,6 +48,5 @@
           <RegistryValue Root="HKCU" Key="Software\homeTier" Name="installed" Type="integer" Value="1" KeyPath="yes" />
         </Component>
       </ComponentGroup>
-    </Fragment>
   </Fragment>
 </Wix>
