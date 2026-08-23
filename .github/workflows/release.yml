@@ -179,20 +179,20 @@ jobs:
         run: |
           pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
 
-      - name: Locate artifacts
-        id: locate
+      - name: Stage artifact
         shell: bash
         run: |
-          find src-tauri/target -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.deb' -o -name '*.AppImage' \) | head -20
+          mkdir -p dist
+          find src-tauri/target -maxdepth 5 -name "*.dmg" -exec cp {} dist/ \;
+          echo "Staged macOS artifacts:"
+          ls -lh dist/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/${{ matrix.bundle }}/*
-            src-tauri/target/release/bundle/${{ matrix.bundle }}/*
-          if-no-files-found: warn
+          path: dist/*.dmg
+          if-no-files-found: error
 
   build-desktop-windows:
     needs: fetch-easytier
@@ -265,14 +265,24 @@ jobs:
       - name: Download Npcap runtime DLLs
         shell: pwsh
         run: |
-          $npcapUrl = "https://nmap.org/npcap/dist/npcap-1.80.exe"
-          $out = "$env:TEMP/npcap.exe"
+          $npcapUrl = "https://npcap.com/dist/npcap-sdk-1.16.zip"
+          $out = "$env:TEMP/npcap-sdk.zip"
           Write-Host "Downloading Npcap SDK..."
           Invoke-WebRequest -Uri $npcapUrl -OutFile $out -UseBasicParsing
-          7z x $out -o./npcap_extract | Out-Null
+          $extractDir = "$env:GITHUB_WORKSPACE/src-tauri/npcap_extract"
+          Write-Host "Extracting Npcap SDK to $extractDir..."
+          # Create extraction directory
+          New-Item -ItemType Directory -Force -Path "$extractDir" | Out-Null
+          # Extract with 7z - use absolute path for output directory
+          $extractResult = 7z x "$out" -o"$extractDir"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "7z extraction failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+          Write-Host "Extraction completed successfully to $extractDir"
           $dlls = @("packet.dll", "wpcap.dll", "Packet.dll", "Wpcap.dll")
           foreach ($dll in $dlls) {
-            $found = Get-ChildItem -Path "./npcap_extract" -Recurse -Filter $dll -ErrorAction SilentlyContinue | Select-Object -First 1
+            $found = Get-ChildItem -Path "$extractDir" -Recurse -Filter $dll -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($null -ne $found) {
               Copy-Item $found.FullName "$env:GITHUB_WORKSPACE/src-tauri/resources/bin/$dll" -Force
               Write-Host "Copied $dll"
@@ -280,8 +290,8 @@ jobs:
               Write-Warning "DLL not found: $dll"
             }
           }
-          Remove-Item -Recurse -Force ./npcap_extract
-          Remove-Item $env:TEMP/npcap.exe -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "$extractDir" -ErrorAction SilentlyContinue
+          Remove-Item $env:TEMP/npcap-sdk.zip -ErrorAction SilentlyContinue
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
       - name: Configure MSVC include path (for vcruntime.h used by kcp-sys bindgen)
@@ -316,22 +326,22 @@ jobs:
 
       - name: Build Tauri bundle
         run: |
-          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} --verbose
 
-      - name: Locate artifacts
-        id: locate
+      - name: Stage artifact
         shell: bash
         run: |
-          find src-tauri/target -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.deb' -o -name '*.AppImage' \) | head -20
+          mkdir -p dist
+          find src-tauri/target -maxdepth 5 -name "*.msi" -exec cp {} dist/ \;
+          echo "Staged Windows artifacts:"
+          ls -lh dist/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/${{ matrix.bundle }}/*
-            src-tauri/target/release/bundle/${{ matrix.bundle }}/*
-          if-no-files-found: warn
+          path: dist/*.msi
+          if-no-files-found: error
 
   build-desktop-linux:
     needs: fetch-easytier
@@ -393,20 +403,20 @@ jobs:
         run: |
           pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
 
-      - name: Locate artifacts
-        id: locate
+      - name: Stage artifact
         shell: bash
         run: |
-          find src-tauri/target -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.deb' -o -name '*.AppImage' \) | head -20
+          mkdir -p dist
+          find src-tauri/target -maxdepth 5 -name "*.deb" -exec cp {} dist/ \;
+          echo "Staged Linux artifacts:"
+          ls -lh dist/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/${{ matrix.bundle }}/*
-            src-tauri/target/release/bundle/${{ matrix.bundle }}/*
-          if-no-files-found: warn
+          path: dist/*.deb
+          if-no-files-found: error
 
   # ---------------------------------------------------------------
   # 3. Linux AppImage
@@ -441,12 +451,19 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build
         run: pnpm tauri build --bundles appimage
+      - name: Stage artifact
+        shell: bash
+        run: |
+          mkdir -p dist
+          find src-tauri/target -maxdepth 5 -name "*.AppImage" -exec cp {} dist/ \;
+          echo "Staged AppImage artifacts:"
+          ls -lh dist/
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
           name: homeTier.AppImage
-          path: src-tauri/target/release/bundle/appimage/*.AppImage
-          if-no-files-found: warn
+          path: dist/*.AppImage
+          if-no-files-found: error
 
   # ---------------------------------------------------------------
   # 4. Android APK
@@ -544,12 +561,19 @@ jobs:
         run: bash scripts/mobile-permissions.sh
       - name: Build APK
         run: pnpm tauri android build --apk --target aarch64 --target armv7 --target x86_64
+      - name: Stage artifact
+        shell: bash
+        run: |
+          mkdir -p dist
+          find src-tauri/gen/android -maxdepth 8 -name "*.apk" -exec cp {} dist/ \;
+          echo "Staged Android artifacts:"
+          ls -lh dist/
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: homeTier-android.apk
-          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
-          if-no-files-found: warn
+          path: dist/*.apk
+          if-no-files-found: error
 
   # ---------------------------------------------------------------
   # 5. iOS (无签名构建，需 macOS runner) - 仅手动触发，tag 发布不自动构建
@@ -649,7 +673,7 @@ jobs:
   # 7. 汇总发布到 GitHub Release（仅 tag 触发）
   # ---------------------------------------------------------------
   release:
-    needs: [build-desktop-macos, build-desktop-windows, build-desktop-linux, build-appimage, build-android, build-ios, build-docker]
+    needs: [build-desktop-macos, build-desktop-windows, build-desktop-linux, build-appimage, build-android, build-docker]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
@@ -659,12 +683,20 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+      - name: Collect release files
+        run: |
+          mkdir -p release_files
+          find artifacts -type f \( -name "*.dmg" -o -name "*.msi" -o -name "*.deb" \
+            -o -name "*.AppImage" -o -name "*.apk" \) \
+            -exec cp {} release_files/ \;
+          echo "Release files:"
+          ls -lh release_files/
       - name: Generate checksums
         run: |
-          cd artifacts && sha256sum * > checksums.txt && cat checksums.txt
+          cd release_files && sha256sum * > checksums.txt && cat checksums.txt
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
-          files: artifacts/**
+          files: release_files/*
