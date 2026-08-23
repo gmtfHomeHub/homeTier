@@ -525,25 +525,7 @@ jobs:
           sed -i 's/classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1\.6\.21")/classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.22")/' src-tauri/gen/android/build.gradle.kts
       - name: Configure Android signing
         run: |
-          cat >> src-tauri/gen/android/app/build.gradle.kts << 'EOF'
-      android {
-          signingConfigs {
-              create("release") {
-                  storeFile = file("../keystore/release.keystore")
-                  storePassword = System.getenv("KEYSTORE_PASSWORD")
-                  keyAlias = "hometier"
-                  keyPassword = System.getenv("KEY_PASSWORD")
-              }
-          }
-          buildTypes {
-              release {
-                  signingConfig = signingConfigs.getByName("release")
-                  minifyEnabled = false
-                  proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-              }
-          }
-      }
-EOF
+          cat src-tauri/resources/gradle/signing_config.gradle.kts >> src-tauri/gen/android/app/build.gradle.kts
       - name: Limit Gradle parallelism
         run: |
           printf '\norg.gradle.workers.max=2\norg.gradle.jvmargs=-Xmx2048m\n' >> src-tauri/gen/android/gradle.properties
