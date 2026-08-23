@@ -265,8 +265,8 @@ jobs:
       - name: Download Npcap runtime DLLs
         shell: pwsh
         run: |
-          $npcapUrl = "https://nmap.org/npcap/dist/npcap-1.80.exe"
-          $out = "$env:TEMP/npcap.exe"
+          $npcapUrl = "https://nmap.org/npcap/dist/npcap-1.80-sdk.zip"
+          $out = "$env:TEMP/npcap-sdk.zip"
           Write-Host "Downloading Npcap SDK..."
           Invoke-WebRequest -Uri $npcapUrl -OutFile $out -UseBasicParsing
           $extractDir = "$env:GITHUB_WORKSPACE/src-tauri/npcap_extract"
@@ -291,7 +291,7 @@ jobs:
             }
           }
           Remove-Item -Recurse -Force "$extractDir" -ErrorAction SilentlyContinue
-          Remove-Item $env:TEMP/npcap.exe -ErrorAction SilentlyContinue
+          Remove-Item $env:TEMP/npcap-sdk.zip -ErrorAction SilentlyContinue
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
       - name: Configure MSVC include path (for vcruntime.h used by kcp-sys bindgen)
