@@ -532,7 +532,7 @@ jobs:
       - name: Inject camera permissions
         run: bash scripts/mobile-permissions.sh
       - name: Build APK
-        run: pnpm tauri android build --apk --target aarch64,armv7,x86_64
+        run: pnpm tauri android build --apk --target aarch64 --target armv7 --target x86_64
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
