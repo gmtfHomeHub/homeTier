@@ -543,7 +543,7 @@ jobs:
               }
           }
       }
-      EOF
+EOF
       - name: Limit Gradle parallelism
         run: |
           printf '\norg.gradle.workers.max=2\norg.gradle.jvmargs=-Xmx2048m\n' >> src-tauri/gen/android/gradle.properties
