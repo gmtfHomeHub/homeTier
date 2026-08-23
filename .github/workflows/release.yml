@@ -488,10 +488,22 @@ jobs:
           ndk: 25.2.9519653
       - name: Set up Android Keystore
         run: |
-          # 从 GitHub Secrets 创建 keystore
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > src-tauri/keystore/release.keystore
-          echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
-          echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+          mkdir -p src-tauri/keystore
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            # 从 GitHub Secrets 创建 keystore
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > src-tauri/keystore/release.keystore
+            echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+          else
+            # 未配置 secrets 时生成一次性自签名 keystore，保证 APK 始终可签名构建
+            keytool -genkeypair -v -keystore src-tauri/keystore/release.keystore \
+              -alias hometier -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass hometier123 -keypass hometier123 \
+              -dname "CN=homeTier CI, OU=CI, O=homeTier, L=CI, ST=CI, C=CN" 2>/dev/null
+            echo "KEYSTORE_PASSWORD=hometier123" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=hometier123" >> $GITHUB_ENV
+            echo "[keystore] 未配置 secrets，已生成一次性自签名 keystore（hometier123）"
+          fi
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
       - name: Install build deps

@@ -21,6 +21,15 @@ echo "[fix-android-build-gradle] Patching $BUILD_GRADLE..."
 # Backup
 cp "$BUILD_GRADLE" "$BUILD_GRADLE.bak"
 
+# 将 keystore 复制到生成的 android 工程内（file("../keystore/release.keystore") 相对 app 模块）
+if [ -f "src-tauri/keystore/release.keystore" ]; then
+    mkdir -p src-tauri/gen/android/keystore
+    cp src-tauri/keystore/release.keystore src-tauri/gen/android/keystore/release.keystore
+    echo "[fix-android-build-gradle] Copied keystore to gen/android/keystore/"
+else
+    echo "[fix-android-build-gradle] WARN: src-tauri/keystore/release.keystore 不存在，跳过复制"
+fi
+
 # Check if signing config already exists
 if grep -q "signingConfigs" "$BUILD_GRADLE"; then
     echo "[fix-android-build-gradle] Signing config already present, skipping"
