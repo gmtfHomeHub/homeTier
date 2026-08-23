@@ -21,25 +21,11 @@
 
   <Fragment>
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
-        <!-- 主程序 -->
+        <!-- 主程序: $(var.SourceDir) 由 Tauri candle.exe -dSourceDir 传入，指向 homeTier.exe 绝对路径 -->
         <Component Id="homeTier.exe">
-          <File Source="$(var.TauriBundleOutput)homeTier.exe" KeyPath="yes" />
+          <File Source="$(var.SourceDir)" KeyPath="yes" />
         </Component>
-        
-        <!-- WinPcap/Npcap 运行时依赖 -->
-        <Component Id="packet.dll">
-          <File Source="resources/bin/packet.dll" KeyPath="yes" />
-        </Component>
-        <Component Id="wpcap.dll">
-          <File Source="resources/bin/wpcap.dll" KeyPath="yes" />
-        </Component>
-        <Component Id="Packet.dll">
-          <File Source="resources/bin/Packet.dll" KeyPath="yes" />
-        </Component>
-        <Component Id="Wpcap.dll">
-          <File Source="resources/bin/Wpcap.dll" KeyPath="yes" />
-        </Component>
-        
+
         <!-- 启动快捷方式 -->
         <Component Id="Shortcut">
           <Shortcut Id="DesktopShortcut" Directory="DesktopFolder" Name="homeTier" Target="[INSTALLFOLDER]homeTier.exe" WorkingDirectory="INSTALLFOLDER" />
@@ -47,6 +33,6 @@
           <RemoveFolder Id="CleanUp" On="uninstall" />
           <RegistryValue Root="HKCU" Key="Software\homeTier" Name="installed" Type="integer" Value="1" KeyPath="yes" />
         </Component>
-      </ComponentGroup>
+    </ComponentGroup>
   </Fragment>
 </Wix>
