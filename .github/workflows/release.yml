@@ -248,13 +248,6 @@ jobs:
         shell: pwsh
         run: choco install protoc --yes --no-progress
 
-      - name: Enable VBSCRIPT for WiX MSI bundling
-        shell: pwsh
-        run: |
-          # Tauri MSI builds require VBSCRIPT enabled (Tauri docs prerequisite)
-          dism /online /enable-feature /featurename:VBScripts /all /norestart
-          echo "[wix] VBSCRIPT feature enabled"
-
       - name: Install WinPcap dev pack (Packet.lib for pnet crate)
         shell: pwsh
         run: |
