@@ -162,6 +162,37 @@ impl EasyTierDownloader {
                         .map_err(|e| format!("设置权限失败: {}", e))?;
                 }
 
+                // Windows: 将 packet.dll/wpcap.dll 复制到 easytier-core.exe 同目录
+                // MSI 只把 DLL 放在 homeTier.exe 同目录，而 easytier-core.exe 在 {app_data}/bin/...
+                #[cfg(target_os = "windows")]
+                {
+                    if let Some(resource_dir) = &self.resource_dir {
+                        let target_dir = target_path.parent().unwrap_or(&self.bin_dir);
+                        for dll_name in &["packet.dll", "wpcap.dll"] {
+                            let mut copied = false;
+                            for candidate_dir in &[
+                                resource_dir.join("resources").join("bin"),
+                                resource_dir.join("bin"),
+                                resource_dir.clone(),
+                            ] {
+                                let src = candidate_dir.join(dll_name);
+                                if src.exists() {
+                                    if let Err(e) = std::fs::copy(&src, target_dir.join(dll_name)) {
+                                        crate::log_warn!(format!("[EasyTierDownloader] 复制 {} 失败: {}", dll_name, e));
+                                    } else {
+                                        crate::log_info!(format!("[EasyTierDownloader] 已复制 {} 到 {}", dll_name, target_dir.display()));
+                                    }
+                                    copied = true;
+                                    break;
+                                }
+                            }
+                            if !copied {
+                                crate::log_warn!(format!("[EasyTierDownloader] 未找到 {}，easytier-core 可能启动失败", dll_name));
+                            }
+                        }
+                    }
+                }
+
                 let _ = std::fs::remove_dir_all(&temp_dir);
             }
             BinarySource::LocalBinary(binary_path) => {
