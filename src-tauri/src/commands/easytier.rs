@@ -1,19 +1,30 @@
 use crate::daemon::{client::IpcClient, ipc::IpcResponse};
 use crate::easytier::{EasyTierManager, EasyTierDownloader, BinarySource};
+use std::sync::Arc;
 use tauri::{State, Emitter};
 use futures_util::StreamExt;
 
 /// 获取 EasyTier 版本
 #[tauri::command]
-pub async fn get_easytier_version() -> Result<String, String> {
-    let client = IpcClient::get_global();
-    match client.get_version().await {
-        Ok(IpcResponse::Ok { data }) => {
-            data.and_then(|v| v.get("version").and_then(|s| s.as_str().map(|s| s.to_string())))
-                .ok_or_else(|| "无法获取版本".into())
+pub async fn get_easytier_version(
+    #[allow(unused_variables)] easytier: State<'_, Arc<EasyTierManager>>,
+) -> Result<String, String> {
+    // Mobile: 直接从 EasyTierManager 读取编译期版本号，无需 IPC daemon
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    return easytier.get_version().await;
+
+    // Desktop: 通过 daemon IPC 获取版本
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let client = IpcClient::get_global();
+        match client.get_version().await {
+            Ok(IpcResponse::Ok { data }) => {
+                data.and_then(|v| v.get("version").and_then(|s| s.as_str().map(|s| s.to_string())))
+                    .ok_or_else(|| "无法获取版本".into())
+            }
+            Ok(IpcResponse::Error { message }) => Err(message),
+            Err(e) => Err(format!("连接 daemon 失败: {}", e)),
         }
-        Ok(IpcResponse::Error { message }) => Err(message),
-        Err(e) => Err(format!("连接 daemon 失败: {}", e)),
     }
 }
 
