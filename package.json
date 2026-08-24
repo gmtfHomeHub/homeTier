@@ -17,7 +17,15 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix"
+    "lint:fix": "eslint src/ --fix",
+    "tauri:build:macos": "tauri build --target aarch64-apple-darwin --bundles dmg",
+    "tauri:build:macos:x86": "tauri build --target x86_64-apple-darwin --bundles dmg",
+    "tauri:build:windows": "tauri build --target x86_64-pc-windows-msvc --bundles msi --verbose",
+    "tauri:build:linux": "tauri build --target x86_64-unknown-linux-gnu --bundles deb",
+    "tauri:build:linux:arm": "tauri build --target aarch64-unknown-linux-gnu --bundles deb",
+    "tauri:build:appimage": "tauri build --bundles appimage",
+    "tauri:build:android": "tauri android build --apk --target aarch64 --target armv7 --target x86_64",
+    "tauri:build:docker": "tauri build --no-bundle"
   },
   "dependencies": {
     "@iconify/react": "^6.0.2",
