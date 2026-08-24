@@ -967,7 +967,7 @@ impl EasyTierManager {
 
     /// 获取当前版本（Mobile 不使用二进制管理）
     pub async fn get_version(&self) -> Result<String, String> {
-        Ok(env!("CARGO_PKG_VERSION").into())
+        Ok(easytier::VERSION.into())
     }
 
     /// 获取详细网络统计（Mobile: 基于库实例状态组装）
