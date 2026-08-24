@@ -280,7 +280,7 @@ jobs:
             exit 1
           }
           Write-Host "Extraction completed successfully to $extractDir"
-          $dlls = @("packet.dll", "wpcap.dll", "Packet.dll", "Wpcap.dll")
+          $dlls = @("packet.dll", "wpcap.dll")
           foreach ($dll in $dlls) {
             $found = Get-ChildItem -Path "$extractDir" -Recurse -Filter $dll -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($null -ne $found) {

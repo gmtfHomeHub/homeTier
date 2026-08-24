@@ -6,10 +6,11 @@
 
 | 文件名 | 说明 | 来源 |
 |--------|------|------|
-| `packet.dll` | WinPcap 核心库 | Npcap SDK |
-| `wpcap.dll` | WinPcap 核心库 | Npcap SDK |
-| `Packet.dll` | WinPcap 核心库（大小写兼容） | Npcap SDK |
-| `Wpcap.dll` | WinPcap 核心库（大小写兼容） | Npcap SDK |
+| `packet.dll` | WinPcap/Npcap 核心库 | Npcap SDK |
+| `wpcap.dll` | WinPcap/Npcap 核心库 | Npcap SDK |
+
+> Windows 运行时文件系统不区分大小写，只需保留小写文件名即可。
+> Npcap SDK 中的 PascalCase 文件（Packet.dll/Wpcap.dll）在 Windows 上与小写等价。
 
 ## 获取方法
 
@@ -22,10 +23,8 @@
    7z x npcap-<version>.exe
    ```
 4. 从解压后的文件中复制以下 DLL 到此目录：
-   - `packet.dll`
-   - `wpcap.dll`
-   - `Packet.dll` (如存在)
-   - `Wpcap.dll` (如存在)
+   - `packet.dll`（或 `Packet.dll`，Windows 上等价）
+   - `wpcap.dll`（或 `Wpcap.dll`，Windows 上等价）
 
 ### 方法 2: 从已安装 Npcap 的系统复制
 
@@ -34,8 +33,6 @@
 # Windows 系统目录通常位置
 copy C:\Windows\System32\packet.dll src-tauri\resources\bin\
 copy C:\Windows\System32\wpcap.dll src-tauri\resources\bin\
-copy C:\Windows\System32\Packet.dll src-tauri\resources\bin\ 2>nul || echo "Packet.dll 不存在"
-copy C:\Windows\System32\Wpcap.dll src-tauri\resources\bin\ 2>nul || echo "Wpcap.dll 不存在"
 ```
 
 ## CI/CD 自动化
@@ -49,8 +46,6 @@ GitHub Actions 工作流中可通过以下步骤自动下载和提取：
     7z x npcap.exe -o./npcap_extract
     cp npcap_extract/packet.dll src-tauri/resources/bin/
     cp npcap_extract/wpcap.dll src-tauri/resources/bin/
-    cp npcap_extract/Packet.dll src-tauri/resources/bin/ 2>/dev/null || true
-    cp npcap_extract/Wpcap.dll src-tauri/resources/bin/ 2>/dev/null || true
 ```
 
 ## 注意事项
