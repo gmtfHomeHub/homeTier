@@ -11,7 +11,8 @@ import { applyGlobalShortcuts } from "../../services/shortcuts";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { NetworkConfig } from "../../types/network";
 import { useTranslation } from "react-i18next";
-import { Tabs, Tooltip, Button, Flex, Text, Switch, Card, Select } from "@radix-ui/themes";
+import { Tabs, Button, Flex, Text, Switch, Card, Select } from "@radix-ui/themes";
+import Tip from "../Common/Tip";
 import { SettingTabEnum, LanguageEnum, ThemeEnum } from "../../enum";
 import { toastSuccess, toastError } from "../../utils/toast";
 import { isMobile } from "../../utils/platform";
@@ -203,11 +204,11 @@ export function SettingsPage() {
                     <Flex direction="column">
                       <Flex align="center" gap="2">
                         <Text size="3" weight="medium">{t("settings.showLogs")}</Text>
-                        <Tooltip content={t("settings.showLogsHelp")}>
+                        <Tip content={t("settings.showLogsHelp")}>
                           <span className="inline-flex items-center cursor-pointer text-[var(--color-text-secondary)]">
                             <HelpCircle size={14} />
                           </span>
-                        </Tooltip>
+                        </Tip>
                       </Flex>
                       <Text size="1" color="gray">{t("settings.showLogsDesc")}</Text>
                     </Flex>
@@ -233,11 +234,11 @@ export function SettingsPage() {
                     <Flex direction="column" className="flex-1">
                       <Flex align="center" gap="2">
                         <Text size="3" weight="medium">{t("settings.shortcuts")}</Text>
-                        <Tooltip content={t("settings.shortcutsHelp")}>
+                        <Tip content={t("settings.shortcutsHelp")}>
                           <span className="inline-flex items-center cursor-pointer text-[var(--color-text-secondary)]">
                             <HelpCircle size={14} />
                           </span>
-                        </Tooltip>
+                        </Tip>
                       </Flex>
                       <Text size="1" color="gray">{t("settings.shortcutsDesc")}</Text>
                     </Flex>
