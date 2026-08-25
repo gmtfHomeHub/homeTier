@@ -2,9 +2,9 @@
 @tailwind utilities;
 
 :root {
-  --color-bg: var(--gray-1);
+  --color-bg: var(--gray-3);
   --color-surface: var(--gray-1);
-  --color-border: var(--gray-5);
+  --color-border: var(--gray-3);
   --color-text: var(--gray-12);
   --color-text-secondary: var(--gray-11);
   --color-primary: var(--accent-9);

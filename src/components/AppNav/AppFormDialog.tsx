@@ -138,7 +138,7 @@ export function AppFormDialog({ app, spaceId, existingCategories, onClose, onSub
                 </Select.Content>
               </Select.Root>
             ) : (
-              <Flex gap="2">
+              <Flex gap="2" align="center">
                 <TextField.Root
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
@@ -167,14 +167,14 @@ export function AppFormDialog({ app, spaceId, existingCategories, onClose, onSub
             <Text as="label" size="2" weight="medium" mb="1" className="block">
               {t("appNav.icon")}
             </Text>
-            <Flex gap="2">
+            <Flex gap="2" align="center">
               <TextField.Root
                 value={icon}
                 onChange={(e) => setIcon(e.target.value)}
                 placeholder={t("appNav.iconPlaceholder")}
                 className="flex-1"
               />
-              <Button type="button" onClick={openIconSearch} variant="ghost" size="2" title={t("appNav.searchIcon")}>
+              <Button className="py-2" type="button" onClick={openIconSearch} variant="ghost" size="2" title={t("appNav.searchIcon")}>
                 <Search size={16} />
               </Button>
             </Flex>
@@ -185,10 +185,17 @@ export function AppFormDialog({ app, spaceId, existingCategories, onClose, onSub
 
           {/* URL 分段 */}
           <div>
-            <Text as="label" size="2" weight="medium" mb="1" className="block">
+            <Text as="p">
+            <Text as="span" size="2" weight="medium" mb="1">
               {t("appNav.address")}
             </Text>
-            <Flex gap="2" align="end">
+            {hostname && (
+              <Text size="1" className="text-[var(--color-text-secondary)] ml-1">
+                ({t("appNav.preview")} {urlPreview})
+              </Text>
+            )}
+            </Text>
+            <Flex gap="2" align="center">
               <Select.Root value={protocol} onValueChange={setProtocol}>
                 <Select.Trigger className="w-24" />
                 <Select.Content>
@@ -221,11 +228,6 @@ export function AppFormDialog({ app, spaceId, existingCategories, onClose, onSub
                 className="flex-1"
               />
             </Flex>
-            {hostname && (
-              <Text size="1" className="text-[var(--color-text-secondary)] mt-1 block">
-                {t("appNav.preview")} {urlPreview}
-              </Text>
-            )}
           </div>
 
           <Flex justify="end" gap="2" pt="2">

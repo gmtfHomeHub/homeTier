@@ -117,7 +117,7 @@ export function AppNavContainer({
                       </Flex>
 
                       {mode === "edit" && canEdit && !app.system && (
-                        <div className="absolute flex gap-1 transition-opacity opacity-0 top-1 right-2 group-hover:opacity-100">
+                        <Flex gap="2" className="absolute transition-opacity opacity-0 top-1 right-2 group-hover:opacity-100">
                           {onEdit && (
                             <Button onClick={(e) => { e.stopPropagation(); onEdit(app); }} variant="ghost" size="1">
                               <Edit3 size={12} />
@@ -133,12 +133,12 @@ export function AppNavContainer({
                               <Trash2 size={12} />
                             </Button>
                           )}
-                        </div>
+                        </Flex>
                       )}
                     </Card>
                   </Box>
                   {mode === "edit" && onAdd && i === group.apps.length - 1 && (
-                    <Box maxWidth="80px" minHeight="70px" className="relative cursor-pointer group" onClick={() => onAdd(group.title)}>
+                    <Box maxWidth="80px" className="relative cursor-pointer group" onClick={() => onAdd(group.title)}>
                       <Card className="flex flex-col items-center justify-center flex-1 h-full">
                         <Icon icon="icon-park-solid:add-web" width={24} height={24} />
                         <Text size="1">{t("appNav.add")}</Text>
