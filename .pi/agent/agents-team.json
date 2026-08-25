@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 4,
+  "scaffoldVersion": 3,
+  "enabled": true,
+  "routingMode": "team",
+  "workerAccess": {
+    "allowPathsOutsideProject": true
+  },
+  "display": {
+    "cost": true
+  },
+  "roles": {
+    "explorer": {
+      "whenToUse": "Use for fast codebase reconnaissance. Best for 'where is X?', 'how does Y work?', 'list all files that touch Z', or 'map the structure of this directory' questions.",
+      "model": "default",
+      "thinkingLevel": "low",
+      "access": {
+        "tools": [
+          "read",
+          "grep",
+          "find",
+          "ls",
+          "bash"
+        ],
+        "write": false
+      },
+      "prompt": "default"
+    },
+    "librarian": {
+      "whenToUse": "Use for library/API/documentation research. Best for 'how do I use this dependency?', 'what changed in vX.Y?', or 'find the canonical reference for...' questions.",
+      "model": "default",
+      "thinkingLevel": "medium",
+      "access": {
+        "tools": [
+          "read",
+          "grep",
+          "find",
+          "ls",
+          "bash"
+        ],
+        "write": false
+      },
+      "prompt": "default"
+    },
+    "oracle": {
+      "whenToUse": "Use for deep reasoning tasks: architecture tradeoffs, root-cause analysis of hard bugs, or judgment calls that need careful thought. Thinks slowly, answers carefully.",
+      "model": "default",
+      "thinkingLevel": "high",
+      "access": {
+        "tools": [
+          "read",
+          "grep",
+          "find",
+          "ls",
+          "bash"
+        ],
+        "write": false
+      },
+      "prompt": "default"
+    },
+    "designer": {
+      "whenToUse": "Use for UI/UX guidance: component layout critique, visual flow suggestions, design-system consistency checks.",
+      "model": "default",
+      "thinkingLevel": "medium",
+      "access": {
+        "tools": [
+          "read",
+          "grep",
+          "find",
+          "ls",
+          "bash"
+        ],
+        "write": false
+      },
+      "prompt": "default"
+    },
+    "fixer": {
+      "whenToUse": "Use for bounded code changes: implement a specific fix, add a test, refactor a single file, apply a targeted edit. Requires an explicit pathScope at delegate time.",
+      "model": "default",
+      "thinkingLevel": "medium",
+      "access": {
+        "tools": [
+          "read",
+          "bash",
+          "edit",
+          "write"
+        ],
+        "write": true
+      },
+      "prompt": "default"
+    },
+    "reviewer": {
+      "whenToUse": "Use to validate a change, critique a PR, hunt for regressions, or confirm that tests actually cover what they claim. Reports confirmed issues vs softer suggestions.",
+      "model": "default",
+      "thinkingLevel": "high",
+      "access": {
+        "tools": [
+          "read",
+          "grep",
+          "find",
+          "ls",
+          "bash"
+        ],
+        "write": false
+      },
+      "prompt": "default"
+    },
+    "observer": {
+      "whenToUse": "Use when the task involves screenshots, images, or non-code artifacts that need inspection before the answer makes sense.",
+      "model": "default",
+      "thinkingLevel": "low",
+      "access": {
+        "tools": [
+          "read",
+          "grep",
+          "find",
+          "ls",
+          "bash"
+        ],
+        "write": false
+      },
+      "prompt": "default"
+    }
+  }
+}
