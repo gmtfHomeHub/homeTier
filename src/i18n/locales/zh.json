@@ -1,4 +1,12 @@
 {
+  "vpn": {
+    "connectFailed": "VPN 连接失败: {{error}}",
+    "connecting": "VPN 连接中…",
+    "connected": "VPN 已连接",
+    "disconnected": "VPN 已断开",
+    "prepareDenied": "VPN 授权被拒绝或未完成",
+    "tunFdFailed": "获取 TUN 设备失败"
+  },
   "mobile": {
     "voice": {
       "toolbar": "语音控制",

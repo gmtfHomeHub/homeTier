@@ -1,4 +1,12 @@
 {
+  "vpn": {
+    "connectFailed": "VPN connection failed: {{error}}",
+    "connecting": "Connecting VPN…",
+    "connected": "VPN connected",
+    "disconnected": "VPN disconnected",
+    "prepareDenied": "VPN authorization denied or not completed",
+    "tunFdFailed": "Failed to get TUN device"
+  },
   "mobile": {
     "voice": {
       "toolbar": "Voice Control",

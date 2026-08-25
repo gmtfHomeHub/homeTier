@@ -215,7 +215,7 @@ object TauriEventBus {
             val js = """
                 (function(){
                     if (window.__TAURI_INTERNALS__) {
-                        window.__TAURI_INTERNALS__.invoke('plugin:event|listen', {
+                        window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {
                             event: '$event',
                             payload: $payload
                         });

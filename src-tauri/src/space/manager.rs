@@ -41,6 +41,9 @@ pub struct SpaceManager {
     cancel_tokens: Arc<RwLock<HashMap<Uuid, CancellationToken>>>,
     /// 连接任务句柄映射: space_id -> JoinHandle
     connect_handles: Arc<RwLock<HashMap<Uuid, tokio::task::JoinHandle<()>>>>,
+    /// 已注入 TUN fd 的空间集合（幂等防重：JS 与 Rust 双路监听 tun-ready 时避免重复注入）
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    tun_injected: Arc<std::sync::Mutex<std::collections::HashMap<Uuid, i32>>>,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -78,6 +81,7 @@ impl Clone for SpaceManager {
             storage_dir: self.storage_dir.clone(),
             cancel_tokens: self.cancel_tokens.clone(),
             connect_handles: self.connect_handles.clone(),
+            tun_injected: self.tun_injected.clone(),
         }
     }
 }
@@ -834,6 +838,7 @@ impl SpaceManager {
             storage_dir: Arc::new(RwLock::new(storage_dir)),
             cancel_tokens: Arc::new(RwLock::new(HashMap::new())),
             connect_handles: Arc::new(RwLock::new(HashMap::new())),
+            tun_injected: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         }
     }
 
@@ -1068,6 +1073,8 @@ impl SpaceManager {
     pub async fn disconnect(&self, space_id: &Uuid) -> Result<(), String> {
         crate::log_info!(format!("断开空间: {}", space_id), &space_id.to_string());
         self.easytier.stop_network(space_id).await?;
+        // 清理 TUN fd 注入记录，下次重连时允许重新注入
+        self.tun_injected.lock().unwrap().remove(space_id);
         self.emit_vpn_state(space_id, "disconnected", None).await;
         Ok(())
     }
@@ -1220,7 +1227,22 @@ impl SpaceManager {
     }
 
     /// 设置 TUN 文件描述符（移动端专用：从 VpnService/NetworkExtension 获取 fd 后注入）
+    ///
+    /// 幂等：前端 JS 与 Rust 侧均监听 tun-ready 事件（双保险），同一 fd 重复注入时
+    /// 直接返回 Ok，避免第二次 try_send 失败被误报为连接失败。
+    /// 检查 + 注入 + 记录在同一锁临界区内原子完成，消除双路并发竞态窗口
+    /// （try_send 为非阻塞快速操作，持锁调用无阻塞/死锁风险，且不跨 await）。
     pub fn set_tun_fd(&self, space_id: &Uuid, fd: i32) -> Result<(), String> {
-        self.easytier.set_tun_fd(space_id, fd)
+        let mut injected = self.tun_injected.lock().unwrap();
+        if injected.get(space_id) == Some(&fd) {
+            crate::log_debug!(format!(
+                "VPN: TUN fd {} for space {} 已注入，忽略重复请求",
+                fd, space_id
+            ));
+            return Ok(());
+        }
+        self.easytier.set_tun_fd(space_id, fd)?;
+        injected.insert(*space_id, fd);
+        Ok(())
     }
 }
