@@ -126,7 +126,7 @@ export function SettingsPage() {
           </Tabs.List>
 
           {/* 内容区 */}
-          <Tabs.Content value="basic" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 overflow-y-auto">
+          <Tabs.Content value="basic" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 min-h-0 overflow-y-auto">
             <div className="flex flex-col max-w-4xl gap-4 p-4 mx-auto md:flex-row md:items-start">
               {/* 左列 */}
               <div className="flex flex-col flex-1 min-w-0 gap-4">
@@ -301,7 +301,7 @@ export function SettingsPage() {
               <LogViewer />
           </Tabs.Content>
 
-          <Tabs.Content value="easytier" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 overflow-y-auto">
+          <Tabs.Content value="easytier" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 min-h-0 overflow-y-auto">
             <Card size="3" className="grid max-w-3xl grid-cols-1 gap-4 p-4 mx-auto my-4">
               <EasyTierConfigEditor
                 value={easytierConfig}
@@ -333,7 +333,7 @@ export function SettingsPage() {
             </Card>
           </Tabs.Content>
 
-          <Tabs.Content value="config" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 overflow-y-auto">
+          <Tabs.Content value="config" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 min-h-0 overflow-y-auto">
             <Card size="3" className="grid max-w-3xl grid-cols-1 gap-4 p-4 mx-auto my-4">
             <AppConfigEditor />
             </Card>

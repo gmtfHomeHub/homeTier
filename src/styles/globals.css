@@ -31,19 +31,26 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: var(--color-bg);
   color: var(--color-text);
   overflow: hidden;
-  height: 100dvh;
-  width: 100vw;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overscroll-behavior: none;
 }
 
+/* fixed + inset 由视口提供边界，safe-area 恒定且不受 Radix 滚动锁改写 body 的影响 */
 #root {
-  height: 100dvh;
-  width: 100vw;
+  position: fixed;
+  inset: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+  display: flex;
+  flex-direction: column;
 }
 
 ::-webkit-scrollbar {
