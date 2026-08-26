@@ -239,6 +239,7 @@
     "shareFailed": "Failed to create share link",
     "scanToJoin": "Scan to join",
     "cameraUnavailable": "Camera unavailable",
+    "scanNoResult": "No QR code detected, please align and retry",
     "confirmJoinTitle": "Confirm joining space",
     "confirmJoinIp": "IP address",
     "dhcpAuto": "DHCP auto-assign",

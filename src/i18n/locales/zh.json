@@ -239,6 +239,7 @@
     "shareFailed": "分享链接生成失败",
     "scanToJoin": "扫码加入",
     "cameraUnavailable": "无法访问摄像头",
+    "scanNoResult": "未识别到二维码，请对准后重试",
     "confirmJoinTitle": "确认加入空间",
     "confirmJoinIp": "IP 地址",
     "dhcpAuto": "DHCP 自动分配",

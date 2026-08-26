@@ -25,7 +25,9 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [decodeWarn, setDecodeWarn] = useState<string | null>(null);
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const decodeErrorRef = useRef(0);
   const joinSpace = useSpaceStore((s) => s.joinSpace);
 
   const isMobile = detectDeviceMode() === "mobile";
@@ -100,32 +102,46 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
   const startScan = useCallback(async () => {
     setScanning(true);
     setScanError(null);
+    setDecodeWarn(null);
+    decodeErrorRef.current = 0;
     try {
       const { Html5Qrcode } = await import("html5-qrcode");
       const scanner = new Html5Qrcode("qr-reader");
       scannerRef.current = scanner;
       await scanner.start(
         { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
+        { fps: 10, qrbox: { width: 220, height: 220 } },
+        // onScanSuccess：区分“没解到”和“解到但解析失败”
         async (decodedText: string) => {
-          await scanner.stop();
-          setScanning(false);
+          console.log("[qr-scan] decoded:", decodedText);
           try {
+            await scanner.stop();
+            setScanning(false);
             const info = await parseShareLink(decodedText);
+            console.log("[qr-scan] parse ok:", info);
             applyShareInfo(info);
           } catch (err) {
+            console.error("[qr-scan] parse/stop failed:", err);
             setError(String(err));
             toastError(String(err));
           }
         },
-        () => {},
+        // onScanFailure：记录解码失败次数，暴露“相机开着但解不到”的真实情况
+        () => {
+          decodeErrorRef.current += 1;
+          if (decodeErrorRef.current === 20) {
+            setDecodeWarn(t("space.scanNoResult"));
+          }
+        },
       ).catch((err) => {
+        console.error("[qr-scan] start failed:", err);
         setScanning(false);
-        setScanError(String(err));
+        setScanError(`${t("space.cameraUnavailable")}：${String(err)}`);
       });
     } catch (err) {
+      console.error("[qr-scan] init failed:", err);
       setScanning(false);
-      setScanError(t("space.cameraUnavailable"));
+      setScanError(`${t("space.cameraUnavailable")}：${String(err)}`);
     }
   }, [t, applyShareInfo]);
 
@@ -173,10 +189,15 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
             <p className="text-sm text-center">
               {t("space.scanToJoin")}
             </p>
-            <div id="qr-reader" className="w-full" />
+            <div id="qr-reader" className="w-full h-[260px] overflow-hidden" />
             {scanError && (
               <p className="text-xs text-[var(--color-danger)] text-center">
                 {scanError}
+              </p>
+            )}
+            {decodeWarn && (
+              <p className="text-xs text-[var(--color-text-secondary)] text-center">
+                {decodeWarn}
               </p>
             )}
             <Button onClick={stopScan} variant="outline" size="2" className="w-full">

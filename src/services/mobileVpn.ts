@@ -28,23 +28,36 @@ export async function supportsVpn(): Promise<boolean> {
   return isMobile();
 }
 
+export interface VpnPrepareResult {
+  ok: boolean;
+  /** 失败原因分类，便于前端给出精确文案 */
+  reason?: "invoke_error" | "denied" | "unsupported";
+  /** 真实错误详情（invoke 抛错或插件回传），用于定位 */
+  detail?: string;
+}
+
 /**
  * Request VPN authorization from the OS.
- * Returns true if the user granted permission.
+ * Returns a structured result so the real failure mode is not flattened away.
  */
-export async function prepareVpn(): Promise<boolean> {
+export async function prepareVpn(): Promise<VpnPrepareResult> {
   if (!isTauri() || !(await isMobile())) {
-    return false;
+    return { ok: false, reason: "unsupported", detail: "非 Tauri 或非移动端" };
   }
 
   try {
-    const ret = await invoke<{ granted: boolean }>(
+    const ret = await invoke<{ granted: boolean; error?: string }>(
       `plugin:${PLUGIN}|prepare_vpn`,
     );
-    return ret?.granted === true;
+    if (ret?.granted === true) {
+      return { ok: true };
+    }
+    // granted=false：授权框被取消，或插件回传了具体错误
+    return { ok: false, reason: "denied", detail: ret?.error };
   } catch (e) {
+    // invoke 抛错（插件异常/无法启动授权框等）→ 无弹窗场景
     console.error("Failed to prepare VPN:", e);
-    return false;
+    return { ok: false, reason: "invoke_error", detail: String(e) };
   }
 }
 
@@ -134,10 +147,12 @@ export async function startVpn(
       });
 
       if (ret?.errorMsg === "need_prepare" && attempt === 0) {
-        const granted = await prepareVpn();
-        if (!granted) {
-          console.error("VPN re-prepare denied");
-          lastError = "VPN 授权被拒绝";
+        const prep = await prepareVpn();
+        if (!prep.ok) {
+          console.error("VPN re-prepare failed:", prep);
+          lastError = prep.reason === "invoke_error"
+            ? `VPN 授权请求失败：${prep.detail || "未知错误"}`
+            : "VPN 授权被取消";
           settle(null);
           break;
         }
@@ -215,9 +230,16 @@ export async function connectWithVpn(
   }
 
   // 1. Prepare VPN (request authorization if needed)
-  const prepared = await prepareVpn();
-  if (!prepared) {
-    console.error("VPN preparation denied or failed");
+  const prep = await prepareVpn();
+  if (!prep.ok) {
+    console.error("VPN preparation failed:", prep);
+    if (prep.reason === "invoke_error") {
+      // 插件未能发起授权（无弹窗场景），给出真实原因而非误导性的“被拒绝”
+      return `VPN 授权请求失败：${prep.detail || "未知错误"}`;
+    }
+    if (prep.reason === "denied") {
+      return "VPN 授权被取消";
+    }
     return "VPN 授权被拒绝或失败";
   }
 

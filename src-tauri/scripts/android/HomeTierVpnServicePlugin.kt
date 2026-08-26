@@ -51,21 +51,39 @@ class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity
     @Command
     fun prepareVpn(invoke: Invoke) {
         activity.runOnUiThread {
-            val it = VpnService.prepare(activity)
-            if (it != null) {
-                startActivityForResult(invoke, it, "onPrepareVpnResult")
-                return@runOnUiThread
+            try {
+                val it = VpnService.prepare(activity)
+                if (it != null) {
+                    startActivityForResult(invoke, it, "onPrepareVpnResult")
+                    return@runOnUiThread
+                }
+                val ret = JSObject()
+                ret.put("granted", true)
+                invoke.resolve(ret)
+            } catch (e: Exception) {
+                // 授权框无法发起/插件异常 → 回传真实错误，避免 JS 侧把“没弹窗”误报成“被拒绝”
+                val ret = JSObject()
+                ret.put("granted", false)
+                ret.put("error", e.message ?: e.javaClass.simpleName)
+                invoke.resolve(ret)
             }
-            val ret = JSObject()
-            ret.put("granted", true)
-            invoke.resolve(ret)
         }
     }
 
     @ActivityCallback
     fun onPrepareVpnResult(invoke: Invoke, result: ActivityResult) {
         val ret = JSObject()
-        ret.put("granted", result.resultCode == Activity.RESULT_OK)
+        if (result.resultCode == Activity.RESULT_OK) {
+            // 二次确认：授权后 VpnService.prepare() 应返回 null，避免仅凭 RESULT_OK 误判
+            val stillNeedsPrepare = runCatching { VpnService.prepare(activity) }.getOrNull()
+            ret.put("granted", stillNeedsPrepare == null)
+            if (stillNeedsPrepare != null) {
+                ret.put("error", "prepare still returns an intent after grant")
+            }
+        } else {
+            ret.put("granted", false)
+            ret.put("error", "VPN consent canceled")
+        }
         invoke.resolve(ret)
     }
 
