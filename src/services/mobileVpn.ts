@@ -57,9 +57,11 @@ export async function prepareVpn(): Promise<boolean> {
  *   （SpaceManager::set_tun_fd 幂等，重复注入无害）
  * 成功/失败通过 vpn:state 事件回传；总超时 30s。
  */
-export async function startVpn(config: VpnConfig): Promise<number | null> {
+export async function startVpn(
+  config: VpnConfig,
+): Promise<{ fd: number | null; error?: string }> {
   if (!isTauri() || !(await isMobile())) {
-    return null;
+    return { fd: null, error: "当前平台不支持移动端 VPN" };
   }
 
   // resolver / promise 先于事件监听创建，避免 TDZ 竞态
@@ -75,6 +77,9 @@ export async function startVpn(config: VpnConfig): Promise<number | null> {
     }
   };
 
+  // 记录真正的失败原因，避免把真实错误吞成通用「VPN connection failed」
+  let lastError: string | undefined;
+
   const unlisteners: Array<() => void> = [];
 
   try {
@@ -88,6 +93,7 @@ export async function startVpn(config: VpnConfig): Promise<number | null> {
             settle(0); // fd 已由 Rust 注入，此处只需信号成功
           } else if (event.payload.state === "failed") {
             console.error("VPN connection failed:", event.payload.error);
+            lastError = event.payload.error || "VPN 服务启动失败";
             settle(null);
           }
         },
@@ -110,7 +116,10 @@ export async function startVpn(config: VpnConfig): Promise<number | null> {
     );
 
     // 3. 总超时 30s（EasyTier 组网需要时间）
-    const timer = setTimeout(() => settle(null), 30_000);
+    const timer = setTimeout(() => {
+      lastError = "VPN 连接超时（30 秒内未建立）";
+      settle(null);
+    }, 30_000);
     unlisteners.push(() => clearTimeout(timer));
 
     // 4. 启动 VpnService；need_prepare 时自动重新授权并重试一次
@@ -128,7 +137,9 @@ export async function startVpn(config: VpnConfig): Promise<number | null> {
         const granted = await prepareVpn();
         if (!granted) {
           console.error("VPN re-prepare denied");
-          return null;
+          lastError = "VPN 授权被拒绝";
+          settle(null);
+          break;
         }
         continue; // 重试启动
       }
@@ -137,10 +148,10 @@ export async function startVpn(config: VpnConfig): Promise<number | null> {
 
     // 5. 等待 fd 注入完成的信号
     const fd = await fdPromise;
-    return fd;
+    return { fd, error: lastError };
   } catch (e) {
     console.error("Failed to start VPN:", e);
-    return null;
+    return { fd: null, error: String(e) };
   } finally {
     for (const un of unlisteners) {
       try {
@@ -188,30 +199,33 @@ export async function getVpnStatus(): Promise<{
 /**
  * Connect to a space with VPN on mobile.
  * Flow: prepare VPN -> start easytier network -> start VPN -> get fd -> inject fd.
+ *
+ * @returns null on success; a non-null string describing the failure reason on failure
+ *          (instead of a bare boolean, so the real cause is not swallowed).
  */
 export async function connectWithVpn(
   spaceId: string,
   networkName: string,
   virtualIp: string,
-): Promise<boolean> {
+): Promise<string | null> {
   if (!isTauri() || !(await isMobile())) {
     // Desktop: just connect normally
     await api.connectSpace(spaceId);
-    return true;
+    return null;
   }
 
   // 1. Prepare VPN (request authorization if needed)
   const prepared = await prepareVpn();
   if (!prepared) {
     console.error("VPN preparation denied or failed");
-    return false;
+    return "VPN 授权被拒绝或失败";
   }
 
   // 2. Start EasyTier network first (it waits for the tun fd)
   await api.connectSpace(spaceId);
 
   // 3. Start VPN service and get fd
-  const fd = await startVpn({
+  const { fd, error } = await startVpn({
     spaceId,
     networkName,
     virtualIp,
@@ -223,12 +237,12 @@ export async function connectWithVpn(
   });
 
   if (fd === null) {
-    console.error("Failed to get TUN fd");
+    console.error("Failed to get TUN fd:", error);
     await stopVpn();
-    return false;
+    return error || "VPN 连接失败（未获取到 TUN 接口）";
   }
 
-  return true;
+  return null;
 }
 
 /**

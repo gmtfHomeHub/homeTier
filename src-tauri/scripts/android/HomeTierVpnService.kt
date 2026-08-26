@@ -59,7 +59,20 @@ class HomeTierVpnService : VpnService() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        vpnInterface = createVpnInterface(args)
+        vpnInterface = try {
+            createVpnInterface(args)
+        } catch (t: Throwable) {
+            Log.e("HomeTierVpn", "Failed to create VPN interface", t)
+            // 把真实失败原因回传给前端，避免前端空等 30s 后报通用错误
+            val err = org.json.JSONObject().apply {
+                put("spaceId", currentSpaceId)
+                put("state", "failed")
+                put("error", t.message ?: t.javaClass.simpleName)
+            }
+            TauriEventBus.emit("vpn:state", err.toString())
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         // 发送 fd 到前端
         val eventData = org.json.JSONObject().apply {
@@ -115,10 +128,6 @@ class HomeTierVpnService : VpnService() {
     }
 
     private fun createVpnInterface(args: Bundle?): ParcelFileDescriptor {
-        val builder = Builder()
-            .setSession("HomeTierVpn")
-            .setBlocking(false)
-
         val mtu = args?.getInt(MTU) ?: 1500
         val ipv4Addr = args?.getString(IPV4_ADDR) ?: "10.144.144.1/24"
         val dns = args?.getString(DNS)
@@ -127,30 +136,41 @@ class HomeTierVpnService : VpnService() {
 
         val ipParts = ipv4Addr.split("/")
         if (ipParts.size != 2) throw IllegalArgumentException("Invalid IP addr string")
-        builder.addAddress(ipParts[0], ipParts[1].toInt())
-        builder.addAddress("fd00::1", 128)
+        val address = ipParts[0]
+        val prefix = ipParts[1].toInt()
 
-        builder.setMtu(mtu)
-        dns?.let { builder.addDnsServer(it) }
+        fun base(): Builder = Builder()
+            .setSession("HomeTierVpn")
+            .setBlocking(false)
+            .addAddress(address, prefix)
+            .setMtu(mtu)
 
+        // 主配置：IPv4 + IPv6(尽力而为) + DNS + 全部路由 + 排除应用
+        // 每个可选项都用 runCatching 包裹，避免某一项不兼容导致 establish() 整体失败
+        val full = base()
+        runCatching { full.addAddress("fd00::1", 128) } // IPv6 失败不影响 IPv4
+        dns?.let { runCatching { full.addDnsServer(it) } }
         for (route in routes) {
             val routeParts = route.split("/")
             if (routeParts.size != 2) throw IllegalArgumentException("Invalid route cidr string")
-            builder.addRoute(routeParts[0], routeParts[1].toInt())
+            runCatching { full.addRoute(routeParts[0], routeParts[1].toInt()) }
         }
+        for (app in disallowedApplications) runCatching { full.addDisallowedApplication(app) }
+        runCatching { full.addDisallowedApplication(packageName) } // 排除自身防环路
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) full.setMetered(false)
 
-        for (app in disallowedApplications) {
-            builder.addDisallowedApplication(app)
-        }
+        full.establish()?.let { return it }
 
-        // Exclude self to prevent routing loop
-        builder.addDisallowedApplication(packageName)
+        // 回退：完整配置 establish() 返回 null（如某些机型 IPv6/自定义路由不被接受）→
+        // 用最小配置（仅 IPv4 + 自身可达路由 + 排除自身）重试，尽力保住 VPN 连接
+        Log.w("HomeTierVpn", "establish() returned null with full config, retrying with minimal config")
+        val minimal = base()
+        runCatching { minimal.addRoute(address, prefix) }
+        runCatching { minimal.addDisallowedApplication(packageName) }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) minimal.setMetered(false)
 
-        return builder.also {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                it.setMetered(false)
-            }
-        }.establish() ?: throw IllegalStateException("Failed to init VpnService")
+        return minimal.establish()
+            ?: throw IllegalStateException("Failed to init VpnService (establish() returned null)")
     }
 
     private fun createNotificationChannel() {

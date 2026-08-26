@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.net.VpnService
+import android.os.Build
 import androidx.activity.result.ActivityResult
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -86,7 +87,12 @@ class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity
                 intent.putExtra(HomeTierVpnService.DNS, args.dns)
                 intent.putExtra(HomeTierVpnService.DISALLOWED_APPLICATIONS, args.disallowedApplications)
                 intent.putExtra(HomeTierVpnService.MTU, args.mtu)
-                activity.startService(intent)
+                // 服务内部会 startForeground，需用 startForegroundService 以符合 Android 8+ 约束
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    ContextCompat.startForegroundService(activity, intent)
+                } else {
+                    activity.startService(intent)
+                }
             }
             invoke.resolve(ret)
         }
