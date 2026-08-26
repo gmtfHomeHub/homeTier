@@ -28,6 +28,11 @@ on:
         required: false
         default: false
         type: boolean
+      android_debug:
+        description: 'Android 打包使用 debug 模式（调试/免签名直装）'
+        required: false
+        default: false
+        type: boolean
       build_ios:
         description: '打包 iOS（无签名构建）'
         required: false
@@ -523,7 +528,10 @@ jobs:
       - name: Verify Android injection
         run: bash scripts/verify-android-injection.sh
       - name: Build APK
-        run: pnpm tauri android build --apk --target aarch64 --target armv7 --target x86_64
+        run: |
+          ARGS=""
+          if [ "${{ inputs.android_debug }}" == "true" ]; then ARGS="--debug"; fi
+          pnpm tauri android build --apk --target aarch64 --target armv7 --target x86_64 $ARGS
       - name: Verify APK contents (native libs per ABI)
         run: |
           APK=$(find src-tauri/gen/android -maxdepth 8 -name "*.apk" | head -1)
