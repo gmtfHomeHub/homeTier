@@ -120,7 +120,7 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     // 后台解压内置 easytier-core 二进制（确保版本显示正常、离线可用）
     let mgr = instance_manager.clone();
-    tokio::spawn(async move {
+    async_runtime::spawn(async move {
         if let Err(e) = mgr.downloader.ensure_binary().await {
             crate::log_warn!(format!("[GUI] 内置二进制解压失败（将在线下载）: {}", e));
         } else {
