@@ -119,7 +119,13 @@ impl IpcClient {
 
     /// Ping daemon
     pub async fn ping(&self) -> bool {
-        self.send(&IpcRequest::Ping).await.is_ok()
+        match self.send(&IpcRequest::Ping).await {
+            Ok(_) => true,
+            Err(e) => {
+                crate::log_debug!(format!("[IpcClient] ping 失败: {}", e));
+                false
+            }
+        }
     }
 
     /// 获取 daemon 状态

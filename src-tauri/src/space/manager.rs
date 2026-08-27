@@ -331,18 +331,18 @@ Self {
         crate::space::share::encrypt_share_payload(&info)
     }
 
-    /// 等待 daemon 就绪（ping 轮询，最多 10s）
-    async fn wait_daemon_ready(&self) -> bool {
+    /// 等待 daemon 就绪（ping 轮询，最多 10s），失败返回错误
+    async fn wait_daemon_ready(&self) -> Result<(), String> {
         for i in 0..50 {
             if self.ipc_client.ping().await {
-                return true;
+                return Ok(());
             }
             if i % 10 == 0 {
                 crate::log_debug!(format!("connect: 等待 daemon 就绪 ({}/50)...", i + 1));
             }
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
-        false
+        Err("daemon 启动超时（10s），无法建立 IPC 连接".to_string())
     }
 
     /// 连接空间（通过 IPC 通知 daemon）
@@ -351,7 +351,7 @@ Self {
 
         if !self.ipc_client.ping().await {
             crate::log_info!("connect: daemon 未就绪，等待...", &space_id.to_string());
-            self.wait_daemon_ready().await;
+            self.wait_daemon_ready().await?;
         }
         crate::log_debug!(format!("connect: 查询当前运行中的空间"), &space_id.to_string());
         let running_spaces: Vec<String> = match self.ipc_client.list_spaces().await {

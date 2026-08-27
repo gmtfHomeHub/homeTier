@@ -55,15 +55,39 @@ impl Daemon {
     pub async fn run(&self) -> Result<(), String> {
         crate::log_info!("[Daemon] 守护进程启动");
 
-        let addr = format!("127.0.0.1:{}", self.rpc_port);
+        // 尝试绑定端口，支持自动重试相邻端口（防止冲突）
+        let mut listener = None;
+        let mut bound_port = self.rpc_port;
+        for port in self.rpc_port..self.rpc_port + 10 {
+            let addr = format!("127.0.0.1:{}", port);
+            match tokio::net::TcpListener::bind(&addr).await {
+                Ok(l) => {
+                    listener = Some(l);
+                    bound_port = port;
+                    crate::log_info!(format!("[Daemon] TCP RPC 服务器已启动: {}", addr));
+                    break;
+                }
+                Err(e) => {
+                    crate::log_warn!(format!("[Daemon] 端口 {} 绑定失败: {}，尝试下一个", port, e));
+                }
+            }
+        }
+        let listener = listener.ok_or_else(|| {
+            let msg = format!("[Daemon] 无法绑定端口 {}-{}，请检查防火墙/杀毒软件", self.rpc_port, self.rpc_port + 9);
+            crate::log_error!(&msg);
+            msg
+        })?;
 
-        // 1. 先绑定监听端口（核心能力）
-        let listener = tokio::net::TcpListener::bind(&addr).await
-            .map_err(|e| {
-                crate::log_error!(format!("[Daemon] 绑定端口失败: {}", e));
-                format!("绑定 TCP 端口失败: {}", e)
-            })?;
-        crate::log_info!(format!("[Daemon] TCP RPC 服务器已启动: {}", addr));
+        // 如果端口发生变化，更新状态并写入配置
+        if bound_port != self.rpc_port {
+            crate::log_warn!(format!("[Daemon] 端口从 {} 变更为 {}", self.rpc_port, bound_port));
+            let mut status = self.status.write().await;
+            status.rpc_port = bound_port;
+            // 持久化到配置文件
+            if let Some(cfg) = crate::config::global() {
+                let _ = cfg.set(crate::config::KEY_DAEMON_IPC_PORT, &bound_port.to_string());
+            }
+        }
 
         // 2. 写入 signal 文件（GUI 由此确认 daemon 已就绪）
         let signal_path = self.data_dir.join("daemon_ready.signal");
@@ -73,7 +97,7 @@ impl Daemon {
         // 3. 离线写状态文件（失败不致命）
         let state_path = self.data_dir.join("daemon_state.json");
         let _ = std::fs::remove_file(&state_path);
-        let state_json = serde_json::json!({ "pid": std::process::id(), "rpc_port": self.rpc_port });
+        let state_json = serde_json::json!({ "pid": std::process::id(), "rpc_port": bound_port });
         if let Err(e) = std::fs::write(&state_path, serde_json::to_string_pretty(&state_json).unwrap_or_default()) {
             crate::log_info!(format!("[Daemon] daemon_state.json 写入失败（非致命）: {}", e));
         }
