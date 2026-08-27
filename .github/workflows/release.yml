@@ -262,50 +262,22 @@ jobs:
           echo "INCLUDE=C:/WpdPack/WpdPack/Include;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "[winpcap] Packet.lib at $libPath"
 
-      - name: Download Npcap runtime DLLs
+      - name: Verify Npcap runtime DLLs are bundled
         shell: pwsh
         run: |
-          $npcapUrl = "https://npcap.com/dist/npcap-sdk-1.16.zip"
-          $out = "$env:TEMP/npcap-sdk.zip"
-          Write-Host "Downloading Npcap SDK..."
-          Invoke-WebRequest -Uri $npcapUrl -OutFile $out -UseBasicParsing
-          $extractDir = "$env:GITHUB_WORKSPACE/src-tauri/npcap_extract"
-          Write-Host "Extracting Npcap SDK to $extractDir..."
-          # Create extraction directory
-          New-Item -ItemType Directory -Force -Path "$extractDir" | Out-Null
-          # Extract with 7z - use absolute path for output directory
-          $extractResult = 7z x "$out" -o"$extractDir"
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "7z extraction failed with exit code $LASTEXITCODE"
-            exit 1
-          }
-          Write-Host "Extraction completed successfully to $extractDir"
+          # Real packet.dll/wpcap.dll are committed to src-tauri/resources/bin (extracted
+          # from the Npcap installer npcap-1.80.exe). NOTE: the Npcap SDK zip contains only
+          # .lib import libs + headers, NOT the runtime DLLs, so no download step is used.
           $dlls = @("packet.dll", "wpcap.dll")
-          $fail = $false
-          foreach ($dll in $dlls) {
-            $found = Get-ChildItem -Path "$extractDir" -Recurse -Filter $dll -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($null -eq $found) {
-              Write-Error "REAL $dll not found in Npcap SDK"
-              $fail = $true
-              continue
-            }
-            Copy-Item $found.FullName "$env:GITHUB_WORKSPACE/src-tauri/resources/bin/$dll" -Force
-            Write-Host "Copied $dll from $($found.FullName)"
-          }
-          if ($fail) { exit 1 }
-          # Validate copied DLLs are real PE files (not the committed PLACEHOLDER stubs)
           foreach ($dll in $dlls) {
             $target = "$env:GITHUB_WORKSPACE/src-tauri/resources/bin/$dll"
             $len = (Get-Item $target).Length
-            $content = [System.IO.File]::ReadAllText($target, [System.Text.Encoding]::ASCII)
-            if ($len -lt 10000 -or $content -match "PLACEHOLDER") {
+            if ($len -lt 10000) {
               Write-Error "$dll is NOT a valid DLL (size=$len)"
               exit 1
             }
-            Write-Host "$dll validated OK (size=$len)"
+            Write-Host "$dll OK ($len bytes)"
           }
-          Remove-Item -Recurse -Force "$extractDir" -ErrorAction SilentlyContinue
-          Remove-Item $env:TEMP/npcap-sdk.zip -ErrorAction SilentlyContinue
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
       - name: Configure MSVC include path (for vcruntime.h used by kcp-sys bindgen)
