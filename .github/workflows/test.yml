@@ -28,10 +28,10 @@ on:
         required: false
         default: false
         type: boolean
-      android_debug:
-        description: 'Android 打包使用 debug 模式（调试/免签名直装）'
+      debug_mode:
+        description: '所有平台启用 debug 构建（调试/免签名直装）'
         required: false
-        default: false
+        default: true
         type: boolean
       build_ios:
         description: '打包 iOS（无签名构建）'
@@ -159,7 +159,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build Tauri bundle
-        run: pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+        run: pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} ${{ inputs.debug_mode && '--debug' || '' }}
 
       - name: Stage artifact
         shell: bash
@@ -293,7 +293,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build Tauri bundle
-        run: pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} --verbose
+        run: pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} --verbose ${{ inputs.debug_mode && '--debug' || '' }}
 
       - name: Stage artifact
         shell: bash
@@ -368,7 +368,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build Tauri bundle
-        run: pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+        run: pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} ${{ inputs.debug_mode && '--debug' || '' }}
 
       - name: Stage artifact
         shell: bash
@@ -418,7 +418,7 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile
       - name: Build
-        run: pnpm tauri build --bundles appimage
+        run: pnpm tauri build --bundles appimage ${{ inputs.debug_mode && '--debug' || '' }}
       - name: Stage artifact
         shell: bash
         run: |
@@ -528,10 +528,7 @@ jobs:
       - name: Verify Android injection
         run: bash scripts/verify-android-injection.sh
       - name: Build APK
-        run: |
-          ARGS=""
-          if [ "${{ inputs.android_debug }}" == "true" ]; then ARGS="--debug"; fi
-          pnpm tauri android build --apk --target aarch64 --target armv7 --target x86_64 $ARGS
+        run: pnpm tauri android build --apk --target aarch64 --target armv7 --target x86_64 ${{ inputs.debug_mode && '--debug' || '' }}
       - name: Verify APK contents (native libs per ABI)
         run: |
           APK=$(find src-tauri/gen/android -maxdepth 8 -name "*.apk" | head -1)
@@ -588,7 +585,7 @@ jobs:
       - name: Build easytier-ios-staticlib for iOS
         run: |
           cd src-tauri
-          cargo build --target aarch64-apple-ios --manifest-path easytier-ios-staticlib/Cargo.toml --release
+          cargo build --target aarch64-apple-ios --manifest-path easytier-ios-staticlib/Cargo.toml ${{ !inputs.debug_mode && '--release' || '' }}
       - name: Inject NetworkExtension target into Xcode project
         run: |
           python3 src-tauri/gen-scripts/ios/inject_ne_target.py \
@@ -598,7 +595,7 @@ jobs:
         run: |
           xcodebuild -project src-tauri/gen/apple/HomeTier.xcodeproj \
             -scheme HomeTier \
-            -configuration Release \
+            -configuration ${{ inputs.debug_mode && 'Debug' || 'Release' }} \
             -destination 'generic/platform=iOS' \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
