@@ -177,6 +177,14 @@ impl EasyTierDownloader {
                             ] {
                                 let src = candidate_dir.join(dll_name);
                                 if src.exists() {
+                                    // 忽略占位文件（如 "PLACEHOLDER - Replace with actual packet.dll"），避免把假 DLL 复制给 easytier-core.exe
+                                    let is_real = std::fs::metadata(&src)
+                                        .map(|m| m.len() >= 10000)
+                                        .unwrap_or(false);
+                                    if !is_real {
+                                        crate::log_warn!(format!("[EasyTierDownloader] {} 疑似占位/非法文件，跳过", dll_name));
+                                        continue;
+                                    }
                                     if let Err(e) = std::fs::copy(&src, target_dir.join(dll_name)) {
                                         crate::log_warn!(format!("[EasyTierDownloader] 复制 {} 失败: {}", dll_name, e));
                                     } else {

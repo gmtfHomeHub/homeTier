@@ -200,12 +200,18 @@ impl EasyTierProcess {
         self.stop().await?;
         let config = new_config.unwrap_or(&self.config_dir);
 
-        let new_child = Command::new(&self.binary_path)
+        let mut new_child = Command::new(&self.binary_path);
+        new_child
             .arg("--config-file")
             .arg(config)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .stderr(Stdio::piped());
+        #[cfg(target_os = "windows")]
+        {
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            new_child.creation_flags(CREATE_NO_WINDOW);
+        }
+        let new_child = new_child.spawn()
             .map_err(|e| format!("重启 easytier-core 失败: {}", e))?;
 
         crate::log_info!(format!("[EasyTierProcess] 进程已重启, pid={:?}", new_child.id()));

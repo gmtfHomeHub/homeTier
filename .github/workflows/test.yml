@@ -255,14 +255,28 @@ jobs:
           }
           Write-Host "Extraction completed successfully to $extractDir"
           $dlls = @("packet.dll", "wpcap.dll")
+          $fail = $false
           foreach ($dll in $dlls) {
             $found = Get-ChildItem -Path "$extractDir" -Recurse -Filter $dll -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($null -ne $found) {
-              Copy-Item $found.FullName "$env:GITHUB_WORKSPACE/src-tauri/resources/bin/$dll" -Force
-              Write-Host "Copied $dll"
-            } else {
-              Write-Warning "DLL not found: $dll"
+            if ($null -eq $found) {
+              Write-Error "REAL $dll not found in Npcap SDK"
+              $fail = $true
+              continue
             }
+            Copy-Item $found.FullName "$env:GITHUB_WORKSPACE/src-tauri/resources/bin/$dll" -Force
+            Write-Host "Copied $dll from $($found.FullName)"
+          }
+          if ($fail) { exit 1 }
+          # Validate copied DLLs are real PE files (not the committed PLACEHOLDER stubs)
+          foreach ($dll in $dlls) {
+            $target = "$env:GITHUB_WORKSPACE/src-tauri/resources/bin/$dll"
+            $len = (Get-Item $target).Length
+            $content = [System.IO.File]::ReadAllText($target, [System.Text.Encoding]::ASCII)
+            if ($len -lt 10000 -or $content -match "PLACEHOLDER") {
+              Write-Error "$dll is NOT a valid DLL (size=$len)"
+              exit 1
+            }
+            Write-Host "$dll validated OK (size=$len)"
           }
           Remove-Item -Recurse -Force "$extractDir" -ErrorAction SilentlyContinue
           Remove-Item $env:TEMP/npcap-sdk.zip -ErrorAction SilentlyContinue
@@ -452,7 +466,7 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+          targets: aarch64-linux-android,armv7-linux-androideabi
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
@@ -504,7 +518,6 @@ jobs:
           SYSROOT="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
           echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
           echo "BINDGEN_EXTRA_CLANG_ARGS_armv7_linux_androideabi=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
-          echo "BINDGEN_EXTRA_CLANG_ARGS_x86_64_linux_android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
           echo "BINDGEN_EXTRA_CLANG_ARGS_i686_linux_android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
           echo "[bindgen] NDK sysroot: $SYSROOT"
       - name: Install deps
@@ -528,13 +541,13 @@ jobs:
       - name: Verify Android injection
         run: bash scripts/verify-android-injection.sh
       - name: Build APK
-        run: pnpm tauri android build --apk --target aarch64 --target armv7 --target x86_64 ${{ inputs.debug_mode && '--debug' || '' }}
+        run: pnpm tauri android build --apk --target aarch64 --target armv7 ${{ inputs.debug_mode && '--debug' || '' }}
       - name: Verify APK contents (native libs per ABI)
         run: |
           APK=$(find src-tauri/gen/android -maxdepth 8 -name "*.apk" | head -1)
           if [ -z "$APK" ]; then echo "ERROR: no APK produced"; exit 1; fi
           echo "APK: $APK"
-          unzip -l "$APK" | grep -E "lib/(arm64-v8a|armeabi-v7a|x86_64)/.*\.so" || { echo "ERROR: no native libs found in APK"; exit 1; }
+          unzip -l "$APK" | grep -E "lib/(arm64-v8a|armeabi-v7a)/.*\.so" || { echo "ERROR: no native libs found in APK"; exit 1; }
       - name: Stage artifact
         shell: bash
         run: |

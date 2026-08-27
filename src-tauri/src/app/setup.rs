@@ -351,7 +351,7 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         let space_manager_sync = space_manager_clone.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_time()
+                .enable_all()
                 .build()
                 .unwrap();
             rt.block_on(async {
