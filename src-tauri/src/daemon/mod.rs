@@ -113,6 +113,7 @@ impl Daemon {
 
             let process = crate::easytier::EasyTierProcess::start_daemon(
                 &binary, &config_dir, ipc::easytier_daemon_rpc_port(),
+                easytier.downloader.resource_dir().as_ref(),
             ).await;
 
             match process {

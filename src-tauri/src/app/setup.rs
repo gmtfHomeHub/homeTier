@@ -68,7 +68,10 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .app_data_dir()
         .unwrap_or_else(|_| std::path::PathBuf::from("."));
     let config_path = app_data.join("homeTier.conf");
-    let resource_dir = app.path().resource_dir().ok();
+    // resource_dir 兜底：Tauri 解析失败时退回到当前 exe 所在目录（MSI 把 resources/ 放在 exe 旁）
+    let resource_dir = app.path().resource_dir().ok().or_else(|| {
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.to_path_buf()))
+    });
     let config_created = crate::config::init(config_path.clone(), resource_dir.as_deref());
 
     // 首次生成配置文件时，继承 DB 中已有的业务设置（之后以配置文件为准）

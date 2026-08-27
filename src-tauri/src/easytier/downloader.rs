@@ -25,6 +25,11 @@ impl EasyTierDownloader {
         Self { bin_dir, current_version_file, platform, resource_dir: resource_dir.map(|p| p.to_path_buf()) }
     }
 
+    /// 返回打包资源目录（供进程启动时兜底复制 DLL 等使用）
+    pub fn resource_dir(&self) -> Option<PathBuf> {
+        self.resource_dir.clone()
+    }
+
     /// 检测当前平台
     pub(crate) fn detect_platform() -> String {
         let os = std::env::consts::OS;
@@ -78,8 +83,8 @@ impl EasyTierDownloader {
     /// 从 Tauri 打包资源（resources/bin/）查找当前平台的 easytier-core 归档并安装
     async fn extract_bundled_binary(&self) -> Result<PathBuf, String> {
         let Some(resource_dir) = &self.resource_dir else {
-            crate::log_debug!("[EasyTierDownloader] 无打包资源目录，跳过内置二进制解压");
-            return Err("无打包资源目录".into());
+            crate::log_warn!("[EasyTierDownloader] resource_dir 为 None，无法从打包资源解压内置二进制");
+            return Err("resource_dir 为 None".into());
         };
 
         let zip_name = format!("easytier-{}-v", self.platform);
@@ -91,10 +96,13 @@ impl EasyTierDownloader {
         ];
 
         for dir in candidates.drain(..) {
-            crate::log_debug!(format!("[EasyTierDownloader] 扫描内置二进制目录: {}", dir.display()));
+            crate::log_info!(format!("[EasyTierDownloader] 扫描内置二进制目录: {}", dir.display()));
             let entries = match std::fs::read_dir(&dir) {
                 Ok(e) => e,
-                Err(_) => continue,
+                Err(e) => {
+                    crate::log_debug!(format!("[EasyTierDownloader] 读取目录失败 {}: {}", dir.display(), e));
+                    continue;
+                }
             };
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -114,7 +122,13 @@ impl EasyTierDownloader {
                     version,
                     path.display()
                 ));
-                return self.install(version, BinarySource::LocalArchive(path)).await;
+                match self.install(version, BinarySource::LocalArchive(path)).await {
+                    Ok(p) => return Ok(p),
+                    Err(e) => {
+                        crate::log_error!(format!("[EasyTierDownloader] 内置二进制安装失败: {}", e));
+                        return Err(format!("内置二进制安装失败: {}", e));
+                    }
+                }
             }
         }
 
