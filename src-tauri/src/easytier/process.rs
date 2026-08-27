@@ -24,7 +24,7 @@ impl EasyTierProcess {
     /// 优先级：resource_dir/resources/bin → 当前 exe 所在目录/resources/bin → 当前 exe 所在目录
     #[cfg(target_os = "windows")]
     fn ensure_dlls(binary: &PathBuf, resource_dir: Option<&PathBuf>) {
-        let target_dir = binary.parent().unwrap_or_else(|| PathBuf::from("."));
+        let target_dir = binary.parent().unwrap_or_else(|| Path::new("."));
         let dlls = ["packet.dll", "wpcap.dll"];
 
         // 收集候选源目录
