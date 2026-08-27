@@ -78,29 +78,28 @@ impl Daemon {
             msg
         })?;
 
-        // 如果端口发生变化，更新状态并写入配置
+        // 如果端口发生变化，先持久化到配置文件（GUI 读取配置需看到新端口）
         if bound_port != self.rpc_port {
             crate::log_warn!(format!("[Daemon] 端口从 {} 变更为 {}", self.rpc_port, bound_port));
             let mut status = self.status.write().await;
             status.rpc_port = bound_port;
-            // 持久化到配置文件
             if let Some(cfg) = crate::config::global() {
                 let _ = cfg.set(crate::config::KEY_DAEMON_IPC_PORT, &bound_port.to_string());
             }
         }
 
-        // 2. 写入 signal 文件（GUI 由此确认 daemon 已就绪）
-        let signal_path = self.data_dir.join("daemon_ready.signal");
-        let _ = std::fs::write(&signal_path, format!("{}", std::process::id()));
-        crate::log_info!(format!("[Daemon] signal 文件已写入: {}", signal_path.display()));
-
-        // 3. 离线写状态文件（失败不致命）
+        // 2. 写入状态文件（含实际端口，GUI 可直接读取）
         let state_path = self.data_dir.join("daemon_state.json");
         let _ = std::fs::remove_file(&state_path);
         let state_json = serde_json::json!({ "pid": std::process::id(), "rpc_port": bound_port });
         if let Err(e) = std::fs::write(&state_path, serde_json::to_string_pretty(&state_json).unwrap_or_default()) {
             crate::log_info!(format!("[Daemon] daemon_state.json 写入失败（非致命）: {}", e));
         }
+
+        // 3. 写入 signal 文件（GUI 由此确认 daemon 已就绪，此时配置已更新）
+        let signal_path = self.data_dir.join("daemon_ready.signal");
+        let _ = std::fs::write(&signal_path, format!("{}", std::process::id()));
+        crate::log_info!(format!("[Daemon] signal 文件已写入: {}", signal_path.display()));
 
         // 启动 easytier-core 守护进程（daemon IPC 就绪后，等待 RPC 端口就绪，再接受 IPC 请求）
         let easytier = self.easytier.clone();
