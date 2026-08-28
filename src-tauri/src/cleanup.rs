@@ -175,7 +175,6 @@ fn escalate_kill(pid: u32, signal: libc::c_int) {
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) fn is_process_alive(pid: u32) -> bool {
-    // kill(pid, 0): 0=存在, ESRCH=不存在, EPERM=存在但无权限(仍算存活)
     unsafe {
         let ret = libc::kill(pid as i32, 0);
         if ret == 0 {
@@ -185,7 +184,27 @@ pub(crate) fn is_process_alive(pid: u32) -> bool {
     }
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(target_os = "windows")]
+pub(crate) fn is_process_alive(pid: u32) -> bool {
+    use windows::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+    use windows::Win32::System::ProcessStatus::GetExitCodeProcess;
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION};
+    unsafe {
+        let handle = match OpenProcess(PROCESS_QUERY_INFORMATION, false, pid) {
+            Ok(h) => h,
+            Err(_) => return false,
+        };
+        if handle.is_invalid() {
+            return false;
+        }
+        let mut exit_code = 0u32;
+        let ret = GetExitCodeProcess(handle, &mut exit_code);
+        let _ = CloseHandle(handle);
+        ret.is_ok() && exit_code == STILL_ACTIVE
+    }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 pub(crate) fn is_process_alive(_pid: u32) -> bool {
     false
 }
@@ -240,7 +259,16 @@ pub(crate) fn is_hometier_gui_process(pid: u32) -> bool {
             None => false,
         }
     }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    #[cfg(target_os = "windows")]
+    {
+        // Windows 看门狗退化为仅检查 PID 存活（is_process_alive 已实现）。
+        // Windows 无 /proc 接口，无法可靠区分 GUI 与 daemon 进程，
+        // 因此该函数在 Windows 上恒为 true，避免与 is_process_alive
+        // 共同触发 OR 误杀。
+        let _ = pid;
+        true
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
         let _ = pid;
         false
