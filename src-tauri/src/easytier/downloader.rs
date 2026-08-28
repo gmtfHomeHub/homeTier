@@ -182,7 +182,7 @@ impl EasyTierDownloader {
                 {
                     if let Some(resource_dir) = &self.resource_dir {
                         let target_dir = target_path.parent().unwrap_or(&self.bin_dir);
-                        for dll_name in &["packet.dll", "wpcap.dll"] {
+                        for dll_name in &["packet.dll", "wpcap.dll", "wintun.dll", "WinDivert64.sys"] {
                             let mut copied = false;
                             for candidate_dir in &[
                                 resource_dir.join("resources").join("bin"),

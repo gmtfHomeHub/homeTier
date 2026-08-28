@@ -412,6 +412,24 @@ impl EasyTierManager {
 
                 match running_info {
                     Some(running_info) => {
+                        // 实例启动失败时 easytier-core 返回带 error_msg 的 default 运行信息
+                        // （my_node_info 为空、peer_route_pairs 为空），优先记录真实失败原因。
+                        if let Some(ref err_msg) = running_info.error_msg {
+                            crate::log_error!(format!(
+                                "EasyTierManager: 实例启动失败, instance_id={}, error_msg={}",
+                                instance_id, err_msg
+                            ));
+                            return Some(crate::daemon::ipc::SpaceRuntimeStatus {
+                                space_id: instance_id.to_string(),
+                                is_running: false,
+                                virtual_ip: None,
+                                connected_peers: 0,
+                                rx_bytes: 0,
+                                tx_bytes: 0,
+                                avg_latency_ms: 0.0,
+                            });
+                        }
+
                         let mut virtual_ip = None;
 
                         if let Some(ref my_node) = running_info.my_node_info {

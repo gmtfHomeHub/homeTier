@@ -238,13 +238,14 @@ jobs:
           echo "INCLUDE=C:/WpdPack/WpdPack/Include;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "[winpcap] Packet.lib at $libPath"
 
-      - name: Verify Npcap runtime DLLs are bundled
+      - name: Verify Npcap + Wintun runtime DLLs are bundled
         shell: pwsh
         run: |
-          # Real packet.dll/wpcap.dll are committed to src-tauri/resources/bin (extracted
-          # from the Npcap installer npcap-1.80.exe). NOTE: the Npcap SDK zip contains only
-          # .lib import libs + headers, NOT the runtime DLLs, so no download step is used.
-          $dlls = @("packet.dll", "wpcap.dll")
+          # Real packet.dll/wpcap.dll/wintun.dll/WinDivert64.sys are committed to
+          # src-tauri/resources/bin. wintun.dll is required by easytier-core.exe to
+          # create the virtual NIC on Windows; without it tun::create() fails and
+          # has_virtual_ip stays false.
+          $dlls = @("packet.dll", "wpcap.dll", "wintun.dll", "WinDivert64.sys")
           foreach ($dll in $dlls) {
             $target = "$env:GITHUB_WORKSPACE/src-tauri/resources/bin/$dll"
             $len = (Get-Item $target).Length

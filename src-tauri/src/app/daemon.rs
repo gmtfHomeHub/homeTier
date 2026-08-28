@@ -14,7 +14,7 @@ pub struct DaemonChild {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) enum DaemonHandleKind {
     Child(std::process::Child),
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     Pid(u32),
 }
 
@@ -48,8 +48,8 @@ impl DaemonChild {
         Self { handle: DaemonHandleKind::Child(child) }
     }
 
-    /// 新建 pid 型句柄（macOS osascript 启动）
-    #[cfg(target_os = "macos")]
+    /// 新建 pid 型句柄（macOS osascript 启动 / Windows UAC 提权启动）
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub fn from_pid(pid: u32) -> Self {
         Self { handle: DaemonHandleKind::Pid(pid) }
     }
@@ -59,6 +59,8 @@ impl DaemonChild {
         match &self.handle {
             DaemonHandleKind::Child(child) => Some(child.id()),
             #[cfg(target_os = "macos")]
+            DaemonHandleKind::Pid(pid) => Some(*pid),
+            #[cfg(target_os = "windows")]
             DaemonHandleKind::Pid(pid) => Some(*pid),
         }
     }
@@ -74,6 +76,24 @@ impl DaemonChild {
                     return true;
                 }
                 std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+            },
+            #[cfg(target_os = "windows")]
+            DaemonHandleKind::Pid(pid) => {
+                use windows::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+                use windows::Win32::System::Threading::{
+                    GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+                };
+                unsafe {
+                    let Ok(handle) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, *pid)
+                    else {
+                        return false;
+                    };
+                    let mut code: u32 = 0;
+                    let alive = GetExitCodeProcess(handle, &mut code as *mut u32).is_ok()
+                        && code == STILL_ACTIVE.0 as u32;
+                    let _ = CloseHandle(handle);
+                    alive
+                }
             },
         }
     }
@@ -91,6 +111,22 @@ impl DaemonChild {
             }
             #[cfg(target_os = "macos")]
             DaemonHandleKind::Pid(pid) => KillOutcome::NeedsOsascript(*pid),
+            #[cfg(target_os = "windows")]
+            DaemonHandleKind::Pid(pid) => {
+                // 提权后 daemon 为管理员进程，GUI 权限不足时 TerminateProcess 会失败；
+                // 失败不报错，依赖 daemon 的 gui_pid 看门狗 + 优雅退出兜底。
+                use windows::Win32::Foundation::CloseHandle;
+                use windows::Win32::System::Threading::{
+                    OpenProcess, TerminateProcess, PROCESS_TERMINATE,
+                };
+                unsafe {
+                    if let Ok(handle) = OpenProcess(PROCESS_TERMINATE, false, *pid) {
+                        let _ = TerminateProcess(handle, 1);
+                        let _ = CloseHandle(handle);
+                    }
+                }
+                KillOutcome::Done
+            },
         }
     }
 }
@@ -105,6 +141,8 @@ pub(crate) enum KillOutcome {
 /// Desktop: 启动 daemon 子进程
 /// macOS 且当前进程非 root（debug/dev 模式）：经 osascript 以管理员权限启动 daemon，
 /// 使 daemon 获得 root 权限，从而可以终止同样以 root 运行的 easytier-core；
+/// Windows 且当前进程非管理员：经 UAC 提权启动 daemon，使 daemon 获得管理员权限，
+/// 从而 easytier-core 能创建 wintun 虚拟网卡；
 /// 其余场景：直接作为子进程启动。
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn spawn_daemon(
@@ -232,6 +270,13 @@ exit 1
 
     #[cfg(target_os = "windows")]
     {
+        // Windows: 非管理员时经 UAC 提权启动 daemon，使 easytier-core 能创建 wintun 虚拟网卡。
+        // 已管理员则走普通子进程路径（保留 stderr 转发 + Child 句柄）。
+        if !is_elevated() {
+            crate::log_info!("[GUI] Windows 非管理员，经 UAC 提权启动 daemon...");
+            return spawn_daemon_elevated(&current_exe, data_dir, resource_dir);
+        }
+
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         cmd.creation_flags(CREATE_NO_WINDOW);
@@ -239,7 +284,7 @@ exit 1
         // Windows: 启动前验证关键 DLL 是否存在且有效，缺失则直接报错
         if let Some(rd) = resource_dir {
             let rd_buf = rd.to_path_buf();
-            for dll_name in &["packet.dll", "wpcap.dll"] {
+            for dll_name in &["packet.dll", "wpcap.dll", "wintun.dll"] {
                 let mut dll_found = false;
                 for candidate_dir in &[
                     rd_buf.join("resources").join("bin"),
@@ -283,4 +328,104 @@ exit 1
     }
 
     Ok(DaemonChild::from_child(child))
+}
+
+/// Windows: 经 UAC 提权启动 daemon 子进程。
+/// 用 ShellExecuteExW + verb="runas" 弹出 UAC，daemon 以管理员权限运行；
+/// 提权后 daemon 非 GUI 子进程，用 Pid 跟踪（依赖 gui_pid 看门狗 + IPC 优雅退出）。
+#[cfg(target_os = "windows")]
+fn spawn_daemon_elevated(
+    current_exe: &std::path::Path,
+    data_dir: &std::path::Path,
+    resource_dir: Option<&std::path::Path>,
+) -> Result<DaemonChild, String> {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{CloseHandle, GetLastError, ERROR_CANCELLED};
+    use windows::Win32::System::Threading::GetProcessId;
+    use windows::Win32::UI::Shell::{
+        ShellExecuteExW, SHELLEXECUTEINFOW, SEE_MASK_NOCLOSEPROCESS,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
+
+    fn to_wide(s: &str) -> Vec<u16> {
+        OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+    }
+
+    let gui_pid_str = std::process::id().to_string();
+    // 拼接命令行参数（路径含空格需加引号）
+    let mut params = format!(
+        "--daemon --daemon-config \"{}\" --daemon-data \"{}\" --gui-pid {}",
+        data_dir.display(),
+        data_dir.display(),
+        gui_pid_str
+    );
+    if let Some(rd) = resource_dir {
+        params.push_str(&format!(" --daemon-resource-dir \"{}\"", rd.display()));
+    }
+
+    let exe_w = to_wide(&current_exe.to_string_lossy());
+    let params_w = to_wide(&params);
+    let verb_w = to_wide("runas");
+    let dir_w = to_wide(&current_exe.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default());
+
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOCLOSEPROCESS,
+        lpVerb: PCWSTR(verb_w.as_ptr()),
+        lpFile: PCWSTR(exe_w.as_ptr()),
+        lpParameters: PCWSTR(params_w.as_ptr()),
+        lpDirectory: PCWSTR(dir_w.as_ptr()),
+        nShow: SW_HIDE.0,
+        ..Default::default()
+    };
+
+    let ok = unsafe { ShellExecuteExW(&mut info) };
+    if ok.is_err() {
+        let err = unsafe { GetLastError() };
+        if err == ERROR_CANCELLED {
+            return Err("用户取消了 UAC 授权".to_string());
+        }
+        return Err(format!("UAC 提权启动 daemon 失败 (err={})", err.0));
+    }
+
+    let hprocess = info.hProcess;
+    let pid = unsafe { GetProcessId(hprocess) };
+    // 不立即 CloseHandle：is_alive/force_kill 会用 pid 重新 OpenProcess；此处释放句柄避免泄漏。
+    let _ = unsafe { CloseHandle(hprocess) };
+
+    if pid == 0 {
+        return Err("UAC 提权启动后无法获取 daemon PID".to_string());
+    }
+    crate::log_info!(format!("[GUI] daemon 提权启动成功, pid={}", pid));
+    Ok(DaemonChild::from_pid(pid))
+}
+
+/// Windows: 检测当前进程是否以管理员权限运行。
+#[cfg(target_os = "windows")]
+fn is_elevated() -> bool {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
+    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    unsafe {
+        let mut token = windows::Win32::Foundation::HANDLE::default();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).is_err() {
+            return false;
+        }
+        let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
+        let mut ret_len: u32 = 0;
+        let res = GetTokenInformation(
+            token,
+            TokenElevation,
+            Some(&mut elevation as *mut _ as *mut std::ffi::c_void),
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut ret_len as *mut u32,
+        );
+        let _ = CloseHandle(token);
+        res.is_ok() && elevation.TokenIsElevated != 0
+    }
 }

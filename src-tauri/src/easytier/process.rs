@@ -20,12 +20,12 @@ pub struct EasyTierProcess {
 }
 
 impl EasyTierProcess {
-    /// Windows: 确保 easytier-core.exe 同目录有 packet.dll / wpcap.dll
+    /// Windows: 确保 easytier-core.exe 同目录有 packet.dll / wpcap.dll / wintun.dll / WinDivert64.sys
     /// 优先级：resource_dir/resources/bin → 当前 exe 所在目录/resources/bin → 当前 exe 所在目录
     #[cfg(target_os = "windows")]
     fn ensure_dlls(binary: &PathBuf, resource_dir: Option<&PathBuf>) {
         let target_dir = binary.parent().unwrap_or_else(|| Path::new("."));
-        let dlls = ["packet.dll", "wpcap.dll"];
+        let dlls = ["packet.dll", "wpcap.dll", "wintun.dll", "WinDivert64.sys"];
 
         // 收集候选源目录
         let mut candidates = Vec::new();

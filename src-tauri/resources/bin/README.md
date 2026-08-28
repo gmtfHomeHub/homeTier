@@ -1,6 +1,6 @@
 # Windows 运行时依赖 DLL 文件
 
-此目录包含 Windows 平台运行所需的 Npcap 动态链接库文件（x64 运行时 DLL）。
+此目录包含 Windows 平台运行所需的 Npcap 与 Wintun 动态链接库文件（x64 运行时 DLL）。
 
 ## 所需文件
 
@@ -8,10 +8,16 @@
 |--------|------|---------|
 | `packet.dll` | Npcap 核心驱动库 `Packet_x64.dll`（221,056 字节） | ✅ 已提交 |
 | `wpcap.dll` | Npcap 抓包库 `wpcap_x64.dll`（488,320 字节） | ✅ 已提交 |
+| `wintun.dll` | Wintun 虚拟网卡驱动库（427,552 字节） | ✅ 已提交 |
+| `WinDivert64.sys` | WinDivert 网络分流驱动（94,144 字节） | ✅ 已提交 |
 
 > 两份 DLL 均为从 Npcap 官方安装器 `npcap-1.80.exe` 中提取的 **x64** 运行时库（MZ PE 头，有效）。
 > 注意：安装器根目录的小写 `Packet.dll`/`wpcap.dll`（约 30–40 KB）是 **32 位**版本，不要误用；
 > x64 版本的文件名带 `_x64` 后缀，复制时需重命名为小写 `packet.dll`/`wpcap.dll`。
+>
+> `wintun.dll` 与 `WinDivert64.sys` 来自 EasyTier 官方发布包（`easytier-windows-x86_64-v2.6.4.zip`），
+> easytier-core.exe 在 Windows 上创建虚拟网卡（TUN）需要 wintun.dll 在其同目录，否则 `tun::create()` 失败导致
+> `has_virtual_ip=false`。WinDivert64.sys 用于部分流量分流特性。
 
 ## 为什么直接提交，而不是 CI 下载
 
