@@ -238,12 +238,13 @@ exit 1
 
         // Windows: 启动前验证关键 DLL 是否存在且有效，缺失则直接报错
         if let Some(rd) = resource_dir {
+            let rd_buf = rd.to_path_buf();
             for dll_name in &["packet.dll", "wpcap.dll"] {
                 let mut dll_found = false;
                 for candidate_dir in &[
-                    rd.join("resources").join("bin"),
-                    rd.join("bin"),
-                    rd.clone(),
+                    rd_buf.join("resources").join("bin"),
+                    rd_buf.join("bin"),
+                    rd_buf.clone(),
                 ] {
                     let src = candidate_dir.join(dll_name);
                     if src.exists() {
