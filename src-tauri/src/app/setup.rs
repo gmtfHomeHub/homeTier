@@ -513,5 +513,39 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // [DIAG-GUI-HB] 临时诊断探针：每 5 秒从 GUI 侧探测 daemon 端口与 state 文件
+    // 定位问题后整块删除（含上下 [DIAG-GUI-HB] 标记）
+    #[cfg(target_os = "windows")]
+    {
+        let app_data_heartbeat = app_data.clone();
+        std::thread::spawn(move || {
+            let state_path = app_data_heartbeat.join("daemon_state.json");
+            let mut tick = 0u64;
+            for _ in 0..u64::MAX {
+                tick += 1;
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                let mut info = format!("[DIAG-Heartbeat-GUI] tick={}", tick);
+                let state_content = std::fs::read_to_string(&state_path);
+                match state_content {
+                    Ok(c) => {
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&c) {
+                            if let Some(port) = json.get("rpc_port").and_then(|v| v.as_u64()) {
+                                let port16 = port.min(65535) as u16;
+                                let alive = std::net::TcpStream::connect_timeout(
+                                    &std::net::SocketAddr::from(([127, 0, 0, 1], port16)),
+                                    std::time::Duration::from_millis(200),
+                                ).is_ok();
+                                let pid_val = json.get("pid").and_then(|v| v.as_u64()).unwrap_or(0);
+                                info.push_str(&format!(", port={}, port_alive={}, pid={}", port16, alive, pid_val));
+                            }
+                        }
+                    }
+                    Err(_) => info.push_str(", state=MISSING"),
+                }
+                crate::log_info!(info);
+            }
+        });
+    }
+
     Ok(())
 }
