@@ -5,6 +5,7 @@ pub mod ipc;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
+use futures_util::FutureExt;
 use crate::easytier::EasyTierManager;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -24,6 +25,10 @@ impl Daemon {
     pub fn new(config_dir: PathBuf, data_dir: PathBuf, gui_pid: Option<u32>, resource_dir: Option<PathBuf>) -> Result<Self, String> {
         // daemon 启动时清空历史日志
         crate::log::clear();
+        // 清理上次运行可能残留的就绪信号/状态，避免旧文件误判 daemon 已就绪
+        // （只有 run() 绑定端口成功后才会重新写入）
+        let _ = std::fs::remove_file(data_dir.join("daemon_ready.signal"));
+        let _ = std::fs::remove_file(data_dir.join("daemon_state.json"));
         let easytier_dir = config_dir.join("easytier");
         std::fs::create_dir_all(&easytier_dir)
             .map_err(|e| format!("创建 EasyTier 配置目录失败: {}", e))?;
@@ -53,6 +58,32 @@ impl Daemon {
 
     /// daemon 主循环（参考 EasyTier daemon 模式：block_on, 监听 ctrl_c）
     pub async fn run(&self) -> Result<(), String> {
+        // 捕获 panic 并写入崩溃日志，避免静默退出
+        let result = std::panic::AssertUnwindSafe(self.run_inner()).catch_unwind().await;
+        match result {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(e),
+            Err(panic) => {
+                let msg = if let Some(s) = panic.downcast_ref::<&str>() {
+                    format!("panic: {}", s)
+                } else if let Some(s) = panic.downcast_ref::<String>() {
+                    format!("panic: {}", s)
+                } else {
+                    "panic: unknown".to_string()
+                };
+                // 写入崩溃日志文件
+                let crash_path = self.data_dir.join("daemon_crash.log");
+                let bt = std::backtrace::Backtrace::force_capture();
+                let crash_msg = format!("[Daemon CRASH] {}\n\nBacktrace:\n{}", msg, bt);
+                let _ = std::fs::write(&crash_path, crash_msg);
+                crate::log_error!(format!("[Daemon] 崩溃: {}, 详情写入: {}", msg, crash_path.display()));
+                Err(format!("Daemon 崩溃: {}", msg))
+            }
+        }
+    }
+
+    /// 内部运行逻辑（可被 catch_unwind 捕获）
+    async fn run_inner(&self) -> Result<(), String> {
         crate::log_info!("[Daemon] 守护进程启动");
 
         // 尝试绑定端口，支持自动重试相邻端口（防止冲突）

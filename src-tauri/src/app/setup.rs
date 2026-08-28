@@ -148,21 +148,16 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                     let _ = window.show();
                 }
                 set_daemon_child(child);
-                // 后台轮询 daemon 就绪（signal 文件 + 进程存活检测）
+                // 后台轮询 daemon 就绪（signal 文件 + 进程存活检测 + 端口连通性验证）
                 let app_handle = app.handle().clone();
                 let daemon_ready_flag = daemon_ready.clone();
                 let signal_path = app_data.join("daemon_ready.signal");
+                let state_path = app_data.join("daemon_state.json");
                 std::thread::spawn(move || {
                     let daemon_ready_bool = daemon_ready_flag.0;
                     let daemon_ready_reason = daemon_ready_flag.1;
                     for i in 0..60 {
-                        if signal_path.exists() {
-                            daemon_ready_bool.store(true, Ordering::SeqCst);
-                            let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": true }));
-                            log_info!("[GUI] daemon 已就绪（signal 文件检测到）");
-                            return;
-                        }
-                        // 检查 daemon 进程是否已退出
+                        // 先检查 daemon 进程是否已退出
                         if let Some(guard) = crate::app::daemon::get_daemon_child() {
                             if let Ok(mut g) = guard.lock() {
                                 if g.as_mut().map(|c| !c.is_alive()).unwrap_or(false) {
@@ -172,6 +167,32 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                                     let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": false, "reason": reason_str }));
                                     return;
                                 }
+                            }
+                        }
+                        // 再检查 signal 文件（仅当 daemon 进程存活时才认）
+                        if signal_path.exists() {
+                            // 验证端口连通性：读取 daemon_state.json 实际端口并尝试 TCP 连接
+                            let mut port_ok = false;
+                            if let Ok(content) = std::fs::read_to_string(&state_path) {
+                                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                                    if let Some(p) = json.get("rpc_port").and_then(|v| v.as_u64()) {
+                                        let port = p as u16;
+                                        if let Ok(_) = std::net::TcpStream::connect_timeout(
+                                            &format!("127.0.0.1:{}", port).parse().unwrap(),
+                                            std::time::Duration::from_millis(200),
+                                        ) {
+                                            port_ok = true;
+                                        }
+                                    }
+                                }
+                            }
+                            if port_ok {
+                                daemon_ready_bool.store(true, Ordering::SeqCst);
+                                let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": true }));
+                                log_info!("[GUI] daemon 已就绪（signal 文件 + 端口连通性验证通过）");
+                                return;
+                            } else {
+                                log_warn!("[GUI] signal 文件存在但端口不通，等待 daemon 真正就绪...");
                             }
                         }
                         std::thread::sleep(std::time::Duration::from_millis(200));

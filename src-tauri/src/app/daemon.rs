@@ -235,6 +235,32 @@ exit 1
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         cmd.creation_flags(CREATE_NO_WINDOW);
+
+        // Windows: 启动前验证关键 DLL 是否存在且有效，缺失则直接报错
+        if let Some(rd) = resource_dir {
+            for dll_name in &["packet.dll", "wpcap.dll"] {
+                let mut dll_found = false;
+                for candidate_dir in &[
+                    rd.join("resources").join("bin"),
+                    rd.join("bin"),
+                    rd.clone(),
+                ] {
+                    let src = candidate_dir.join(dll_name);
+                    if src.exists() {
+                        // 忽略占位文件（<10KB 视为无效）
+                        if let Ok(meta) = std::fs::metadata(&src) {
+                            if meta.len() >= 10000 {
+                                dll_found = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if !dll_found {
+                    return Err(format!("Windows 关键依赖 {} 缺失或无效，请确保 resource_dir 包含有效的 {} (>=10KB)", dll_name, dll_name));
+                }
+            }
+        }
     }
 
     let mut child = cmd.spawn().map_err(|e| {
