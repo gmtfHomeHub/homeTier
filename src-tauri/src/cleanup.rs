@@ -199,7 +199,7 @@ pub(crate) fn is_process_alive(pid: u32) -> bool {
         let mut exit_code: u32 = 0;
         let _ = GetExitCodeProcess(handle, &mut exit_code);
         let _ = CloseHandle(handle);
-        exit_code == STILL_ACTIVE
+        exit_code == STILL_ACTIVE.0 as u32
     }
 }
 
