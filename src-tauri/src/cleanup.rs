@@ -186,9 +186,8 @@ pub(crate) fn is_process_alive(pid: u32) -> bool {
 
 #[cfg(target_os = "windows")]
 pub(crate) fn is_process_alive(pid: u32) -> bool {
-    use windows::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
-    use windows::Win32::System::ProcessStatus::GetExitCodeProcess;
-    use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION};
+    use windows::Win32::Foundation::{CloseHandle, NTSTATUS};
+    use windows::Win32::System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_INFORMATION, STILL_ACTIVE};
     unsafe {
         let handle = match OpenProcess(PROCESS_QUERY_INFORMATION, false, pid) {
             Ok(h) => h,
@@ -197,10 +196,10 @@ pub(crate) fn is_process_alive(pid: u32) -> bool {
         if handle.is_invalid() {
             return false;
         }
-        let mut exit_code = 0u32;
-        let ret = GetExitCodeProcess(handle, &mut exit_code);
+        let mut exit_code = NTSTATUS::default();
+        let _ = GetExitCodeProcess(handle, &mut exit_code);
         let _ = CloseHandle(handle);
-        ret.is_ok() && exit_code == STILL_ACTIVE
+        exit_code.0 == STILL_ACTIVE as i32
     }
 }
 

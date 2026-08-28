@@ -235,29 +235,6 @@ impl Daemon {
             });
         }
 
-        // [DIAG-HEARTBEAT] 临时诊断探针：每 5 秒输出心跳，确认 daemon 存活
-        // 定位问题后整块删除（含上下 [DIAG-HEARTBEAT] 标记）
-        #[cfg(target_os = "windows")]
-        {
-            let hb_data_dir = self.data_dir.clone();
-            tokio::spawn(async move {
-                let mut seq = 0u64;
-                loop {
-                    seq += 1;
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_millis())
-                        .unwrap_or(0);
-                    let _ = std::fs::write(
-                        hb_data_dir.join("daemon_heartbeat.txt"),
-                        format!("seq={}\nuptime_ms={}\npid={}\n", seq, now, std::process::id()),
-                    );
-                    crate::log_info!(format!("[DIAG-Heartbeat-Daemon] seq={}, pid={}, uptime_ms={}", seq, std::process::id(), now));
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                }
-            });
-        }
-
         // 主循环：接受连接 + 监听 shutdown
         loop {
             tokio::select! {
@@ -281,18 +258,6 @@ impl Daemon {
             }
         }
 
-        // [DIAG-EXIT] 临时诊断探针：记录 daemon 正常退出，定位问题后删除
-        #[cfg(target_os = "windows")]
-        {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-            let _ = std::fs::write(
-                self.data_dir.join("daemon_exit_reason.txt"),
-                format!("reason=normal_shutdown\ntime_unix={}\npid={}\n", now, std::process::id()),
-            );
-        }
         crate::log_info!("[Daemon] 守护进程已退出");
         Ok(())
     }
