@@ -423,7 +423,7 @@
     "flagDevName": "设备名",
     "flagEnableEncryption": "启用加密",
     "flagEnableIPv6": "启用 IPv6",
-    "flagUseSmoltcp": "use_smoltcp",
+    "flagUseSmoltcp": "使用用户态协议栈",
     "flagDisableIpv6": "禁用 IPv6",
     "flagIpv6PublicAddrAuto": "IPv6 公网地址自动发现",
     "flagDisableKcpInput": "禁用 KCP 输入",

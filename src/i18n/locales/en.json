@@ -423,7 +423,7 @@
     "flagDevName": "Device Name",
     "flagEnableEncryption": "Enable Encryption",
     "flagEnableIPv6": "Enable IPv6",
-    "flagUseSmoltcp": "Use Smoltcp",
+    "flagUseSmoltcp": "Use User-Space Protocol Stack",
     "flagDisableIpv6": "Disable IPv6",
     "flagIpv6PublicAddrAuto": "IPv6 Public Address Auto Discovery",
     "flagDisableKcpInput": "Disable KCP Input",
