@@ -71,6 +71,35 @@ jobs:
           done
           ls -la src-tauri/resources/bin/
 
+      - name: Trim easytier archives (keep only easytier-core)
+        run: |
+          set -e
+          # Only easytier-core.exe is used at runtime; easytier-web.exe / easytier-cli.exe /
+          # easytier-web-embed.exe are never referenced in the codebase. Removing them cuts
+          # each archive roughly in half, shrinking the MSI/APK bundle.
+          # wintun.dll / WinDivert64.sys come from resources/bin (git), NOT from the zip.
+          for p in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64 windows-x86_64; do
+            zip="src-tauri/resources/bin/easytier-${p}-${EASYTIER_CORE_VERSION}.zip"
+            if [ ! -f "$zip" ]; then
+              echo "SKIP: $zip not found"
+              continue
+            fi
+            orig_size=$(stat -c%s "$zip" 2>/dev/null || stat -f%z "$zip")
+            tmpdir=$(mktemp -d)
+            unzip -q -o "$zip" -d "$tmpdir"
+            # Delete everything except easytier-core* (covers easytier-core.exe / easytier-core)
+            find "$tmpdir" -type f ! -name "easytier-core*" -delete
+            # Recreate archive
+            rm "$zip"
+            (cd "$tmpdir" && zip -q -r "$OLDPWD/$zip" .)
+            rm -rf "$tmpdir"
+            new_size=$(stat -c%s "$zip" 2>/dev/null || stat -f%z "$zip")
+            saved=$(( (orig_size - new_size) * 100 / orig_size ))
+            echo "Trimmed ${p}: ${orig_size} -> ${new_size} bytes (-${saved}%)"
+          done
+          echo "--- After trim ---"
+          ls -la src-tauri/resources/bin/
+
       - name: Upload per-platform artifacts
         uses: actions/upload-artifact@v4
         with:

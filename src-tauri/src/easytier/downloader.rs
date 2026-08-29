@@ -281,18 +281,52 @@ impl EasyTierDownloader {
         .map_err(|e| format!("解压任务失败: {}", e))?
     }
 
+    /// Only unpack easytier-core* files, skip unused easytier-web/cli etc.
+    /// Runtime filter + CI trim (optimization A) combined: even untrimmed zips save I/O.
     fn extract_tar_gz(archive: &Path, target: &Path) -> Result<(), String> {
-        let file = std::fs::File::open(archive).map_err(|e| format!("打开归档失败: {}", e))?;
+        let file = std::fs::File::open(archive).map_err(|e| format!("open archive failed: {}", e))?;
         let decoder = flate2::read::GzDecoder::new(file);
         let mut archive = tar::Archive::new(decoder);
-        archive.unpack(target).map_err(|e| format!("解压 tar.gz 失败: {}", e))?;
+        for entry in archive.entries().map_err(|e| format!("read entries failed: {}", e))? {
+            let mut entry = entry.map_err(|e| format!("read entry failed: {}", e))?;
+            let path = entry.path()
+                .map_err(|e| format!("read path failed: {}", e))?
+                .to_string_lossy()
+                .to_string();
+            if !path.contains("easytier-core") {
+                continue;
+            }
+            entry.unpack_in(target).map_err(|e| format!("extract tar.gz entry failed: {}", e))?;
+        }
         Ok(())
     }
 
     fn extract_zip(archive: &Path, target: &Path) -> Result<(), String> {
-        let file = std::fs::File::open(archive).map_err(|e| format!("打开归档失败: {}", e))?;
-        let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("打开 zip 失败: {}", e))?;
-        archive.extract(target).map_err(|e| format!("解压 zip 失败: {}", e))?;
+        let file = std::fs::File::open(archive).map_err(|e| format!("open archive failed: {}", e))?;
+        let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("open zip failed: {}", e))?;
+        for i in 0..archive.len() {
+            let mut entry = archive.by_index(i).map_err(|e| format!("read zip entry failed: {}", e))?;
+            let name = entry.name().to_string();
+            if !name.contains("easytier-core") {
+                continue;
+            }
+            let enclosed = entry.enclosed_name()
+                .ok_or_else(|| format!("invalid zip entry path: {}", name))?;
+            let target_path = target.join(&enclosed);
+            if entry.is_dir() {
+                std::fs::create_dir_all(&target_path)
+                    .map_err(|e| format!("create dir failed: {}", e))?;
+            } else {
+                if let Some(parent) = target_path.parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| format!("create dir failed: {}", e))?;
+                }
+                let mut out = std::fs::File::create(&target_path)
+                    .map_err(|e| format!("create file failed: {}", e))?;
+                std::io::copy(&mut entry, &mut out)
+                    .map_err(|e| format!("extract zip entry failed: {}", e))?;
+            }
+        }
         Ok(())
     }
 
