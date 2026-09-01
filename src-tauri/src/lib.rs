@@ -39,7 +39,7 @@ pub fn run() -> std::process::ExitCode {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
 
-    #[cfg(all(target_os = "linux", target_os = "android"))]
+    #[cfg(target_os = "android")]
     let builder = builder.plugin(mobile_vpn_plugin());
 
     let builder = builder.setup(|app| crate::app::setup::setup(app))
@@ -457,7 +457,7 @@ pub fn run_server(
     }
 }
 
-#[cfg(all(target_os = "linux", target_os = "android"))]
+#[cfg(target_os = "android")]
 fn mobile_vpn_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
     tauri::plugin::Builder::new("hometiervpnservice")
         .setup(|_app, api| {
