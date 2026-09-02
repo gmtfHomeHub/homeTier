@@ -111,7 +111,11 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("network.virtualIpv4")}</label>
               <TextField.Root size="1" value={strVal("virtual_ipv4")}
-                onChange={e => setStr("virtual_ipv4", e.target.value)}
+                onChange={e => {
+                  const ip = e.target.value;
+                  // 静态 IP 与 DHCP 互斥：输入 IP 时自动关闭 dhcp
+                  set({ virtual_ipv4: ip, ...(ip.trim() ? { dhcp: false } : {}) });
+                }}
                 placeholder="10.0.0.1" />
             </div>
             <div className={FIELD_CLASS}>
