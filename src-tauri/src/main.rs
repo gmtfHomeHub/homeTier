@@ -1,4 +1,4 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 // macOS 生产版不再自我提权（S3），GUI 保持普通用户权限；这些函数仅 Windows/Linux 使用。
 #[cfg(not(target_os = "macos"))]

@@ -1,7 +1,8 @@
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, TextField, Flex, Tooltip } from "@radix-ui/themes";
+import { Button, TextField, Flex } from "@radix-ui/themes";
+import Tip from "../Common/Tip";
 import { X, Copy, Check, HelpCircle } from "lucide-react";
 import { toastSuccess, toastError } from "../../utils/toast";
 import { generateShareLink } from "../../utils/api";
@@ -57,7 +58,7 @@ export function ShareSpaceDialog({ spaceId, onClose }: ShareSpaceDialogProps) {
             <label className="block text-sm font-medium">
               {t("space.setReceiverIp")}
             </label>
-            <Tooltip
+            <Tip
               content={
                 <>
                   <p className="mt-1 text-xs">
@@ -72,7 +73,7 @@ export function ShareSpaceDialog({ spaceId, onClose }: ShareSpaceDialogProps) {
               <span className="inline-flex items-center cursor-pointer text-[var(--color-text-secondary)]">
                 <HelpCircle size={14} />
               </span>
-            </Tooltip>
+            </Tip>
           </Flex>
             <TextField.Root
               value={ip}

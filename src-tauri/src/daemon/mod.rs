@@ -5,6 +5,7 @@ pub mod ipc;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
+use futures_util::FutureExt;
 use crate::easytier::EasyTierManager;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -24,6 +25,10 @@ impl Daemon {
     pub fn new(config_dir: PathBuf, data_dir: PathBuf, gui_pid: Option<u32>, resource_dir: Option<PathBuf>) -> Result<Self, String> {
         // daemon 启动时清空历史日志
         crate::log::clear();
+        // 清理上次运行可能残留的就绪信号/状态，避免旧文件误判 daemon 已就绪
+        // （只有 run() 绑定端口成功后才会重新写入）
+        let _ = std::fs::remove_file(data_dir.join("daemon_ready.signal"));
+        let _ = std::fs::remove_file(data_dir.join("daemon_state.json"));
         let easytier_dir = config_dir.join("easytier");
         std::fs::create_dir_all(&easytier_dir)
             .map_err(|e| format!("创建 EasyTier 配置目录失败: {}", e))?;
@@ -53,30 +58,79 @@ impl Daemon {
 
     /// daemon 主循环（参考 EasyTier daemon 模式：block_on, 监听 ctrl_c）
     pub async fn run(&self) -> Result<(), String> {
+        // 捕获 panic 并写入崩溃日志，避免静默退出
+        let result = std::panic::AssertUnwindSafe(self.run_inner()).catch_unwind().await;
+        match result {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(e),
+            Err(panic) => {
+                let msg = if let Some(s) = panic.downcast_ref::<&str>() {
+                    format!("panic: {}", s)
+                } else if let Some(s) = panic.downcast_ref::<String>() {
+                    format!("panic: {}", s)
+                } else {
+                    "panic: unknown".to_string()
+                };
+                // 写入崩溃日志文件
+                let crash_path = self.data_dir.join("daemon_crash.log");
+                let bt = std::backtrace::Backtrace::force_capture();
+                let crash_msg = format!("[Daemon CRASH] {}\n\nBacktrace:\n{}", msg, bt);
+                let _ = std::fs::write(&crash_path, crash_msg);
+                crate::log_error!(format!("[Daemon] 崩溃: {}, 详情写入: {}", msg, crash_path.display()));
+                Err(format!("Daemon 崩溃: {}", msg))
+            }
+        }
+    }
+
+    /// 内部运行逻辑（可被 catch_unwind 捕获）
+    async fn run_inner(&self) -> Result<(), String> {
         crate::log_info!("[Daemon] 守护进程启动");
 
-        let addr = format!("127.0.0.1:{}", self.rpc_port);
+        // 尝试绑定端口，支持自动重试相邻端口（防止冲突）
+        let mut listener = None;
+        let mut bound_port = self.rpc_port;
+        for port in self.rpc_port..self.rpc_port + 10 {
+            let addr = format!("127.0.0.1:{}", port);
+            match tokio::net::TcpListener::bind(&addr).await {
+                Ok(l) => {
+                    listener = Some(l);
+                    bound_port = port;
+                    crate::log_info!(format!("[Daemon] TCP RPC 服务器已启动: {}", addr));
+                    break;
+                }
+                Err(e) => {
+                    crate::log_warn!(format!("[Daemon] 端口 {} 绑定失败: {}，尝试下一个", port, e));
+                }
+            }
+        }
+        let listener = listener.ok_or_else(|| {
+            let msg = format!("[Daemon] 无法绑定端口 {}-{}，请检查防火墙/杀毒软件", self.rpc_port, self.rpc_port + 9);
+            crate::log_error!(&msg);
+            msg
+        })?;
 
-        // 1. 先绑定监听端口（核心能力）
-        let listener = tokio::net::TcpListener::bind(&addr).await
-            .map_err(|e| {
-                crate::log_error!(format!("[Daemon] 绑定端口失败: {}", e));
-                format!("绑定 TCP 端口失败: {}", e)
-            })?;
-        crate::log_info!(format!("[Daemon] TCP RPC 服务器已启动: {}", addr));
+        // 如果端口发生变化，先持久化到配置文件（GUI 读取配置需看到新端口）
+        if bound_port != self.rpc_port {
+            crate::log_warn!(format!("[Daemon] 端口从 {} 变更为 {}", self.rpc_port, bound_port));
+            let mut status = self.status.write().await;
+            status.rpc_port = bound_port;
+            if let Some(cfg) = crate::config::global() {
+                let _ = cfg.set(crate::config::KEY_DAEMON_IPC_PORT, &bound_port.to_string());
+            }
+        }
 
-        // 2. 写入 signal 文件（GUI 由此确认 daemon 已就绪）
-        let signal_path = self.data_dir.join("daemon_ready.signal");
-        let _ = std::fs::write(&signal_path, format!("{}", std::process::id()));
-        crate::log_info!(format!("[Daemon] signal 文件已写入: {}", signal_path.display()));
-
-        // 3. 离线写状态文件（失败不致命）
+        // 2. 写入状态文件（含实际端口，GUI 可直接读取）
         let state_path = self.data_dir.join("daemon_state.json");
         let _ = std::fs::remove_file(&state_path);
-        let state_json = serde_json::json!({ "pid": std::process::id(), "rpc_port": self.rpc_port });
+        let state_json = serde_json::json!({ "pid": std::process::id(), "rpc_port": bound_port });
         if let Err(e) = std::fs::write(&state_path, serde_json::to_string_pretty(&state_json).unwrap_or_default()) {
             crate::log_info!(format!("[Daemon] daemon_state.json 写入失败（非致命）: {}", e));
         }
+
+        // 3. 写入 signal 文件（GUI 由此确认 daemon 已就绪，此时配置已更新）
+        let signal_path = self.data_dir.join("daemon_ready.signal");
+        let _ = std::fs::write(&signal_path, format!("{}", std::process::id()));
+        crate::log_info!(format!("[Daemon] signal 文件已写入: {}", signal_path.display()));
 
         // 启动 easytier-core 守护进程（daemon IPC 就绪后，等待 RPC 端口就绪，再接受 IPC 请求）
         let easytier = self.easytier.clone();
@@ -113,6 +167,7 @@ impl Daemon {
 
             let process = crate::easytier::EasyTierProcess::start_daemon(
                 &binary, &config_dir, ipc::easytier_daemon_rpc_port(),
+                easytier.downloader.resource_dir().as_ref(),
             ).await;
 
             match process {

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Mutex;
 use tokio::process::{Child, Command};
@@ -20,7 +20,74 @@ pub struct EasyTierProcess {
 }
 
 impl EasyTierProcess {
+    /// Windows: 确保 easytier-core.exe 同目录有 packet.dll / wpcap.dll / wintun.dll / WinDivert64.sys
+    /// 优先级：resource_dir/resources/bin → 当前 exe 所在目录/resources/bin → 当前 exe 所在目录
+    #[cfg(target_os = "windows")]
+    fn ensure_dlls(binary: &PathBuf, resource_dir: Option<&PathBuf>) {
+        let target_dir = binary.parent().unwrap_or_else(|| Path::new("."));
+        let dlls = ["packet.dll", "wpcap.dll", "wintun.dll", "WinDivert64.sys"];
+
+        // 收集候选源目录
+        let mut candidates = Vec::new();
+        if let Some(rd) = resource_dir {
+            candidates.push(rd.join("resources").join("bin"));
+            candidates.push(rd.join("bin"));
+            candidates.push(rd.clone());
+        }
+        // 兜底：当前 exe 所在目录（MSI 安装时 resources/ 与 exe 同级）
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(parent) = exe.parent() {
+                candidates.push(parent.join("resources").join("bin"));
+                candidates.push(parent.join("bin"));
+                candidates.push(parent.to_path_buf());
+            }
+        }
+
+        for dll in &dlls {
+            let target = target_dir.join(dll);
+            if target.exists() {
+                // 已存在且足够大，视为有效
+                if let Ok(meta) = std::fs::metadata(&target) {
+                    if meta.len() >= 10000 {
+                        continue;
+                    }
+                }
+            }
+            // 需要复制
+            let mut copied = false;
+            for src_dir in &candidates {
+                let src = src_dir.join(dll);
+                if !src.exists() {
+                    continue;
+                }
+                // 跳过占位/过小文件
+                if let Ok(meta) = std::fs::metadata(&src) {
+                    if meta.len() < 10000 {
+                        crate::log_warn!(format!("[EasyTierProcess] {} 疑似占位文件，跳过: {}", dll, src.display()));
+                        continue;
+                    }
+                }
+                match std::fs::copy(&src, &target) {
+                    Ok(_) => {
+                        crate::log_info!(format!("[EasyTierProcess] 已复制 {} -> {}", dll, target.display()));
+                        copied = true;
+                        break;
+                    }
+                    Err(e) => {
+                        crate::log_warn!(format!("[EasyTierProcess] 复制 {} 失败: {}", dll, e));
+                    }
+                }
+            }
+            if !copied {
+                crate::log_warn!(format!("[EasyTierProcess] 未找到有效的 {}，easytier-core 可能启动失败", dll));
+            }
+        }
+    }
+
     pub async fn start(binary: &PathBuf, config: &PathBuf, rpc_port: Option<u16>) -> Result<Self, String> {
+        #[cfg(target_os = "windows")]
+        Self::ensure_dlls(binary, None);
+
         let rpc_arg = rpc_port.unwrap_or(15888);
         crate::log_info!(format!("[EasyTierProcess] 启动: {} --config-file {} --rpc-portal {}", binary.display(), config.display(), rpc_arg));
 
@@ -69,7 +136,10 @@ impl EasyTierProcess {
     }
 
     /// 获取进程 ID
-    pub async fn start_daemon(binary: &PathBuf, config_dir: &PathBuf, rpc_port: u16) -> Result<Self, String> {
+    pub async fn start_daemon(binary: &PathBuf, config_dir: &PathBuf, rpc_port: u16, resource_dir: Option<&PathBuf>) -> Result<Self, String> {
+        #[cfg(target_os = "windows")]
+        Self::ensure_dlls(binary, resource_dir);
+
         let _ = std::fs::create_dir_all(config_dir);
         crate::log_info!(format!("[EasyTierProcess] 启动守护进程: {} --daemon --config-dir {} --rpc-portal {}", binary.display(), config_dir.display(), rpc_port));
 
@@ -200,12 +270,21 @@ impl EasyTierProcess {
         self.stop().await?;
         let config = new_config.unwrap_or(&self.config_dir);
 
-        let new_child = Command::new(&self.binary_path)
+        #[cfg(target_os = "windows")]
+        Self::ensure_dlls(&self.binary_path, None);
+
+        let mut new_child = Command::new(&self.binary_path);
+        new_child
             .arg("--config-file")
             .arg(config)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .stderr(Stdio::piped());
+        #[cfg(target_os = "windows")]
+        {
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            new_child.creation_flags(CREATE_NO_WINDOW);
+        }
+        let new_child = new_child.spawn()
             .map_err(|e| format!("重启 easytier-core 失败: {}", e))?;
 
         crate::log_info!(format!("[EasyTierProcess] 进程已重启, pid={:?}", new_child.id()));

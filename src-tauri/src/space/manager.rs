@@ -41,6 +41,9 @@ pub struct SpaceManager {
     cancel_tokens: Arc<RwLock<HashMap<Uuid, CancellationToken>>>,
     /// 连接任务句柄映射: space_id -> JoinHandle
     connect_handles: Arc<RwLock<HashMap<Uuid, tokio::task::JoinHandle<()>>>>,
+    /// 已注入 TUN fd 的空间集合（幂等防重：JS 与 Rust 双路监听 tun-ready 时避免重复注入）
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    tun_injected: Arc<std::sync::Mutex<std::collections::HashMap<Uuid, i32>>>,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -78,6 +81,7 @@ impl Clone for SpaceManager {
             storage_dir: self.storage_dir.clone(),
             cancel_tokens: self.cancel_tokens.clone(),
             connect_handles: self.connect_handles.clone(),
+            tun_injected: self.tun_injected.clone(),
         }
     }
 }
@@ -327,18 +331,18 @@ Self {
         crate::space::share::encrypt_share_payload(&info)
     }
 
-    /// 等待 daemon 就绪（ping 轮询，最多 10s）
-    async fn wait_daemon_ready(&self) -> bool {
+    /// 等待 daemon 就绪（ping 轮询，最多 10s），失败返回错误
+    async fn wait_daemon_ready(&self) -> Result<(), String> {
         for i in 0..50 {
             if self.ipc_client.ping().await {
-                return true;
+                return Ok(());
             }
             if i % 10 == 0 {
                 crate::log_debug!(format!("connect: 等待 daemon 就绪 ({}/50)...", i + 1));
             }
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
-        false
+        Err("daemon 启动超时（10s），无法建立 IPC 连接".to_string())
     }
 
     /// 连接空间（通过 IPC 通知 daemon）
@@ -347,7 +351,7 @@ Self {
 
         if !self.ipc_client.ping().await {
             crate::log_info!("connect: daemon 未就绪，等待...", &space_id.to_string());
-            self.wait_daemon_ready().await;
+            self.wait_daemon_ready().await?;
         }
         crate::log_debug!(format!("connect: 查询当前运行中的空间"), &space_id.to_string());
         let running_spaces: Vec<String> = match self.ipc_client.list_spaces().await {
@@ -834,6 +838,7 @@ impl SpaceManager {
             storage_dir: Arc::new(RwLock::new(storage_dir)),
             cancel_tokens: Arc::new(RwLock::new(HashMap::new())),
             connect_handles: Arc::new(RwLock::new(HashMap::new())),
+            tun_injected: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         }
     }
 
@@ -1031,18 +1036,43 @@ impl SpaceManager {
         let space = spaces.iter().find(|s| &s.id == space_id)
             .ok_or_else(|| "Space not found".to_string())?;
 
-        let existing_config = self.db.get_space_config(&space_id.to_string()).ok().flatten();
-
-        let cfg = crate::easytier::config::NetworkConfig {
-            network_name: space.network_name.clone(),
-            network_secret: space.network_secret.clone(),
-            ..Default::default()
+        // 从 DB 加载完整配置作为主配置（与桌面端 get_effective_config 一致），
+        // 而非当作 initial_config override。initial_config 的 override 逻辑只处理
+        // peers(对象数组)/ipv4(字符串)，不处理 peer_urls(字符串数组)/virtual_ipv4，
+        // 会导致 peer 和虚拟 IP 丢失。
+        let cfg = match self.db.get_space_config(&space_id.to_string())
+            .ok()
+            .flatten()
+            .and_then(|json| crate::easytier::config::NetworkConfig::from_config_json(&json).ok())
+        {
+            Some(mut config) => {
+                // 补充 identity 字段（防止 config_json 中缺失）
+                if config.network_name.is_empty() {
+                    config.network_name = space.network_name.clone();
+                }
+                if config.network_secret.is_empty() {
+                    config.network_secret = space.network_secret.clone();
+                }
+                crate::log_info!(format!(
+                    "connect: 从 DB 加载配置, dhcp={}, virtual_ipv4={}, peer_urls={}",
+                    config.dhcp, config.virtual_ipv4, config.peer_urls.len()
+                ), &space_id.to_string());
+                config
+            }
+            None => {
+                crate::log_info!("connect: 无历史配置，使用默认配置", &space_id.to_string());
+                crate::easytier::config::NetworkConfig {
+                    network_name: space.network_name.clone(),
+                    network_secret: space.network_secret.clone(),
+                    ..Default::default()
+                }
+            }
         };
 
         // Emit VPN pending state for mobile
         self.emit_vpn_state(space_id, "pending-vpn", None).await;
 
-        self.easytier.start_network(&cfg, *space_id, existing_config).await?;
+        self.easytier.start_network(&cfg, *space_id, None).await?;
         crate::log_info!(format!("连接空间: {}", space.name), &space_id.to_string());
         Ok(())
     }
@@ -1068,6 +1098,8 @@ impl SpaceManager {
     pub async fn disconnect(&self, space_id: &Uuid) -> Result<(), String> {
         crate::log_info!(format!("断开空间: {}", space_id), &space_id.to_string());
         self.easytier.stop_network(space_id).await?;
+        // 清理 TUN fd 注入记录，下次重连时允许重新注入
+        self.tun_injected.lock().unwrap().remove(space_id);
         self.emit_vpn_state(space_id, "disconnected", None).await;
         Ok(())
     }
@@ -1220,7 +1252,22 @@ impl SpaceManager {
     }
 
     /// 设置 TUN 文件描述符（移动端专用：从 VpnService/NetworkExtension 获取 fd 后注入）
+    ///
+    /// 幂等：前端 JS 与 Rust 侧均监听 tun-ready 事件（双保险），同一 fd 重复注入时
+    /// 直接返回 Ok，避免第二次 try_send 失败被误报为连接失败。
+    /// 检查 + 注入 + 记录在同一锁临界区内原子完成，消除双路并发竞态窗口
+    /// （try_send 为非阻塞快速操作，持锁调用无阻塞/死锁风险，且不跨 await）。
     pub fn set_tun_fd(&self, space_id: &Uuid, fd: i32) -> Result<(), String> {
-        self.easytier.set_tun_fd(space_id, fd)
+        let mut injected = self.tun_injected.lock().unwrap();
+        if injected.get(space_id) == Some(&fd) {
+            crate::log_debug!(format!(
+                "VPN: TUN fd {} for space {} 已注入，忽略重复请求",
+                fd, space_id
+            ));
+            return Ok(());
+        }
+        self.easytier.set_tun_fd(space_id, fd)?;
+        injected.insert(*space_id, fd);
+        Ok(())
     }
 }

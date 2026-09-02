@@ -7,3 +7,5 @@
 .opencode
 .libs
 .vscode
+
+.cargo

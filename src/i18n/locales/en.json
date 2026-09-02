@@ -1,4 +1,12 @@
 {
+  "vpn": {
+    "connectFailed": "VPN connection failed: {{error}}",
+    "connecting": "Connecting VPN…",
+    "connected": "VPN connected",
+    "disconnected": "VPN disconnected",
+    "prepareDenied": "VPN authorization denied or not completed",
+    "tunFdFailed": "Failed to get TUN device"
+  },
   "mobile": {
     "voice": {
       "toolbar": "Voice Control",
@@ -231,6 +239,7 @@
     "shareFailed": "Failed to create share link",
     "scanToJoin": "Scan to join",
     "cameraUnavailable": "Camera unavailable",
+    "scanNoResult": "No QR code detected, please align and retry",
     "confirmJoinTitle": "Confirm joining space",
     "confirmJoinIp": "IP address",
     "dhcpAuto": "DHCP auto-assign",
@@ -414,7 +423,7 @@
     "flagDevName": "Device Name",
     "flagEnableEncryption": "Enable Encryption",
     "flagEnableIPv6": "Enable IPv6",
-    "flagUseSmoltcp": "Use Smoltcp",
+    "flagUseSmoltcp": "Use User-Space Protocol Stack",
     "flagDisableIpv6": "Disable IPv6",
     "flagIpv6PublicAddrAuto": "IPv6 Public Address Auto Discovery",
     "flagDisableKcpInput": "Disable KCP Input",

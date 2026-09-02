@@ -7,7 +7,7 @@ export function NotFoundPage() {
   const { t } = useTranslation();
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-[var(--color-background)]">
+    <div className="flex flex-col items-center justify-center flex-1 h-full bg-[var(--color-bg)]">
       <div className="text-center space-y-4">
         <h1 className="text-6xl font-bold text-[var(--color-text-primary)]">404</h1>
         <h2 className="text-2xl font-semibold text-[var(--color-text-secondary)]">

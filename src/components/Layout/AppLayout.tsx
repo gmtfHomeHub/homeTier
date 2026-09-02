@@ -28,7 +28,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   }, [location.pathname, hideWorkspace]);
 
   return (
-    <div className="h-[100dvh] w-screen flex flex-col bg-[var(--color-bg)]">
+    <div className="h-full w-full flex flex-col bg-[var(--color-bg)]">
       <TitleBar />
       <div className="relative flex flex-1 overflow-hidden">
         {/* 浮层 Sidebar — fixed 定位，不参与流式布局 */}
@@ -58,7 +58,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           )}
         </AnimatePresence>
 
-        <main className="relative flex flex-col flex-1 overflow-hidden bg-[var(--blue-a2)]">
+        <main className="relative flex flex-col flex-1 overflow-hidden bg-[var(--color-bg)]">
           {children}
           <AppWorkspace />
           <VoiceAutoJoin />

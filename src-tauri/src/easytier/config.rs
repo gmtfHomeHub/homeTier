@@ -251,10 +251,11 @@ impl NetworkConfig {
         use std::net::ToSocketAddrs;
         use std::str::FromStr;
 
-        crate::log_debug!(format!(
-            "NetworkConfig -> TomlConfigLoader: name={}, dhcp={}, peer_urls={}",
+        crate::log_info!(format!(
+            "NetworkConfig -> TomlConfigLoader: name={}, dhcp={}, virtual_ipv4={}, peer_urls={}",
             self.network_name,
             self.dhcp,
+            self.virtual_ipv4,
             self.peer_urls.len()
         ));
 
@@ -279,8 +280,17 @@ impl NetworkConfig {
             cfg.set_hostname(Some(hostname.clone()));
         }
 
-        // DHCP
-        cfg.set_dhcp(self.dhcp);
+        // DHCP — 静态 IP 与 DHCP 互斥：virtual_ipv4 有值时强制 dhcp=false
+        let effective_dhcp = if !self.virtual_ipv4.is_empty() {
+            false
+        } else {
+            self.dhcp
+        };
+        cfg.set_dhcp(effective_dhcp);
+        crate::log_info!(format!(
+            "NetworkConfig: effective_dhcp={}, virtual_ipv4={}",
+            effective_dhcp, self.virtual_ipv4
+        ));
 
         // IPv4 — combine virtual_ipv4 + network_length
         if !self.virtual_ipv4.is_empty() {
@@ -301,14 +311,16 @@ impl NetworkConfig {
             let easy_peers: Vec<EasyPeerConfig> = self
                 .peer_urls
                 .iter()
-                .filter(|u| !u.is_empty())
+                .filter(|u| !u.trim().is_empty())
                 .map(|u| {
-                    u.parse::<url::Url>()
+                    let trimmed = u.trim();
+                    trimmed
+                        .parse::<url::Url>()
                         .map(|url| EasyPeerConfig {
                             uri: url,
                             peer_public_key: None,
                         })
-                        .map_err(|e| format!("invalid peer URL '{}': {}", u, e))
+                        .map_err(|e| format!("invalid peer URL '{}': {}", trimmed, e))
                 })
                 .collect::<Result<Vec<_>, String>>()?;
             if !easy_peers.is_empty() {

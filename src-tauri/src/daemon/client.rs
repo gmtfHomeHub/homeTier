@@ -1,4 +1,5 @@
 use super::ipc::{IpcRequest, IpcResponse};
+use std::path::Path;
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -20,6 +21,23 @@ impl IpcClient {
     /// 创建默认端口的客户端（端口取自配置文件 DAEMON_IPC_PORT，回退默认值）
     pub fn default_port() -> Self {
         Self::new(crate::daemon::ipc::default_rpc_port())
+    }
+
+    /// 从 daemon_state.json 读取实际端口创建客户端（优先），回退到配置文件
+    pub fn from_data_dir(data_dir: &Path) -> Self {
+        let state_path = data_dir.join("daemon_state.json");
+        let port = if let Ok(content) = std::fs::read_to_string(&state_path) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                json.get("rpc_port").and_then(|v| v.as_u64()).map(|v| v as u16)
+                    .unwrap_or_else(|| crate::daemon::ipc::default_rpc_port())
+            } else {
+                crate::daemon::ipc::default_rpc_port()
+            }
+        } else {
+            crate::daemon::ipc::default_rpc_port()
+        };
+        crate::log_info!(format!("[IpcClient] 使用端口: {} (来源: {})", port, if state_path.exists() { "daemon_state.json" } else { "配置文件" }));
+        Self::new(port)
     }
 
     /// 发送请求到 daemon（复用长连接，断线自动重连）
@@ -119,7 +137,13 @@ impl IpcClient {
 
     /// Ping daemon
     pub async fn ping(&self) -> bool {
-        self.send(&IpcRequest::Ping).await.is_ok()
+        match self.send(&IpcRequest::Ping).await {
+            Ok(_) => true,
+            Err(e) => {
+                crate::log_debug!(format!("[IpcClient] ping 失败: {}", e));
+                false
+            }
+        }
     }
 
     /// 获取 daemon 状态

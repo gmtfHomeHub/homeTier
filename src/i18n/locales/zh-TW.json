@@ -1,4 +1,12 @@
 {
+  "vpn": {
+    "connectFailed": "VPN 連線失敗: {{error}}",
+    "connecting": "VPN 連線中…",
+    "connected": "VPN 已連線",
+    "disconnected": "VPN 已斷開",
+    "prepareDenied": "VPN 授權被拒絕或未完成",
+    "tunFdFailed": "取得 TUN 裝置失敗"
+  },
   "mobile": {
     "voice": {
       "toolbar": "語音控制",
@@ -231,6 +239,7 @@
     "shareFailed": "分享連結建立失敗",
     "scanToJoin": "掃碼加入",
     "cameraUnavailable": "無法存取相機",
+    "scanNoResult": "未辨識到 QR Code，請對準後重試",
     "confirmJoinTitle": "確認加入空間",
     "confirmJoinIp": "IP 位址",
     "dhcpAuto": "DHCP 自動分配",

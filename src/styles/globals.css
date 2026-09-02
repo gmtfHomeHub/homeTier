@@ -2,9 +2,9 @@
 @tailwind utilities;
 
 :root {
-  --color-bg: var(--gray-2);
+  --color-bg: var(--gray-3);
   --color-surface: var(--gray-1);
-  --color-border: var(--gray-6);
+  --color-border: var(--gray-3);
   --color-text: var(--gray-12);
   --color-text-secondary: var(--gray-11);
   --color-primary: var(--accent-9);
@@ -14,8 +14,8 @@
 }
 
 .dark {
-  --color-bg: var(--gray-2);
-  --color-surface: var(--gray-1);
+  --color-bg: var(--gray-1);
+  --color-surface: var(--gray-2);
   --color-border: var(--gray-6);
   --color-text: var(--gray-12);
   --color-text-secondary: var(--gray-11);
@@ -31,19 +31,26 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: var(--color-bg);
   color: var(--color-text);
   overflow: hidden;
-  height: 100dvh;
-  width: 100vw;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overscroll-behavior: none;
 }
 
+/* fixed + inset 由视口提供边界，safe-area 恒定且不受 Radix 滚动锁改写 body 的影响 */
 #root {
-  height: 100dvh;
-  width: 100vw;
+  position: fixed;
+  inset: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+  display: flex;
+  flex-direction: column;
 }
 
 ::-webkit-scrollbar {
@@ -80,4 +87,16 @@ button:not([disabled]) {
 }
 .gray.disabled {
   cursor: not-allowed;
+}
+/* 二维码扫码容器：固定高度并让视频填满，保证 html5-qrcode 读取到的
+   clientWidth/clientHeight 稳定且 >= qrbox，避免解码循环因尺寸退化而空转 */
+#qr-reader {
+  position: relative;
+  background: #000;
+  border-radius: 8px;
+}
+#qr-reader video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
 }

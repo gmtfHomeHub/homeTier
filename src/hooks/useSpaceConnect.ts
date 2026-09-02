@@ -12,7 +12,7 @@ export function useSpaceConnect() {
     try {
       await connectSpace(spaceId);
     } catch (e) {
-      toastError(String(e));
+      toastError(e instanceof Error ? e.message : String(e));
       throw e;
     } finally {
       setConnectingId(null);
@@ -24,7 +24,7 @@ export function useSpaceConnect() {
     try {
       await disconnectSpace(spaceId);
     } catch (e) {
-      toastError(String(e));
+      toastError(e instanceof Error ? e.message : String(e));
       throw e;
     } finally {
       setDisconnectingId(null);

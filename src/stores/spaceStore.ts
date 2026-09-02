@@ -4,9 +4,8 @@ import { useAppTabsStore } from "./appTabsStore";
 import type { Space } from "../types";
 import { SpaceStatus } from "../enum";
 import i18n from "../i18n";
-import { isMobile, getPlatform } from "../utils/platform";
+import { isMobile } from "../utils/platform";
 import { connectWithVpn, disconnectWithVpn } from "../services/mobileVpn";
-import { toastError } from "../utils/toast";
 
 interface SpaceStore {
   spaces: Space[];
@@ -112,9 +111,9 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
         const space = get().spaces.find((s) => s.id === spaceId);
         if (!space) throw new Error("Space not found");
 
-        const success = await connectWithVpn(spaceId, space.name, space.virtual_ip ?? "10.144.144.1");
-        if (!success) {
-          throw new Error("VPN connection failed");
+        const errorMsg = await connectWithVpn(spaceId, space.name, space.virtual_ip ?? "10.144.144.1");
+        if (errorMsg) {
+          throw new Error(errorMsg);
         }
 
         set((state) => ({
@@ -135,7 +134,7 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
           ),
           error: String(e),
         }));
-        toastError(i18n.t("vpn.connectFailed", { error: String(e) }));
+        // 统一由调用方（useSpaceConnect）toast 一次，避免与 vpn.connectFailed 重复弹两条
         throw e;
       }
     }

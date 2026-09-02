@@ -111,7 +111,11 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("network.virtualIpv4")}</label>
               <TextField.Root size="1" value={strVal("virtual_ipv4")}
-                onChange={e => setStr("virtual_ipv4", e.target.value)}
+                onChange={e => {
+                  const ip = e.target.value;
+                  // 静态 IP 与 DHCP 互斥：输入 IP 时自动关闭 dhcp
+                  set({ virtual_ipv4: ip, ...(ip.trim() ? { dhcp: false } : {}) });
+                }}
                 placeholder="10.0.0.1" />
             </div>
             <div className={FIELD_CLASS}>
@@ -132,7 +136,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
             <label className={LABEL_CLASS}>{t("network.initialNodes")}</label>
             <div className="flex flex-col gap-1">
               {(value.peer_urls ?? []).map((url, i) => (
-                <div key={i} className="flex items-start gap-4">
+                <Flex gap="4" align="center" key={i}>
                   <TextField.Root size="1" className="flex-1" value={url}
                     onChange={e => {
                       const urls = [...(value.peer_urls ?? [])];
@@ -144,7 +148,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                     const urls = (value.peer_urls ?? []).filter((_, j) => j !== i);
                     set({ peer_urls: urls.length ? urls : [] });
                   }}>×</Button>
-                </div>
+                </Flex>
               ))}
               <Flex justify="center" className="mt-2">
               <Button variant="ghost" color="blue" size="1"
@@ -172,7 +176,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           <div className={FIELD_CLASS}>
             <label className={LABEL_CLASS}>{t("network.listenersTitle")}</label>
             {(value.listener_urls ?? []).map((l, i) => (
-              <div key={i} className="flex items-start gap-2">
+              <Flex gap="2" align="center" key={i}>
                 <TextField.Root size="1" className="flex-1" value={l}
                   onChange={e => {
                     const urls = [...(value.listener_urls ?? [])];
@@ -184,7 +188,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                   const urls = (value.listener_urls ?? []).filter((_, j) => j !== i);
                   set({ listener_urls: urls.length ? urls : [] });
                 }}>×</Button>
-              </div>
+              </Flex>
             ))}
             <Flex justify="center" className="mt-2">
               <Button variant="ghost" color="blue" size="1"
@@ -198,7 +202,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           <div className={FIELD_CLASS}>
             <label className={LABEL_CLASS}>{t("network.mappedListeners")}</label>
             {(value.mapped_listeners ?? []).map((l, i) => (
-              <div key={i} className="flex items-start gap-2">
+              <Flex gap="2" align="center" key={i}>
                 <TextField.Root size="1" className="flex-1" value={l}
                   onChange={e => {
                     const urls = [...(value.mapped_listeners ?? [])];
@@ -209,7 +213,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                   const urls = (value.mapped_listeners ?? []).filter((_, j) => j !== i);
                   set({ mapped_listeners: urls.length ? urls : [] });
                 }}>×</Button>
-              </div>
+              </Flex>
             ))}
             <Flex justify="center" className="mt-2">
               <Button variant="ghost" color="blue" size="1"
@@ -223,7 +227,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           <div className={FIELD_CLASS}>
             <label className={LABEL_CLASS}>{t("network.subnetProxy")}</label>
             {(value.proxy_cidrs ?? []).map((cidr, i) => (
-              <div key={i} className="flex items-start gap-2">
+              <Flex gap="2" align="center" key={i}>
                 <TextField.Root size="1" className="flex-1" value={cidr}
                   onChange={e => {
                     const list = [...(value.proxy_cidrs ?? [])];
@@ -235,7 +239,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                   const list = (value.proxy_cidrs ?? []).filter((_, j) => j !== i);
                   set({ proxy_cidrs: list.length ? list : [] });
                 }}>×</Button>
-              </div>
+              </Flex>
             ))}
 
             <Flex justify="center" className="mt-2">
@@ -333,7 +337,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
       <CollapsibleSection title={t("network.portForwards")} defaultOpen>
         <div className="space-y-2">
           {port_forwards.map((pf, i) => (
-            <div key={i} className="flex flex-wrap items-center gap-2 p-2 border border-[var(--color-border)] rounded">
+            <Flex gap="2" align="center" key={i} className="flex-wrap p-2 border border-[var(--color-border)] rounded">
               <Select.Root value={pf.proto}
                 onValueChange={(v) => {
                   const list = [...port_forwards];
@@ -385,7 +389,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                 }}>
                 <Trash2 size={14} />
               </Button>
-            </div>
+            </Flex>
           ))}
 
           <Flex justify="center" className="mt-2">

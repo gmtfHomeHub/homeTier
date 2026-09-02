@@ -102,6 +102,16 @@ fi
 # MainActivity.kt 由 fix-android-mainactivity.sh 统一生成（含 plugin 注册、WebView attach/detach）
 # 此处不再修改 MainActivity.kt
 
+# 复制自定义启动图标到生成的工程（覆盖 tauri android init 模板自带的默认 Tauri 图标）
+# 覆盖范围：mipmap-*dpi（ic_launcher/round/foreground）+ mipmap-anydpi-v26 自适应图标 + values 背景色
+ANDROID_RES_DIR="src-tauri/gen/android/app/src/main/res"
+if [ -d "src-tauri/icons/android" ] && [ -d "$ANDROID_RES_DIR" ]; then
+    cp -r src-tauri/icons/android/* "$ANDROID_RES_DIR/"
+    echo "[mobile-permissions] Launcher icons copied to $ANDROID_RES_DIR"
+else
+    echo "[mobile-permissions] WARN: 跳过图标复制（src-tauri/icons/android 或 $ANDROID_RES_DIR 不存在）"
+fi
+
 if [ -f "$IOS_PLIST" ]; then
     if ! grep -q 'NSCameraUsageDescription' "$IOS_PLIST"; then
         NODE_=$(which node || true)
