@@ -1254,17 +1254,78 @@ mod launcher_internal {
 
             if let Some(ref api) = api_service {
                 let ctrl = easytier::proto::rpc_types::controller::BaseController::default();
-                if let Ok(peers_resp) = api
+
+                // 1) list_peer: 获取 peer 连接状态 + 本机 IP
+                let peers_resp = api
                     .get_peer_manage_service()
                     .list_peer(ctrl.clone(), easytier::proto::api::instance::ListPeerRequest::default())
-                    .await
-                {
+                    .await;
+
+                // 2) list_route: 获取每个 peer 的 virtual_ip / hostname / latency
+                let routes_resp = api
+                    .get_peer_manage_service()
+                    .list_route(ctrl.clone(), easytier::proto::api::instance::ListRouteRequest::default())
+                    .await;
+
+                if let Ok(peers_resp) = peers_resp {
+                    // 按 peer_id 建立连接状态索引
+                    use std::collections::HashMap;
+                    let mut conn_map: HashMap<u32, &easytier::proto::api::instance::PeerInfo> = HashMap::new();
+                    for p in &peers_resp.peer_infos {
+                        conn_map.insert(p.peer_id, p);
+                    }
+
+                    // 本机 IP（my_info.ipv4_addr）
+                    let my_ip = peers_resp.my_info.as_ref().and_then(|m| {
+                        if m.ipv4_addr.is_empty() { None } else { Some(m.ipv4_addr.clone()) }
+                    });
+
+                    // 按 peer_id 建立 route 索引（virtual_ip / hostname / latency）
+                    let mut route_map: HashMap<u32, &easytier::proto::api::instance::Route> = HashMap::new();
+                    if let Ok(routes_resp) = &routes_resp {
+                        for r in &routes_resp.routes {
+                            route_map.insert(r.peer_id, r);
+                        }
+                    }
+
+                    // 组装 PeerInfo 列表（连接的 peer + 有 route 的 peer 取并集）
+                    let mut all_peer_ids: std::collections::HashSet<u32> = conn_map.keys().copied().collect();
+                    all_peer_ids.extend(route_map.keys().copied());
+
+                    let mut peers: Vec<PeerInfo> = all_peer_ids.iter().map(|&pid| {
+                        let conn = conn_map.get(&pid);
+                        let route = route_map.get(&pid);
+                        PeerInfo {
+                            peer_id: pid,
+                            virtual_ip: route.and_then(|r| r.ipv4_addr.map(|ip| ip.to_string())),
+                            hostname: route.and_then(|r| {
+                                if r.hostname.is_empty() { None } else { Some(r.hostname.clone()) }
+                            }),
+                            latency_ms: route.map(|r| r.path_latency as f64).filter(|l| *l > 0.0),
+                            loss_rate: conn.and_then(|c| c.conns.first().map(|cn| cn.loss_rate as f64)),
+                            rx_bytes: conn.and_then(|c| c.conns.first().and_then(|cn| cn.stats.as_ref().map(|s| s.rx_bytes))),
+                            tx_bytes: conn.and_then(|c| c.conns.first().and_then(|cn| cn.stats.as_ref().map(|s| s.tx_bytes))),
+                            connected: conn.is_some(),
+                            is_local: false,
+                            version: route.and_then(|r| {
+                                if r.version.is_empty() { None } else { Some(r.version.clone()) }
+                            }),
+                            tunnel_proto: conn.and_then(|c| c.conns.first().and_then(|cn| cn.tunnel.as_ref().map(|t| t.tunnel_type.clone()))),
+                            nat_type: None,
+                        }
+                    }).collect();
+                    // 按 latency 排序（无 latency 的排后面）
+                    peers.sort_by(|a, b| {
+                        let la = a.latency_ms.unwrap_or(f64::MAX);
+                        let lb = b.latency_ms.unwrap_or(f64::MAX);
+                        la.partial_cmp(&lb).unwrap_or(std::cmp::Ordering::Equal)
+                    });
+
                     let mut s = status.write().await;
                     s.connected_peers = peers_resp.peer_infos.len() as u32;
-                    if let Some(ref my_info) = peers_resp.my_info {
-                        if !my_info.ipv4_addr.is_empty() {
-                            s.virtual_ip = Some(my_info.ipv4_addr.clone());
-                        }
+                    s.peers = peers;
+                    if let Some(ip) = my_ip {
+                        s.virtual_ip = Some(ip);
                     }
                 }
             }
