@@ -1036,18 +1036,43 @@ impl SpaceManager {
         let space = spaces.iter().find(|s| &s.id == space_id)
             .ok_or_else(|| "Space not found".to_string())?;
 
-        let existing_config = self.db.get_space_config(&space_id.to_string()).ok().flatten();
-
-        let cfg = crate::easytier::config::NetworkConfig {
-            network_name: space.network_name.clone(),
-            network_secret: space.network_secret.clone(),
-            ..Default::default()
+        // 从 DB 加载完整配置作为主配置（与桌面端 get_effective_config 一致），
+        // 而非当作 initial_config override。initial_config 的 override 逻辑只处理
+        // peers(对象数组)/ipv4(字符串)，不处理 peer_urls(字符串数组)/virtual_ipv4，
+        // 会导致 peer 和虚拟 IP 丢失。
+        let cfg = match self.db.get_space_config(&space_id.to_string())
+            .ok()
+            .flatten()
+            .and_then(|json| crate::easytier::config::NetworkConfig::from_config_json(&json).ok())
+        {
+            Some(mut config) => {
+                // 补充 identity 字段（防止 config_json 中缺失）
+                if config.network_name.is_empty() {
+                    config.network_name = space.network_name.clone();
+                }
+                if config.network_secret.is_empty() {
+                    config.network_secret = space.network_secret.clone();
+                }
+                crate::log_info!(format!(
+                    "connect: 从 DB 加载配置, dhcp={}, virtual_ipv4={}, peer_urls={}",
+                    config.dhcp, config.virtual_ipv4, config.peer_urls.len()
+                ), &space_id.to_string());
+                config
+            }
+            None => {
+                crate::log_info!("connect: 无历史配置，使用默认配置", &space_id.to_string());
+                crate::easytier::config::NetworkConfig {
+                    network_name: space.network_name.clone(),
+                    network_secret: space.network_secret.clone(),
+                    ..Default::default()
+                }
+            }
         };
 
         // Emit VPN pending state for mobile
         self.emit_vpn_state(space_id, "pending-vpn", None).await;
 
-        self.easytier.start_network(&cfg, *space_id, existing_config).await?;
+        self.easytier.start_network(&cfg, *space_id, None).await?;
         crate::log_info!(format!("连接空间: {}", space.name), &space_id.to_string());
         Ok(())
     }
