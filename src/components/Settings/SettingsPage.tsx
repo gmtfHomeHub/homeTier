@@ -11,7 +11,8 @@ import { applyGlobalShortcuts } from "../../services/shortcuts";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { NetworkConfig } from "../../types/network";
 import { useTranslation } from "react-i18next";
-import { Tabs, Tooltip, Button, Flex, Text, Switch, Card, Select } from "@radix-ui/themes";
+import { Tabs, Button, Flex, Text, Switch, Card, Select } from "@radix-ui/themes";
+import Tip from "../Common/Tip";
 import { SettingTabEnum, LanguageEnum, ThemeEnum } from "../../enum";
 import { toastSuccess, toastError } from "../../utils/toast";
 import { isMobile } from "../../utils/platform";
@@ -126,7 +127,7 @@ export function SettingsPage() {
           </Tabs.List>
 
           {/* 内容区 */}
-          <Tabs.Content value="basic" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 overflow-y-auto">
+          <Tabs.Content value="basic" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 min-h-0 overflow-y-auto">
             <div className="flex flex-col max-w-4xl gap-4 p-4 mx-auto md:flex-row md:items-start">
               {/* 左列 */}
               <div className="flex flex-col flex-1 min-w-0 gap-4">
@@ -203,11 +204,11 @@ export function SettingsPage() {
                     <Flex direction="column">
                       <Flex align="center" gap="2">
                         <Text size="3" weight="medium">{t("settings.showLogs")}</Text>
-                        <Tooltip content={t("settings.showLogsHelp")}>
+                        <Tip content={t("settings.showLogsHelp")}>
                           <span className="inline-flex items-center cursor-pointer text-[var(--color-text-secondary)]">
                             <HelpCircle size={14} />
                           </span>
-                        </Tooltip>
+                        </Tip>
                       </Flex>
                       <Text size="1" color="gray">{t("settings.showLogsDesc")}</Text>
                     </Flex>
@@ -233,11 +234,11 @@ export function SettingsPage() {
                     <Flex direction="column" className="flex-1">
                       <Flex align="center" gap="2">
                         <Text size="3" weight="medium">{t("settings.shortcuts")}</Text>
-                        <Tooltip content={t("settings.shortcutsHelp")}>
+                        <Tip content={t("settings.shortcutsHelp")}>
                           <span className="inline-flex items-center cursor-pointer text-[var(--color-text-secondary)]">
                             <HelpCircle size={14} />
                           </span>
-                        </Tooltip>
+                        </Tip>
                       </Flex>
                       <Text size="1" color="gray">{t("settings.shortcutsDesc")}</Text>
                     </Flex>
@@ -301,7 +302,7 @@ export function SettingsPage() {
               <LogViewer />
           </Tabs.Content>
 
-          <Tabs.Content value="easytier" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 overflow-y-auto">
+          <Tabs.Content value="easytier" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 min-h-0 overflow-y-auto">
             <Card size="3" className="grid max-w-3xl grid-cols-1 gap-4 p-4 mx-auto my-4">
               <EasyTierConfigEditor
                 value={easytierConfig}
@@ -333,7 +334,7 @@ export function SettingsPage() {
             </Card>
           </Tabs.Content>
 
-          <Tabs.Content value="config" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 overflow-y-auto">
+          <Tabs.Content value="config" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 min-h-0 overflow-y-auto">
             <Card size="3" className="grid max-w-3xl grid-cols-1 gap-4 p-4 mx-auto my-4">
             <AppConfigEditor />
             </Card>

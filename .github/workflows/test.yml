@@ -1,4 +1,4 @@
-name: Release
+name: Test Build
 
 on:
   workflow_dispatch:
@@ -28,32 +28,32 @@ on:
         required: false
         default: false
         type: boolean
+      debug_mode:
+        description: '所有平台启用 debug 构建（调试/免签名直装）'
+        required: false
+        default: true
+        type: boolean
       build_ios:
-        description: '打包 iOS（无签名构建，未完成平台隔离，默认跳过）'
+        description: '打包 iOS（无签名构建）'
         required: false
         default: false
         type: boolean
       build_docker:
-        description: '构建 Docker 镜像并推送到 GHCR'
+        description: '构建 Docker 镜像（仅构建，不推送）'
         required: false
         default: false
         type: boolean
-  push:
-    tags:
-      - 'v*'
 
-# 控制 EasyTier core 版本（requirements: 用单个环境变量统一管理）
 env:
   EASYTIER_CORE_VERSION: v2.6.4
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: test-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   # ---------------------------------------------------------------
-  # 1. 下载各平台 easytier-core 归档到 resources/bin/（供打包时内嵌）
-  #    归档命名与 downloader::detect_platform() 保持一致，仅下载存在的资产。
+  # 1. 下载各平台 easytier-core 归档（供打包时内嵌）
   # ---------------------------------------------------------------
   fetch-easytier:
     runs-on: ubuntu-latest
@@ -71,20 +71,6 @@ jobs:
           done
           ls -la src-tauri/resources/bin/
 
-      - name: Verify checksums (sha256 from GitHub Release API)
-        run: |
-          set -e
-          curl -s "https://api.github.com/repos/EasyTier/EasyTier/releases/tags/${EASYTIER_CORE_VERSION}" -o /tmp/easytier-release.json
-          for f in src-tauri/resources/bin/*.zip; do
-            name=$(basename "$f")
-            expected=$(jq -r --arg n "$name" '.assets[] | select(.name==$n) | .digest' /tmp/easytier-release.json | sed 's/sha256://')
-            actual=$(sha256sum "$f" | cut -d' ' -f1)
-            if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
-              echo "CHECKSUM MISMATCH: $name"; exit 1
-            fi
-            echo "verified: $name"
-          done
-
       - name: Trim easytier archives (keep only easytier-core)
         run: |
           set -e
@@ -101,7 +87,9 @@ jobs:
             orig_size=$(stat -c%s "$zip" 2>/dev/null || stat -f%z "$zip")
             tmpdir=$(mktemp -d)
             unzip -q -o "$zip" -d "$tmpdir"
+            # Delete everything except easytier-core* (covers easytier-core.exe / easytier-core)
             find "$tmpdir" -type f ! -name "easytier-core*" -delete
+            # Recreate archive
             rm "$zip"
             (cd "$tmpdir" && zip -q -r "$OLDPWD/$zip" .)
             rm -rf "$tmpdir"
@@ -112,46 +100,43 @@ jobs:
           echo "--- After trim ---"
           ls -la src-tauri/resources/bin/
 
-      # 每个平台归档单独上传：各打包 job 只取本平台文件，
-      # 避免把 5 个平台的 easytier-core（合计约 142MB）全部打进同一个安装包
       - name: Upload per-platform artifacts
         uses: actions/upload-artifact@v4
         with:
           name: easytier-bin-linux-x86_64
           path: src-tauri/resources/bin/easytier-linux-x86_64-${{ env.EASYTIER_CORE_VERSION }}.zip
-          retention-days: 1
+          retention-days: 7
       - name: Upload per-platform artifacts (linux-aarch64)
         uses: actions/upload-artifact@v4
         with:
           name: easytier-bin-linux-aarch64
           path: src-tauri/resources/bin/easytier-linux-aarch64-${{ env.EASYTIER_CORE_VERSION }}.zip
-          retention-days: 1
+          retention-days: 7
       - name: Upload per-platform artifacts (macos-x86_64)
         uses: actions/upload-artifact@v4
         with:
           name: easytier-bin-macos-x86_64
           path: src-tauri/resources/bin/easytier-macos-x86_64-${{ env.EASYTIER_CORE_VERSION }}.zip
-          retention-days: 1
+          retention-days: 7
       - name: Upload per-platform artifacts (macos-aarch64)
         uses: actions/upload-artifact@v4
         with:
           name: easytier-bin-macos-aarch64
           path: src-tauri/resources/bin/easytier-macos-aarch64-${{ env.EASYTIER_CORE_VERSION }}.zip
-          retention-days: 1
+          retention-days: 7
       - name: Upload per-platform artifacts (windows-x86_64)
         uses: actions/upload-artifact@v4
         with:
           name: easytier-bin-windows-x86_64
           path: src-tauri/resources/bin/easytier-windows-x86_64-${{ env.EASYTIER_CORE_VERSION }}.zip
-          retention-days: 1
+          retention-days: 7
 
   # ---------------------------------------------------------------
-  # 2. 桌面端打包（tag 发布全量打包；手动触发按平台开关选择）
-  #    各 job 仅下载并嵌入本平台的 easytier-core 归档
+  # 2. 桌面端打包（手动触发按平台开关选择）
   # ---------------------------------------------------------------
   build-desktop-macos:
     needs: fetch-easytier
-    if: startsWith(github.ref, 'refs/tags/') || inputs.build_macos
+    if: inputs.build_macos
     strategy:
       fail-fast: false
       matrix:
@@ -203,8 +188,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build Tauri bundle
-        run: |
-          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+        run: pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} ${{ inputs.debug_mode && '--debug' || '' }}
 
       - name: Stage artifact
         shell: bash
@@ -220,10 +204,11 @@ jobs:
           name: ${{ matrix.artifact }}
           path: dist/*.dmg
           if-no-files-found: error
+          retention-days: 7
 
   build-desktop-windows:
     needs: fetch-easytier
-    if: startsWith(github.ref, 'refs/tags/') || inputs.build_windows
+    if: inputs.build_windows
     strategy:
       fail-fast: false
       matrix:
@@ -263,11 +248,6 @@ jobs:
           name: easytier-bin-${{ matrix.bin }}
           path: src-tauri/resources/bin/
 
-      # 关键修复：运行 vcvars64 并导出完整的 MSVC 环境（INCLUDE/LIB/PATH）。
-      # bindgen（kcp-sys）用 clang 编译 wrapper.h，clang 在 MSVC 目标下只要读到
-      # INCLUDE 环境变量就不会再自动探测 VS 工具链——而 runner 镜像自带的 INCLUDE
-      # 只有 Windows SDK（ucrt/shared/um），缺少 VC\Tools\MSVC\<ver>\include，
-      # 导致找不到 vcruntime.h。这一步把环境补齐到与本地 Developer PowerShell 一致。
       - name: Set up MSVC development environment (vcvars64)
         uses: ilammy/msvc-dev-cmd@v1
 
@@ -282,8 +262,6 @@ jobs:
           $out = "$env:TEMP/WpdPack.zip"
           Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
           Expand-Archive -Path $out -DestinationPath "C:/WpdPack" -Force
-          # x64 lib: C:/WpdPack/WpdPack/Lib/x64/Packet.lib
-          # Add to LIB so linker finds Packet.lib
           $libPath = "C:/WpdPack/WpdPack/Lib/x64"
           echo "LIB=$libPath;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "INCLUDE=C:/WpdPack/WpdPack/Include;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -311,8 +289,6 @@ jobs:
       - name: Configure MSVC include path (for vcruntime.h used by kcp-sys bindgen)
         shell: pwsh
         run: |
-          # Find MSVC include directory (contains vcruntime.h needed by ucrt/corecrt.h)
-          # Standard location: C:\Program Files\Microsoft Visual Studio\<VS>\<edition>\VC\Tools\MSVC\<ver>\include
           $msvcRoot = "C:/Program Files/Microsoft Visual Studio"
           if (Test-Path $msvcRoot) {
             $msvcDirs = Get-ChildItem -Path "$msvcRoot/*/*/VC/Tools/MSVC/*/include" -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
@@ -329,18 +305,13 @@ jobs:
       - name: Configure WinDivert (compile from vendored source)
         shell: bash
         run: |
-          # The windivert-rust crate (used by easytier) has a "static" feature that
-          # compiles WinDivert from the vendored source (vendor/dll/windivert.c)
-          # instead of linking a pre-built binary. Setting WINDIVERT_STATIC=1
-          # activates this path, avoiding broken external download URLs.
           echo "WINDIVERT_STATIC=1" >> "$GITHUB_ENV"
           echo "[windivert] Using vendored source build (WINDIVERT_STATIC=1)"
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
       - name: Build Tauri bundle
-        run: |
-          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} --verbose
+        run: pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} --verbose ${{ inputs.debug_mode && '--debug' || '' }}
 
       - name: Stage artifact
         shell: bash
@@ -356,10 +327,11 @@ jobs:
           name: ${{ matrix.artifact }}
           path: dist/*.msi
           if-no-files-found: error
+          retention-days: 7
 
   build-desktop-linux:
     needs: fetch-easytier
-    if: startsWith(github.ref, 'refs/tags/') || inputs.build_linux
+    if: inputs.build_linux
     strategy:
       fail-fast: false
       matrix:
@@ -414,8 +386,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build Tauri bundle
-        run: |
-          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+        run: pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} ${{ inputs.debug_mode && '--debug' || '' }}
 
       - name: Stage artifact
         shell: bash
@@ -431,13 +402,14 @@ jobs:
           name: ${{ matrix.artifact }}
           path: dist/*.deb
           if-no-files-found: error
+          retention-days: 7
 
   # ---------------------------------------------------------------
   # 3. Linux AppImage
   # ---------------------------------------------------------------
   build-appimage:
     needs: fetch-easytier
-    if: startsWith(github.ref, 'refs/tags/') || inputs.build_appimage
+    if: inputs.build_appimage
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -464,7 +436,7 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile
       - name: Build
-        run: pnpm tauri build --bundles appimage
+        run: pnpm tauri build --bundles appimage ${{ inputs.debug_mode && '--debug' || '' }}
       - name: Stage artifact
         shell: bash
         run: |
@@ -478,12 +450,13 @@ jobs:
           name: homeTier.AppImage
           path: dist/*.AppImage
           if-no-files-found: error
+          retention-days: 7
 
   # ---------------------------------------------------------------
   # 4. Android APK
   # ---------------------------------------------------------------
   build-android:
-    if: startsWith(github.ref, 'refs/tags/') || inputs.build_android
+    if: inputs.build_android
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -521,12 +494,10 @@ jobs:
         run: |
           mkdir -p src-tauri/keystore
           if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
-            # 从 GitHub Secrets 创建 keystore
             echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > src-tauri/keystore/release.keystore
             echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
             echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
           else
-            # 未配置 secrets 时生成一次性自签名 keystore，保证 APK 始终可签名构建
             keytool -genkeypair -v -keystore src-tauri/keystore/release.keystore \
               -alias hometier -keyalg RSA -keysize 2048 -validity 10000 \
               -storepass hometier123 -keypass hometier123 \
@@ -563,7 +534,6 @@ jobs:
         run: bash scripts/fix-android-mainactivity.sh
       - name: Fix Kotlin version for JDK 17 compatibility
         run: |
-          # Kotlin 1.6.21 doesn't support JDK 17; upgrade to 1.9.22
           sed -i 's/classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1\.6\.21")/classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.22")/' src-tauri/gen/android/build.gradle.kts
       - name: Configure Android signing
         run: bash scripts/fix-android-build-gradle.sh
@@ -575,7 +545,7 @@ jobs:
       - name: Verify Android injection
         run: bash scripts/verify-android-injection.sh
       - name: Build APK
-        run: pnpm tauri android build --apk --target aarch64 --target armv7
+        run: pnpm tauri android build --apk --target aarch64 --target armv7 ${{ inputs.debug_mode && '--debug' || '' }}
       - name: Verify APK contents (native libs per ABI)
         run: |
           APK=$(find src-tauri/gen/android -maxdepth 8 -name "*.apk" | head -1)
@@ -595,9 +565,10 @@ jobs:
           name: homeTier-android.apk
           path: dist/*.apk
           if-no-files-found: error
+          retention-days: 7
 
   # ---------------------------------------------------------------
-  # 5. iOS (无签名构建，需 macOS runner) - 仅手动触发，tag 发布不自动构建
+  # 5. iOS（无签名构建，需 macOS runner）
   # ---------------------------------------------------------------
   build-ios:
     if: inputs.build_ios
@@ -631,7 +602,7 @@ jobs:
       - name: Build easytier-ios-staticlib for iOS
         run: |
           cd src-tauri
-          cargo build --target aarch64-apple-ios --manifest-path easytier-ios-staticlib/Cargo.toml --release
+          cargo build --target aarch64-apple-ios --manifest-path easytier-ios-staticlib/Cargo.toml ${{ !inputs.debug_mode && '--release' || '' }}
       - name: Inject NetworkExtension target into Xcode project
         run: |
           python3 src-tauri/gen-scripts/ios/inject_ne_target.py \
@@ -641,7 +612,7 @@ jobs:
         run: |
           xcodebuild -project src-tauri/gen/apple/HomeTier.xcodeproj \
             -scheme HomeTier \
-            -configuration Release \
+            -configuration ${{ inputs.debug_mode && 'Debug' || 'Release' }} \
             -destination 'generic/platform=iOS' \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
@@ -653,72 +624,28 @@ jobs:
           name: homeTier-ios
           path: src-tauri/gen/apple/build/**/*.app
           if-no-files-found: warn
+          retention-days: 7
 
   # ---------------------------------------------------------------
-  # 6. Docker 镜像（tag 发布 或 手动触发）
+  # 6. Docker 镜像（仅构建，不推送）
   # ---------------------------------------------------------------
   build-docker:
     needs: fetch-easytier
-    if: startsWith(github.ref, 'refs/tags/') || inputs.build_docker
+    if: inputs.build_docker
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: easytier-bin-linux-x86_64
           path: src-tauri/resources/bin/
-      - name: Compute lowercase image repo
-        id: repo
-        run: echo "image_repo=ghcr.io/$(echo ${{ github.repository }} | tr 'A-Z' 'a-z')" >> "$GITHUB_OUTPUT"
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push
+      - name: Build Docker image (no push)
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
-          tags: |
-            ${{ steps.repo.outputs.image_repo }}:latest
-            ${{ steps.repo.outputs.image_repo }}:${{ github.ref_name }}
+          push: false
+          tags: hometier:test
           build-args: |
             EASYTIER_CORE_VERSION=${{ env.EASYTIER_CORE_VERSION }}
-
-  # ---------------------------------------------------------------
-  # 7. 汇总发布到 GitHub Release（仅 tag 触发）
-  # ---------------------------------------------------------------
-  release:
-    needs: [build-desktop-macos, build-desktop-windows, build-desktop-linux, build-appimage, build-android, build-docker]
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          pattern: homeTier-*
-          merge-multiple: true
-      - name: Collect release files
-        run: |
-          mkdir -p release_files
-          find artifacts -type f \( -name "*.dmg" -o -name "*.msi" -o -name "*.deb" \
-            -o -name "*.AppImage" -o -name "*.apk" \) \
-            -exec cp {} release_files/ \;
-          echo "Release files:"
-          ls -lh release_files/
-      - name: Generate checksums
-        run: |
-          cd release_files && sha256sum * > checksums.txt && cat checksums.txt
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          generate_release_notes: true
-          files: release_files/*

@@ -68,7 +68,10 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .app_data_dir()
         .unwrap_or_else(|_| std::path::PathBuf::from("."));
     let config_path = app_data.join("homeTier.conf");
-    let resource_dir = app.path().resource_dir().ok();
+    // resource_dir 兜底：Tauri 解析失败时退回到当前 exe 所在目录（MSI 把 resources/ 放在 exe 旁）
+    let resource_dir = app.path().resource_dir().ok().or_else(|| {
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.to_path_buf()))
+    });
     let config_created = crate::config::init(config_path.clone(), resource_dir.as_deref());
 
     // 首次生成配置文件时，继承 DB 中已有的业务设置（之后以配置文件为准）
@@ -115,6 +118,24 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(instance_manager.clone());
     log_info!("[GUI] EasyTier 管理器已初始化");
 
+    // 后台解压内置 easytier-core 二进制（确保版本显示正常、离线可用）
+    // 移动端使用库内嵌 EasyTier（easytier-ffi 静态链接），不需要外部二进制
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let mgr = instance_manager.clone();
+        async_runtime::spawn(async move {
+            if let Err(e) = mgr.downloader.ensure_binary().await {
+                crate::log_warn!(format!("[GUI] 内置二进制解压失败（将在线下载）: {}", e));
+            } else {
+                crate::log_info!("[GUI] 内置 easytier-core 二进制已就绪");
+            }
+        });
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        crate::log_info!("[GUI] 移动端使用库内嵌 EasyTier，跳过外部二进制检查");
+    }
+
     // daemon 就绪标志（前端通过 Tauri command 轮询）
     let daemon_ready = {
         let ready = Arc::new(AtomicBool::new(false));
@@ -135,21 +156,16 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                     let _ = window.show();
                 }
                 set_daemon_child(child);
-                // 后台轮询 daemon 就绪（signal 文件 + 进程存活检测）
+                // 后台轮询 daemon 就绪（signal 文件 + 进程存活检测 + 端口连通性验证）
                 let app_handle = app.handle().clone();
                 let daemon_ready_flag = daemon_ready.clone();
                 let signal_path = app_data.join("daemon_ready.signal");
+                let state_path = app_data.join("daemon_state.json");
                 std::thread::spawn(move || {
                     let daemon_ready_bool = daemon_ready_flag.0;
                     let daemon_ready_reason = daemon_ready_flag.1;
                     for i in 0..60 {
-                        if signal_path.exists() {
-                            daemon_ready_bool.store(true, Ordering::SeqCst);
-                            let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": true }));
-                            log_info!("[GUI] daemon 已就绪（signal 文件检测到）");
-                            return;
-                        }
-                        // 检查 daemon 进程是否已退出
+                        // 先检查 daemon 进程是否已退出
                         if let Some(guard) = crate::app::daemon::get_daemon_child() {
                             if let Ok(mut g) = guard.lock() {
                                 if g.as_mut().map(|c| !c.is_alive()).unwrap_or(false) {
@@ -159,6 +175,32 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                                     let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": false, "reason": reason_str }));
                                     return;
                                 }
+                            }
+                        }
+                        // 再检查 signal 文件（仅当 daemon 进程存活时才认）
+                        if signal_path.exists() {
+                            // 验证端口连通性：读取 daemon_state.json 实际端口并尝试 TCP 连接
+                            let mut port_ok = false;
+                            if let Ok(content) = std::fs::read_to_string(&state_path) {
+                                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                                    if let Some(p) = json.get("rpc_port").and_then(|v| v.as_u64()) {
+                                        let port = p as u16;
+                                        if let Ok(_) = std::net::TcpStream::connect_timeout(
+                                            &format!("127.0.0.1:{}", port).parse().unwrap(),
+                                            std::time::Duration::from_millis(200),
+                                        ) {
+                                            port_ok = true;
+                                        }
+                                    }
+                                }
+                            }
+                            if port_ok {
+                                daemon_ready_bool.store(true, Ordering::SeqCst);
+                                let _ = app_handle.emit("daemon-ready", serde_json::json!({ "ready": true }));
+                                log_info!("[GUI] daemon 已就绪（signal 文件 + 端口连通性验证通过）");
+                                return;
+                            } else {
+                                log_warn!("[GUI] signal 文件存在但端口不通，等待 daemon 真正就绪...");
                             }
                         }
                         std::thread::sleep(std::time::Duration::from_millis(200));
@@ -181,17 +223,18 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 log_error!(format!("[GUI] 启动 daemon 失败: {}", e));
             }
         }
-        // 创建 IPC 客户端供 Tauri 命令使用
-        let ipc_client = Arc::new(crate::daemon::client::IpcClient::default_port());
+        // 创建 IPC 客户端供 Tauri 命令使用（从 daemon_state.json 读取实际端口）
+        let ipc_client = Arc::new(crate::daemon::client::IpcClient::from_data_dir(&app_data));
         app.manage(ipc_client);
         log_info!("[GUI] IPC 客户端已创建");
 
         // 初始化日志转发：GUI 日志 → daemon（单一存储）
         let cached_logs = crate::log::get_all(None);
+        let app_data_log = app_data.clone();
         std::thread::spawn(move || {
             let (tx, rx) = std::sync::mpsc::channel::<crate::log::LogEntry>();
             crate::log::init_forward(tx);
-            let client = crate::daemon::client::IpcClient::default_port();
+            let client = crate::daemon::client::IpcClient::from_data_dir(&app_data_log);
             let mut ready = false;
             for _ in 0..60 {
                 if client.ping_sync() {
@@ -351,7 +394,7 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         let space_manager_sync = space_manager_clone.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_time()
+                .enable_all()
                 .build()
                 .unwrap();
             rt.block_on(async {

@@ -25,6 +25,11 @@ impl EasyTierDownloader {
         Self { bin_dir, current_version_file, platform, resource_dir: resource_dir.map(|p| p.to_path_buf()) }
     }
 
+    /// 返回打包资源目录（供进程启动时兜底复制 DLL 等使用）
+    pub fn resource_dir(&self) -> Option<PathBuf> {
+        self.resource_dir.clone()
+    }
+
     /// 检测当前平台
     pub(crate) fn detect_platform() -> String {
         let os = std::env::consts::OS;
@@ -78,8 +83,8 @@ impl EasyTierDownloader {
     /// 从 Tauri 打包资源（resources/bin/）查找当前平台的 easytier-core 归档并安装
     async fn extract_bundled_binary(&self) -> Result<PathBuf, String> {
         let Some(resource_dir) = &self.resource_dir else {
-            crate::log_debug!("[EasyTierDownloader] 无打包资源目录，跳过内置二进制解压");
-            return Err("无打包资源目录".into());
+            crate::log_warn!("[EasyTierDownloader] resource_dir 为 None，无法从打包资源解压内置二进制");
+            return Err("resource_dir 为 None".into());
         };
 
         let zip_name = format!("easytier-{}-v", self.platform);
@@ -91,10 +96,13 @@ impl EasyTierDownloader {
         ];
 
         for dir in candidates.drain(..) {
-            crate::log_debug!(format!("[EasyTierDownloader] 扫描内置二进制目录: {}", dir.display()));
+            crate::log_info!(format!("[EasyTierDownloader] 扫描内置二进制目录: {}", dir.display()));
             let entries = match std::fs::read_dir(&dir) {
                 Ok(e) => e,
-                Err(_) => continue,
+                Err(e) => {
+                    crate::log_debug!(format!("[EasyTierDownloader] 读取目录失败 {}: {}", dir.display(), e));
+                    continue;
+                }
             };
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -114,7 +122,13 @@ impl EasyTierDownloader {
                     version,
                     path.display()
                 ));
-                return self.install(version, BinarySource::LocalArchive(path)).await;
+                match self.install(version, BinarySource::LocalArchive(path)).await {
+                    Ok(p) => return Ok(p),
+                    Err(e) => {
+                        crate::log_error!(format!("[EasyTierDownloader] 内置二进制安装失败: {}", e));
+                        return Err(format!("内置二进制安装失败: {}", e));
+                    }
+                }
             }
         }
 
@@ -168,7 +182,7 @@ impl EasyTierDownloader {
                 {
                     if let Some(resource_dir) = &self.resource_dir {
                         let target_dir = target_path.parent().unwrap_or(&self.bin_dir);
-                        for dll_name in &["packet.dll", "wpcap.dll"] {
+                        for dll_name in &["packet.dll", "wpcap.dll", "wintun.dll", "WinDivert64.sys"] {
                             let mut copied = false;
                             for candidate_dir in &[
                                 resource_dir.join("resources").join("bin"),
@@ -177,6 +191,14 @@ impl EasyTierDownloader {
                             ] {
                                 let src = candidate_dir.join(dll_name);
                                 if src.exists() {
+                                    // 忽略占位文件（如 "PLACEHOLDER - Replace with actual packet.dll"），避免把假 DLL 复制给 easytier-core.exe
+                                    let is_real = std::fs::metadata(&src)
+                                        .map(|m| m.len() >= 10000)
+                                        .unwrap_or(false);
+                                    if !is_real {
+                                        crate::log_warn!(format!("[EasyTierDownloader] {} 疑似占位/非法文件，跳过", dll_name));
+                                        continue;
+                                    }
                                     if let Err(e) = std::fs::copy(&src, target_dir.join(dll_name)) {
                                         crate::log_warn!(format!("[EasyTierDownloader] 复制 {} 失败: {}", dll_name, e));
                                     } else {
@@ -259,18 +281,52 @@ impl EasyTierDownloader {
         .map_err(|e| format!("解压任务失败: {}", e))?
     }
 
+    /// Only unpack easytier-core* files, skip unused easytier-web/cli etc.
+    /// Runtime filter + CI trim (optimization A) combined: even untrimmed zips save I/O.
     fn extract_tar_gz(archive: &Path, target: &Path) -> Result<(), String> {
-        let file = std::fs::File::open(archive).map_err(|e| format!("打开归档失败: {}", e))?;
+        let file = std::fs::File::open(archive).map_err(|e| format!("open archive failed: {}", e))?;
         let decoder = flate2::read::GzDecoder::new(file);
         let mut archive = tar::Archive::new(decoder);
-        archive.unpack(target).map_err(|e| format!("解压 tar.gz 失败: {}", e))?;
+        for entry in archive.entries().map_err(|e| format!("read entries failed: {}", e))? {
+            let mut entry = entry.map_err(|e| format!("read entry failed: {}", e))?;
+            let path = entry.path()
+                .map_err(|e| format!("read path failed: {}", e))?
+                .to_string_lossy()
+                .to_string();
+            if !path.contains("easytier-core") {
+                continue;
+            }
+            entry.unpack_in(target).map_err(|e| format!("extract tar.gz entry failed: {}", e))?;
+        }
         Ok(())
     }
 
     fn extract_zip(archive: &Path, target: &Path) -> Result<(), String> {
-        let file = std::fs::File::open(archive).map_err(|e| format!("打开归档失败: {}", e))?;
-        let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("打开 zip 失败: {}", e))?;
-        archive.extract(target).map_err(|e| format!("解压 zip 失败: {}", e))?;
+        let file = std::fs::File::open(archive).map_err(|e| format!("open archive failed: {}", e))?;
+        let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("open zip failed: {}", e))?;
+        for i in 0..archive.len() {
+            let mut entry = archive.by_index(i).map_err(|e| format!("read zip entry failed: {}", e))?;
+            let name = entry.name().to_string();
+            if !name.contains("easytier-core") {
+                continue;
+            }
+            let enclosed = entry.enclosed_name()
+                .ok_or_else(|| format!("invalid zip entry path: {}", name))?;
+            let target_path = target.join(&enclosed);
+            if entry.is_dir() {
+                std::fs::create_dir_all(&target_path)
+                    .map_err(|e| format!("create dir failed: {}", e))?;
+            } else {
+                if let Some(parent) = target_path.parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| format!("create dir failed: {}", e))?;
+                }
+                let mut out = std::fs::File::create(&target_path)
+                    .map_err(|e| format!("create file failed: {}", e))?;
+                std::io::copy(&mut entry, &mut out)
+                    .map_err(|e| format!("extract zip entry failed: {}", e))?;
+            }
+        }
         Ok(())
     }
 

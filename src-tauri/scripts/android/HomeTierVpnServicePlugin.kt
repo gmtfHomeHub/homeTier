@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.net.VpnService
+import android.os.Build
 import androidx.activity.result.ActivityResult
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -50,21 +51,39 @@ class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity
     @Command
     fun prepareVpn(invoke: Invoke) {
         activity.runOnUiThread {
-            val it = VpnService.prepare(activity)
-            if (it != null) {
-                startActivityForResult(invoke, it, "onPrepareVpnResult")
-                return@runOnUiThread
+            try {
+                val it = VpnService.prepare(activity)
+                if (it != null) {
+                    startActivityForResult(invoke, it, "onPrepareVpnResult")
+                    return@runOnUiThread
+                }
+                val ret = JSObject()
+                ret.put("granted", true)
+                invoke.resolve(ret)
+            } catch (e: Exception) {
+                // 授权框无法发起/插件异常 → 回传真实错误，避免 JS 侧把“没弹窗”误报成“被拒绝”
+                val ret = JSObject()
+                ret.put("granted", false)
+                ret.put("error", e.message ?: e.javaClass.simpleName)
+                invoke.resolve(ret)
             }
-            val ret = JSObject()
-            ret.put("granted", true)
-            invoke.resolve(ret)
         }
     }
 
     @ActivityCallback
     fun onPrepareVpnResult(invoke: Invoke, result: ActivityResult) {
         val ret = JSObject()
-        ret.put("granted", result.resultCode == Activity.RESULT_OK)
+        if (result.resultCode == Activity.RESULT_OK) {
+            // 二次确认：授权后 VpnService.prepare() 应返回 null，避免仅凭 RESULT_OK 误判
+            val stillNeedsPrepare = runCatching { VpnService.prepare(activity) }.getOrNull()
+            ret.put("granted", stillNeedsPrepare == null)
+            if (stillNeedsPrepare != null) {
+                ret.put("error", "prepare still returns an intent after grant")
+            }
+        } else {
+            ret.put("granted", false)
+            ret.put("error", "VPN consent canceled")
+        }
         invoke.resolve(ret)
     }
 
@@ -86,7 +105,12 @@ class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity
                 intent.putExtra(HomeTierVpnService.DNS, args.dns)
                 intent.putExtra(HomeTierVpnService.DISALLOWED_APPLICATIONS, args.disallowedApplications)
                 intent.putExtra(HomeTierVpnService.MTU, args.mtu)
-                activity.startService(intent)
+                // 服务内部会 startForeground，需用 startForegroundService 以符合 Android 8+ 约束
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    ContextCompat.startForegroundService(activity, intent)
+                } else {
+                    activity.startService(intent)
+                }
             }
             invoke.resolve(ret)
         }

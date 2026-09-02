@@ -1,4 +1,12 @@
 {
+  "vpn": {
+    "connectFailed": "VPN 连接失败: {{error}}",
+    "connecting": "VPN 连接中…",
+    "connected": "VPN 已连接",
+    "disconnected": "VPN 已断开",
+    "prepareDenied": "VPN 授权被拒绝或未完成",
+    "tunFdFailed": "获取 TUN 设备失败"
+  },
   "mobile": {
     "voice": {
       "toolbar": "语音控制",
@@ -231,6 +239,7 @@
     "shareFailed": "分享链接生成失败",
     "scanToJoin": "扫码加入",
     "cameraUnavailable": "无法访问摄像头",
+    "scanNoResult": "未识别到二维码，请对准后重试",
     "confirmJoinTitle": "确认加入空间",
     "confirmJoinIp": "IP 地址",
     "dhcpAuto": "DHCP 自动分配",
@@ -414,7 +423,7 @@
     "flagDevName": "设备名",
     "flagEnableEncryption": "启用加密",
     "flagEnableIPv6": "启用 IPv6",
-    "flagUseSmoltcp": "use_smoltcp",
+    "flagUseSmoltcp": "使用用户态协议栈",
     "flagDisableIpv6": "禁用 IPv6",
     "flagIpv6PublicAddrAuto": "IPv6 公网地址自动发现",
     "flagDisableKcpInput": "禁用 KCP 输入",
