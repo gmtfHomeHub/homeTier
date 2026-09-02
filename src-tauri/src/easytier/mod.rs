@@ -991,15 +991,15 @@ impl EasyTierManager {
     /// 获取详细网络统计（Mobile: 基于库实例状态组装）
     pub async fn get_network_stats(&self, instance_id: &Uuid) -> Option<crate::daemon::ipc::SpaceRuntimeStatus> {
         let instance = self.instances.get(instance_id)?;
-        let s = instance.status.read().await;
+        let (is_running, virtual_ip, connected_peers, rx_bytes, tx_bytes, avg_latency_ms) = instance.get_runtime_stats().await;
         Some(crate::daemon::ipc::SpaceRuntimeStatus {
             space_id: instance_id.to_string(),
-            is_running: s.is_running,
-            virtual_ip: s.virtual_ip.clone(),
-            connected_peers: s.connected_peers,
-            rx_bytes: s.rx_bytes,
-            tx_bytes: s.tx_bytes,
-            avg_latency_ms: s.avg_latency_ms,
+            is_running,
+            virtual_ip,
+            connected_peers,
+            rx_bytes,
+            tx_bytes,
+            avg_latency_ms,
         })
     }
 
@@ -1388,6 +1388,12 @@ mod launcher_internal {
                 latency_ms: Some(s.avg_latency_ms),
                 connected_peers: s.connected_peers,
             })
+        }
+
+        /// 获取聚合统计（供 get_network_stats 使用）
+        pub async fn get_runtime_stats(&self) -> (bool, Option<String>, u32, u64, u64, f64) {
+            let s = self.status.read().await;
+            (s.is_running, s.virtual_ip.clone(), s.connected_peers, s.rx_bytes, s.tx_bytes, s.avg_latency_ms)
         }
 
         pub async fn stop(&mut self) -> Result<Option<String>, String> {
