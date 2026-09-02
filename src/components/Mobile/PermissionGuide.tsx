@@ -154,11 +154,11 @@ export const PermissionGuide = observer(function PermissionGuide({
       replayKit: ['mobile_screen_open_settings', { spaceId: spaceId ?? '' }],
       camera: ['mobile_screen_request_camera_permission', { spaceId: spaceId ?? '' }],
     };
-    // Android 原生插件命令（plugin:hometiervpnservice|xxx）
+    // Android 原生插件命令（plugin:hometiervpnservice|xxx，snake_case）
     const pluginCmd: Partial<Record<PermissionType, [string, Record<string, unknown>]>> = {
-      mediaProjection: ['plugin:hometiervpnservice|requestScreenCapture', {}],
-      microphone: ['plugin:hometiervpnservice|requestMicPermission', {}],
-      camera: ['plugin:hometiervpnservice|requestCameraPermission', {}],
+      mediaProjection: ['plugin:hometiervpnservice|request_screen_capture', {}],
+      microphone: ['plugin:hometiervpnservice|request_mic_permission', {}],
+      camera: ['plugin:hometiervpnservice|request_camera_permission', {}],
     };
     const cmds = [rustCmd[type], pluginCmd[type]].filter(Boolean) as [
       string,

@@ -12,7 +12,8 @@
     "global-shortcut:allow-unregister",
     "os:default",
     "notification:default",
-    "dialog:default"
+    "dialog:default",
+    "hometiervpnservice:default"
   ],
   "platforms": ["linux", "windows", "macOS", "android", "iOS"]
 }
