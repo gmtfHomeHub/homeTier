@@ -11,6 +11,7 @@ interface AppFormDialogProps {
   app: SpaceApp | null;
   spaceId: string;
   existingCategories: string[];
+  open: boolean;
   onClose: () => void;
   onSubmit: () => void;
 }
@@ -22,7 +23,7 @@ const PROTOCOL_OPTIONS = [
 
 const NEW_CATEGORY_VALUE = "__new__";
 
-export function AppFormDialog({ app, spaceId, existingCategories, onClose, onSubmit }: AppFormDialogProps) {
+export function AppFormDialog({ app, spaceId, existingCategories, open, onClose, onSubmit }: AppFormDialogProps) {
   const { t } = useTranslation();
   const isEditing = !!app;
   const [name, setName] = useState(app?.name ?? "");
@@ -80,7 +81,7 @@ export function AppFormDialog({ app, spaceId, existingCategories, onClose, onSub
   };
 
   return (
-    <Dialog.Root open={true} onOpenChange={() => onClose()}>
+    <Dialog.Root open={open} onOpenChange={(open) => { if (!open) onClose(); }}>
       <Dialog.Content className="w-full max-w-[calc(100vw-24px)] sm:w-[520px]">
         <div className="flex items-center justify-between mb-4">
           <Dialog.Title className="m-0 text-lg font-semibold">

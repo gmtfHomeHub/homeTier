@@ -51,6 +51,7 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
       setSystemApps(sysApps);
     } catch (e) {
       console.error("Failed to load apps:", e);
+      toastError(String(e));
     } finally {
       setLoading(false);
     }
@@ -176,15 +177,14 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
         emptyText={t("appNav.noApps")}
       />
 
-      {showForm && (
-        <AppFormDialog
-          app={editApp}
-          spaceId={space.id}
-          existingCategories={existingCategories}
-          onClose={() => setShowForm(false)}
-          onSubmit={handleFormSubmit}
-        />
-      )}
+      <AppFormDialog
+        app={editApp}
+        spaceId={space.id}
+        existingCategories={existingCategories}
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        onSubmit={handleFormSubmit}
+      />
 
       {shareApp && (
         <ShareAppDialog

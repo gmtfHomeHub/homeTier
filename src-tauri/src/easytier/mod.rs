@@ -990,15 +990,16 @@ impl EasyTierManager {
 
     /// 获取详细网络统计（Mobile: 基于库实例状态组装）
     pub async fn get_network_stats(&self, instance_id: &Uuid) -> Option<crate::daemon::ipc::SpaceRuntimeStatus> {
-        let status = self.get_status(instance_id).await.ok()?;
+        let instance = self.instances.get(instance_id)?;
+        let s = instance.status.read().await;
         Some(crate::daemon::ipc::SpaceRuntimeStatus {
             space_id: instance_id.to_string(),
-            is_running: true,
-            virtual_ip: status.virtual_ip.clone(),
-            connected_peers: status.connected_peers,
-            rx_bytes: 0,
-            tx_bytes: 0,
-            avg_latency_ms: status.latency_ms.unwrap_or(0.0),
+            is_running: s.is_running,
+            virtual_ip: s.virtual_ip.clone(),
+            connected_peers: s.connected_peers,
+            rx_bytes: s.rx_bytes,
+            tx_bytes: s.tx_bytes,
+            avg_latency_ms: s.avg_latency_ms,
         })
     }
 
@@ -1071,9 +1072,7 @@ mod launcher_internal {
         virtual_ip: Option<String>,
         connected_peers: u32,
         is_running: bool,
-        #[allow(dead_code)]
         rx_bytes: u64,
-        #[allow(dead_code)]
         tx_bytes: u64,
         avg_latency_ms: f64,
         peers: Vec<PeerInfo>,
@@ -1288,6 +1287,13 @@ mod launcher_internal {
                         }
                     }
 
+                    // 计算聚合统计：总接收/发送字节、平均延迟
+                    let total_rx: u64 = conn_map.values().filter_map(|c| c.conns.first().and_then(|cn| cn.stats.as_ref().map(|s| s.rx_bytes))).sum();
+                    let total_tx: u64 = conn_map.values().filter_map(|c| c.conns.first().and_then(|cn| cn.stats.as_ref().map(|s| s.tx_bytes))).sum();
+                    let latency_sum: f64 = route_map.values().filter_map(|r| (r.path_latency > 0).then_some(r.path_latency as f64)).sum();
+                    let latency_count = route_map.values().filter(|r| r.path_latency > 0).count();
+                    let avg_latency = if latency_count > 0 { latency_sum / latency_count as f64 } else { 0.0 };
+
                     // 组装 PeerInfo 列表（连接的 peer + 有 route 的 peer 取并集）
                     let mut all_peer_ids: std::collections::HashSet<u32> = conn_map.keys().copied().collect();
                     all_peer_ids.extend(route_map.keys().copied());
@@ -1314,7 +1320,28 @@ mod launcher_internal {
                             nat_type: None,
                         }
                     }).collect();
-                    // 按 latency 排序（无 latency 的排后面）
+
+                    // 添加本地节点（my_info）作为第一个元素，is_local = true
+                    if let Some(my_info) = &peers_resp.my_info {
+                        if !my_info.ipv4_addr.is_empty() {
+                            peers.insert(0, PeerInfo {
+                                peer_id: my_info.peer_id,
+                                virtual_ip: Some(my_info.ipv4_addr.clone()),
+                                hostname: if my_info.hostname.is_empty() { None } else { Some(my_info.hostname.clone()) },
+                                latency_ms: Some(0.0),
+                                loss_rate: None,
+                                rx_bytes: None,
+                                tx_bytes: None,
+                                connected: true,
+                                is_local: true,
+                                version: if my_info.version.is_empty() { None } else { Some(my_info.version.clone()) },
+                                tunnel_proto: None,
+                                nat_type: None,
+                            });
+                        }
+                    }
+
+                    // 按 latency 排序（无 latency 的排后面），本地节点因 latency=0 会排在前面
                     peers.sort_by(|a, b| {
                         let la = a.latency_ms.unwrap_or(f64::MAX);
                         let lb = b.latency_ms.unwrap_or(f64::MAX);
@@ -1323,6 +1350,9 @@ mod launcher_internal {
 
                     let mut s = status.write().await;
                     s.connected_peers = peers_resp.peer_infos.len() as u32;
+                    s.rx_bytes = total_rx;
+                    s.tx_bytes = total_tx;
+                    s.avg_latency_ms = avg_latency;
                     s.peers = peers;
                     if let Some(ip) = my_ip {
                         s.virtual_ip = Some(ip);
