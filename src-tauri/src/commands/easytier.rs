@@ -68,6 +68,13 @@ pub async fn upgrade_easytier_with_progress(
     app_handle: tauri::AppHandle,
     manager: State<'_, std::sync::Arc<EasyTierManager>>,
 ) -> Result<(), String> {
+    // 移动端使用库内嵌 EasyTier，不支持外部二进制升级
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = (version, use_proxy, app_handle, manager);
+        return Err("移动端不支持 EasyTier 二进制升级".into());
+    }
+
     const MAX_RETRIES: u32 = 3;
     const BASE_DELAY_MS: u64 = 1000;
 

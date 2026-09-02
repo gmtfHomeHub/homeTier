@@ -119,14 +119,22 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     log_info!("[GUI] EasyTier 管理器已初始化");
 
     // 后台解压内置 easytier-core 二进制（确保版本显示正常、离线可用）
-    let mgr = instance_manager.clone();
-    async_runtime::spawn(async move {
-        if let Err(e) = mgr.downloader.ensure_binary().await {
-            crate::log_warn!(format!("[GUI] 内置二进制解压失败（将在线下载）: {}", e));
-        } else {
-            crate::log_info!("[GUI] 内置 easytier-core 二进制已就绪");
-        }
-    });
+    // 移动端使用库内嵌 EasyTier（easytier-ffi 静态链接），不需要外部二进制
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let mgr = instance_manager.clone();
+        async_runtime::spawn(async move {
+            if let Err(e) = mgr.downloader.ensure_binary().await {
+                crate::log_warn!(format!("[GUI] 内置二进制解压失败（将在线下载）: {}", e));
+            } else {
+                crate::log_info!("[GUI] 内置 easytier-core 二进制已就绪");
+            }
+        });
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        crate::log_info!("[GUI] 移动端使用库内嵌 EasyTier，跳过外部二进制检查");
+    }
 
     // daemon 就绪标志（前端通过 Tauri command 轮询）
     let daemon_ready = {
