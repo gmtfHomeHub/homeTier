@@ -94,7 +94,31 @@ pub fn generate_cookie_value(fingerprint: &str, secret: &str) -> String {
     URL_SAFE_NO_PAD.encode(&combined)
 }
 
-pub fn is_static_resource(path: &str) -> bool {
+/// 从请求路径中剥离公共前缀（如 /hometier），并确保结果以 / 开头
+pub fn strip_public_base<'a>(path: &'a str, public_base: &str) -> &'a str {
+    if public_base.is_empty() || public_base == "/" {
+        return path;
+    }
+    // public_base 形如 /xxx 或 /xxx/，归一化去尾斜杠后比较
+    let base = public_base.trim_end_matches('/');
+    if path == base {
+        return "/";
+    }
+    if let Some(rest) = path.strip_prefix(base) {
+        if rest.is_empty() {
+            "/"
+        } else if rest.starts_with('/') {
+            rest
+        } else {
+            path
+        }
+    } else {
+        path
+    }
+}
+
+pub fn is_static_resource(path: &str, public_base: &str) -> bool {
+    let path = strip_public_base(path, public_base);
     let extensions = [
         ".html", ".css", ".js", ".ico", ".svg", ".png", ".jpg", ".jpeg",
         ".gif", ".woff", ".woff2", ".ttf", ".eot", ".map", ".txt", ".xml",

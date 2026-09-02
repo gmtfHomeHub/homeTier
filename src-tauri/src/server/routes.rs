@@ -1673,16 +1673,23 @@ async fn download_remote_config_handler(
     }
 }
 
-pub fn static_file_handler(static_dir: String) -> axum::Router {
+pub fn static_file_handler(static_dir: String, public_base: String) -> axum::Router {
     use axum::routing::any;
 
     // 优先使用嵌入式 dist（编译时嵌入，无运行时依赖）；
     // 若 dist/ 不存在于嵌入中，回退到 ServeDir 文件系统。
-    if std::path::Path::new(&static_dir).exists() {
+    let inner: axum::Router = if std::path::Path::new(&static_dir).exists() {
         Router::new().fallback_service(ServeDir::new(static_dir))
     } else {
         Router::new().fallback(any(|uri: axum::http::Uri| async move {
             crate::server::assets::serve_embedded(uri)
         }))
+    };
+    // 配置了非 / 公共前缀（如 /hometier）时，将静态服务挂到该前缀下，
+    // axum nest 会自动剥前缀转发给 inner（请求 /hometier/assets/x.js → inner 收到 /assets/x.js）。
+    if public_base.is_empty() || public_base == "/" {
+        inner
+    } else {
+        Router::new().nest(&public_base, inner)
     }
 }

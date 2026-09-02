@@ -39,6 +39,9 @@ SERVER_PORT=9339
 # 前端静态资源目录（相对于运行目录或绝对路径；目录不存在时自动回退到编译时嵌入的 dist）
 SERVER_STATIC_DIR=./dist
 
+# 前端静态资源公共前缀（默认 /；部署到子路径时与前端 VITE_PUBLIC_BASE 保持一致，如 /hometier/）
+SERVER_PUBLIC_BASE=/
+
 # TLS（cert/key 均为 PEM 格式文件路径，留空则纯 HTTP）
 SERVER_TLS=false
 SERVER_TLS_CERT=
@@ -166,7 +169,10 @@ async fn auth_layer(
     next: Next,
 ) -> Result<Response, axum::http::StatusCode> {
     let path = req.uri().path().to_string();
-    if auth::is_static_resource(&path) {
+    let public_base = state
+        .config
+        .get_str("SERVER_PUBLIC_BASE", "/");
+    if auth::is_static_resource(&path, &public_base) {
         return Ok(next.run(req).await);
     }
 
@@ -193,10 +199,21 @@ pub async fn start_server(
 ) -> Result<(), String> {
     let state_for_auth = Arc::clone(&app_state);
     let cors_layer = cors_layer(&app_state.config);
+    let public_base = {
+        let b = app_state.config.get_str("SERVER_PUBLIC_BASE", "/").trim().to_string();
+        if b.is_empty() || b == "/" {
+            "/".to_string()
+        } else {
+            // 归一化为 /xxx 或 /xxx/（保留尾斜杠以与前端 base 语义一致），剥前缀时两边都兼容
+            let b = b.trim_start_matches('/').trim_end_matches('/');
+            format!("/{b}/", b = b)
+        }
+    };
+    let public_base_no_slash = public_base.trim_end_matches('/').to_string(); // /xxx（无尾斜杠）
 
     let router = Router::new()
         .nest("/api/cmd", routes::cmd_router(Arc::clone(&app_state)))
-        .fallback_service(routes::static_file_handler(static_dir))
+        .fallback_service(routes::static_file_handler(static_dir, public_base_no_slash))
         .layer(CompressionLayer::new())
         .layer(cors_layer)
         .layer(tower_http::trace::TraceLayer::new_for_http()

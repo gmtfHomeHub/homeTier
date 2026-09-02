@@ -7,11 +7,11 @@ import "@radix-ui/themes/styles.css";
 import "./styles/globals.css";
 import "./i18n";
 
-// 注册 Service Worker
+// 注册 Service Worker（使用 BASE_URL 兼容子路径部署）
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
-      .register("/sw.js")
+      .register(`${import.meta.env.BASE_URL}sw.js`)
       .then(() => console.log("SW registered"))
       .catch((err) => console.warn("SW registration failed:", err));
   });
