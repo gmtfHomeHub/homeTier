@@ -1,7 +1,8 @@
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ShieldAlert } from "lucide-react";
+import { ShieldAlert, Loader2 } from "lucide-react";
 import { Button, Flex, Text, Card } from "@radix-ui/themes";
+import { listen } from "@tauri-apps/api/event";
 import { DEVICE_VIEWPORTS, type DeviceMode } from "../../utils/device";
 import * as api from "../../utils/api";
 
@@ -37,9 +38,37 @@ function useContainerSize<T extends HTMLElement>() {
   return { ref, ...size };
 }
 
+/** 从代理 URL 提取 proxy key，用于关联后端加载进度事件 */
+function parseProxyKey(proxyUrl: string): string {
+  const m = proxyUrl.match(/\/__proxy__([^/?]+)/);
+  return m?.[1] ?? "";
+}
+
 export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, onOpenBrowser, onBack, onError, onNavState }: ProxyFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { ref: containerRef, width: cw, height: ch } = useContainerSize<HTMLDivElement>();
+  const { t } = useTranslation();
+  const [loading, setLoading] = useState(true);
+  const [stage, setStage] = useState("connecting");
+  const proxyKey = parseProxyKey(proxyUrl);
+
+  // 监听后端代理转发进度，按 key 匹配更新阶段文案
+  useEffect(() => {
+    if (!proxyKey) return;
+    const un = listen<{ key: string; stage: string }>("proxy:load-progress", (e) => {
+      if (e.payload.key !== proxyKey) return;
+      setStage(e.payload.stage);
+      if (e.payload.stage === "error") setLoading(false);
+    });
+    return () => { un.then((fn) => fn()); };
+  }, [proxyKey]);
+
+  // 超时兑底：每个阶段 10s 无新事件则提示慢；stage 变化重置计时
+  useEffect(() => {
+    if (!loading) return;
+    const timer = setTimeout(() => setStage("slow"), 10000);
+    return () => clearTimeout(timer);
+  }, [loading, stage]);
 
   // 监听注入脚本的导航状态上报（__ht_nav），桥接给工具栏
   useLayoutEffect(() => {
@@ -62,8 +91,25 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, onOpenBrowser, 
   const offsetX = (cw - viewport.w * scale) / 2;
   const offsetY = (ch - viewport.h * scale) / 2;
 
+  const STAGE_TEXT: Record<string, string> = {
+    connecting: t("common.proxyLoadingConnecting"),
+    fetching: t("common.proxyLoadingFetching"),
+    processing: t("common.proxyLoadingProcessing"),
+    ready: t("common.proxyLoadingReady"),
+    error: t("common.proxyLoadError"),
+    slow: t("common.proxyLoadingSlow"),
+  };
+
   return (
     <div ref={containerRef} className="absolute inset-0 overflow-hidden bg-white">
+      {loading && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-white/85 backdrop-blur-sm">
+          <Loader2 size={32} className="animate-spin text-[var(--color-primary)]" />
+          <Text size="2" className="text-[var(--color-text-secondary)]">
+            {STAGE_TEXT[stage] ?? t("common.proxyLoading")}
+          </Text>
+        </div>
+      )}
       <div
         style={{
           position: "absolute",
@@ -84,6 +130,7 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, onOpenBrowser, 
           title={name}
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-pointer-lock allow-popups-to-escape-sandbox allow-top-navigation"
           allow="fullscreen; camera; microphone; display-capture; focus"
+          onLoad={() => setLoading(false)}
           onError={onError}
         />
       </div>

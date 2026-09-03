@@ -483,6 +483,26 @@ impl HttpForwardPlugin {
         proxy_key: &str,
         ctx: &RequestContext,
     ) -> Result<ProxyResponse, Box<dyn std::error::Error + Send + Sync>> {
+        // 主文档请求（iframe 导航，Accept: text/html）才 emit 加载进度，子资源静默避免事件风暴
+        let is_document = req
+            .headers()
+            .get("accept")
+            .and_then(|v| v.to_str().ok())
+            .map(|a| a.contains("text/html"))
+            .unwrap_or(false);
+        let app_handle = &self.app_handle;
+        let emit_progress = |stage: &str| {
+            if is_document && !proxy_key.is_empty() {
+                if let Some(h) = app_handle {
+                    let _ = h.emit(
+                        "proxy:load-progress",
+                        serde_json::json!({"key": proxy_key, "stage": stage}),
+                    );
+                }
+            }
+        };
+        emit_progress("connecting");
+
         let method = req.method().clone();
         let proxy_prefix_host = req
             .headers()
@@ -572,8 +592,10 @@ let body_bytes = BodyExt::collect(req.into_body())
             req_builder = req_builder.header(key.as_str(), value.as_str());
         }
 
+        emit_progress("fetching");
         match req_builder.send().await {
             Ok(upstream) => {
+                emit_progress("processing");
                 let status = upstream.status();
                 let upstream_headers = upstream.headers().clone();
 
@@ -794,6 +816,7 @@ let body_bytes = BodyExt::collect(req.into_body())
                     stream_body(upstream.bytes_stream())
                 };
 
+                emit_progress("ready");
                 let mut resp = builder.body(body).unwrap();
                 if let Some(csp_override) = csp_override {
                     if csp_override.is_empty() {
@@ -806,6 +829,7 @@ let body_bytes = BodyExt::collect(req.into_body())
                 Ok(resp)
             }
             Err(e) => {
+                emit_progress("error");
                 crate::log_error!(format!("上游请求失败 {} {}", forward_url, e));
                 Ok(Response::builder()
                     .status(StatusCode::BAD_GATEWAY)
