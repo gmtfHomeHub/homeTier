@@ -111,7 +111,9 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
         const space = get().spaces.find((s) => s.id === spaceId);
         if (!space) throw new Error("Space not found");
 
-        const errorMsg = await connectWithVpn(spaceId, space.name, space.virtual_ip ?? "10.144.144.1");
+        // 空串/null 均回退默认 IP，防止传空给 startVpn 的 ipv4Addr 触发 "Invalid IP addr string"
+        const virtualIp = space.virtual_ip && space.virtual_ip.trim() ? space.virtual_ip : "10.144.144.1";
+        const errorMsg = await connectWithVpn(spaceId, space.name, virtualIp);
         if (errorMsg) {
           throw new Error(errorMsg);
         }

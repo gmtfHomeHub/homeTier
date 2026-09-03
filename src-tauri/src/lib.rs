@@ -150,17 +150,11 @@ pub fn run() -> std::process::ExitCode {
             commands::config::set_app_config,
             commands::config::get_config_file_path,
             commands::config::get_config_template_path,
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::get_proxy_url,
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::get_proxy_status,
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::register_proxy_key,
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::set_proxy_source,
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::set_device_mode,
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::get_pending_downloads,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::tray::update_tray_menu,
