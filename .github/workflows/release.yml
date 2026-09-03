@@ -9,7 +9,7 @@ on:
         default: true
         type: boolean
       build_windows:
-        description: '打包 Windows（msi，x86_64）'
+        description: '打包 Windows（msi，x86_64 + arm64）'
         required: false
         default: true
         type: boolean
@@ -38,6 +38,11 @@ on:
         required: false
         default: false
         type: boolean
+      debug_mode:
+        description: '所有平台启用 debug 构建（调试/免签名直装；false=release 正式构建）'
+        required: false
+        default: true
+        type: boolean
   push:
     tags:
       - 'v*'
@@ -64,7 +69,7 @@ jobs:
         run: |
           set -e
           mkdir -p src-tauri/resources/bin
-          for p in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64 windows-x86_64; do
+          for p in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64 windows-x86_64 windows-arm64; do
             url="https://github.com/EasyTier/EasyTier/releases/download/${EASYTIER_CORE_VERSION}/easytier-${p}-${EASYTIER_CORE_VERSION}.zip"
             echo "downloading ${p} from ${url}"
             curl -fL --retry 3 -o "src-tauri/resources/bin/easytier-${p}-${EASYTIER_CORE_VERSION}.zip" "${url}"
@@ -92,7 +97,7 @@ jobs:
           # easytier-web-embed.exe are never referenced in the codebase. Removing them cuts
           # each archive roughly in half, shrinking the MSI/APK bundle.
           # wintun.dll / WinDivert64.sys come from resources/bin (git), NOT from the zip.
-          for p in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64 windows-x86_64; do
+          for p in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64 windows-x86_64 windows-arm64; do
             zip="src-tauri/resources/bin/easytier-${p}-${EASYTIER_CORE_VERSION}.zip"
             if [ ! -f "$zip" ]; then
               echo "SKIP: $zip not found"
@@ -144,6 +149,12 @@ jobs:
           name: easytier-bin-windows-x86_64
           path: src-tauri/resources/bin/easytier-windows-x86_64-${{ env.EASYTIER_CORE_VERSION }}.zip
           retention-days: 1
+      - name: Upload per-platform artifacts (windows-arm64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: easytier-bin-windows-arm64
+          path: src-tauri/resources/bin/easytier-windows-arm64-${{ env.EASYTIER_CORE_VERSION }}.zip
+          retention-days: 1
 
   # ---------------------------------------------------------------
   # 2. 桌面端打包（tag 发布全量打包；手动触发按平台开关选择）
@@ -168,43 +179,18 @@ jobs:
             bin: macos-x86_64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: ./.github/actions/setup-build
         with:
-          version: 9
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: easytier-bin-${{ matrix.bin }}
-          path: src-tauri/resources/bin/
+          rust-targets: ${{ matrix.target }}
+          cache-key: macos-${{ matrix.bin }}
+          easytier-artifact: easytier-bin-${{ matrix.bin }}
 
       - name: Install macOS deps
         run: brew install protobuf
 
-      - name: Install deps
-        run: pnpm install --frozen-lockfile
-
       - name: Build Tauri bundle
         run: |
-          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} ${{ inputs.debug_mode && '--debug' || '' }}
 
       - name: Stage artifact
         shell: bash
@@ -233,35 +219,18 @@ jobs:
             bundle: msi
             artifact: homeTier-x86_64.msi
             bin: windows-x86_64
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            bundle: msi
+            artifact: homeTier-arm64.msi
+            bin: windows-arm64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: ./.github/actions/setup-build
         with:
-          version: 9
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: easytier-bin-${{ matrix.bin }}
-          path: src-tauri/resources/bin/
+          rust-targets: ${{ matrix.target }}
+          cache-key: windows-${{ matrix.bin }}
+          easytier-artifact: easytier-bin-${{ matrix.bin }}
 
       # 关键修复：运行 vcvars64 并导出完整的 MSVC 环境（INCLUDE/LIB/PATH）。
       # bindgen（kcp-sys）用 clang 编译 wrapper.h，clang 在 MSVC 目标下只要读到
@@ -270,33 +239,52 @@ jobs:
       # 导致找不到 vcruntime.h。这一步把环境补齐到与本地 Developer PowerShell 一致。
       - name: Set up MSVC development environment (vcvars64)
         uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.target == 'aarch64-pc-windows-msvc' && 'arm64' || 'x64' }}
 
-      - name: Install Windows deps
+      - name: Install protoc
         shell: pwsh
         run: choco install protoc --yes --no-progress
 
-      - name: Install WinPcap dev pack (Packet.lib for pnet crate)
+      - name: Install WinPcap dev pack (x64 Packet.lib for pnet crate)
+        if: matrix.target != 'aarch64-pc-windows-msvc'
         shell: pwsh
         run: |
+          # x64: WinPcap/WpdPack 提供 Lib/x64/Packet.lib
           $url = "https://www.winpcap.org/install/bin/WpdPack_4_1_2.zip"
           $out = "$env:TEMP/WpdPack.zip"
           Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
           Expand-Archive -Path $out -DestinationPath "C:/WpdPack" -Force
-          # x64 lib: C:/WpdPack/WpdPack/Lib/x64/Packet.lib
-          # Add to LIB so linker finds Packet.lib
           $libPath = "C:/WpdPack/WpdPack/Lib/x64"
           echo "LIB=$libPath;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "INCLUDE=C:/WpdPack/WpdPack/Include;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "[winpcap] Packet.lib at $libPath"
 
-      - name: Verify Npcap + Wintun runtime DLLs are bundled
+      - name: Install Npcap SDK ARM64 lib (Packet.lib + wpcap.lib for pnet crate)
+        if: matrix.target == 'aarch64-pc-windows-msvc'
         shell: pwsh
         run: |
-          # Real packet.dll/wpcap.dll/wintun.dll/WinDivert64.sys are committed to
-          # src-tauri/resources/bin. wintun.dll is required by easytier-core.exe to
-          # create the virtual NIC on Windows; without it tun::create() fails and
-          # has_virtual_ip stays false.
-          $dlls = @("packet.dll", "wpcap.dll", "wintun.dll", "WinDivert64.sys")
+          # ARM64: WinPcap/WpdPack 无 ARM64 lib；改用 Npcap SDK 1.16 的 Lib/ARM64
+          $url = "https://npcap.com/dist/npcap-sdk-1.16.zip"
+          $out = "$env:TEMP/npcap-sdk.zip"
+          Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+          Expand-Archive -Path $out -DestinationPath "C:/NpcapSDK" -Force
+          $libPath = "C:/NpcapSDK/Lib/ARM64"
+          echo "LIB=$libPath;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "INCLUDE=C:/NpcapSDK/Include;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "[npcap-sdk] ARM64 Packet.lib + wpcap.lib at $libPath"
+
+      - name: Verify runtime DLLs are bundled
+        shell: pwsh
+        run: |
+          # x64: packet.dll/wpcap.dll/wintun.dll/WinDivert64.sys 在 resources/bin
+          # ARM64: wintun.dll/packet.dll 在 resources/bin/aarch64
+          # (easytier ARM64 不使用 WinDivert，wpcap.dll 非必需)
+          if ("${{ matrix.target }}" -eq "aarch64-pc-windows-msvc") {
+            $dlls = @("aarch64/wintun.dll", "aarch64/packet.dll")
+          } else {
+            $dlls = @("packet.dll", "wpcap.dll", "wintun.dll", "WinDivert64.sys")
+          }
           foreach ($dll in $dlls) {
             $target = "$env:GITHUB_WORKSPACE/src-tauri/resources/bin/$dll"
             $len = (Get-Item $target).Length
@@ -308,11 +296,10 @@ jobs:
           }
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
+
       - name: Configure MSVC include path (for vcruntime.h used by kcp-sys bindgen)
         shell: pwsh
         run: |
-          # Find MSVC include directory (contains vcruntime.h needed by ucrt/corecrt.h)
-          # Standard location: C:\Program Files\Microsoft Visual Studio\<VS>\<edition>\VC\Tools\MSVC\<ver>\include
           $msvcRoot = "C:/Program Files/Microsoft Visual Studio"
           if (Test-Path $msvcRoot) {
             $msvcDirs = Get-ChildItem -Path "$msvcRoot/*/*/VC/Tools/MSVC/*/include" -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
@@ -326,21 +313,18 @@ jobs:
           } else {
             echo "[msvc-include] WARNING: MSVC root not found at $msvcRoot"
           }
-      - name: Configure WinDivert (compile from vendored source)
+
+      - name: Configure WinDivert (x64 only, compile from vendored source)
+        if: matrix.target != 'aarch64-pc-windows-msvc'
         shell: bash
         run: |
-          # The windivert-rust crate (used by easytier) has a "static" feature that
-          # compiles WinDivert from the vendored source (vendor/dll/windivert.c)
-          # instead of linking a pre-built binary. Setting WINDIVERT_STATIC=1
-          # activates this path, avoiding broken external download URLs.
+          # ARM64: easytier cfg_select 限定 windivert 仅 x86_64/x86 编译，无需配置
           echo "WINDIVERT_STATIC=1" >> "$GITHUB_ENV"
           echo "[windivert] Using vendored source build (WINDIVERT_STATIC=1)"
-      - name: Install deps
-        run: pnpm install --frozen-lockfile
 
       - name: Build Tauri bundle
         run: |
-          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} --verbose
+          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} --verbose ${{ inputs.debug_mode && '--debug' || '' }}
 
       - name: Stage artifact
         shell: bash
@@ -376,46 +360,16 @@ jobs:
             bin: linux-aarch64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: ./.github/actions/setup-build
         with:
-          version: 9
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: easytier-bin-${{ matrix.bin }}
-          path: src-tauri/resources/bin/
-
-      - name: Install Linux deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
-          sudo apt-get install -y libssl-dev libxdo-dev protobuf-compiler
-
-      - name: Install deps
-        run: pnpm install --frozen-lockfile
+          rust-targets: ${{ matrix.target }}
+          cache-key: linux-${{ matrix.bin }}
+          easytier-artifact: easytier-bin-${{ matrix.bin }}
+          linux-deps: 'true'
 
       - name: Build Tauri bundle
         run: |
-          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+          pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }} ${{ inputs.debug_mode && '--debug' || '' }}
 
       - name: Stage artifact
         shell: bash
@@ -440,31 +394,14 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') || inputs.build_appimage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: ./.github/actions/setup-build
         with:
-          version: 9
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
-      - uses: actions/download-artifact@v4
-        with:
-          name: easytier-bin-linux-x86_64
-          path: src-tauri/resources/bin/
-      - name: Install Linux deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev libxdo-dev protobuf-compiler
-      - name: Install deps
-        run: pnpm install --frozen-lockfile
+          cache-key: appimage
+          easytier-artifact: easytier-bin-linux-x86_64
+          linux-deps: 'true'
+
       - name: Build
-        run: pnpm tauri build --bundles appimage
+        run: pnpm tauri build --bundles appimage ${{ inputs.debug_mode && '--debug' || '' }}
       - name: Stage artifact
         shell: bash
         run: |
@@ -486,22 +423,11 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') || inputs.build_android
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: ./.github/actions/setup-build
         with:
-          version: 9
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android,armv7-linux-androideabi
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
-          key: android-aarch64
+          rust-targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+          cache-key: android-multi-arch
+
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/share/swift
@@ -552,9 +478,8 @@ jobs:
           echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
           echo "BINDGEN_EXTRA_CLANG_ARGS_armv7_linux_androideabi=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
           echo "BINDGEN_EXTRA_CLANG_ARGS_i686_linux_android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
+          echo "BINDGEN_EXTRA_CLANG_ARGS_x86_64_linux_android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
           echo "[bindgen] NDK sysroot: $SYSROOT"
-      - name: Install deps
-        run: pnpm install --frozen-lockfile
       - name: Init Android project
         run: |
           rm -rf src-tauri/gen/android
@@ -575,13 +500,13 @@ jobs:
       - name: Verify Android injection
         run: bash scripts/verify-android-injection.sh
       - name: Build APK
-        run: pnpm tauri android build --apk --target aarch64 --target armv7
+        run: pnpm tauri android build --apk --target aarch64 --target armv7 --target i686 --target x86_64 ${{ inputs.debug_mode && '--debug' || '' }}
       - name: Verify APK contents (native libs per ABI)
         run: |
           APK=$(find src-tauri/gen/android -maxdepth 8 -name "*.apk" | head -1)
           if [ -z "$APK" ]; then echo "ERROR: no APK produced"; exit 1; fi
           echo "APK: $APK"
-          unzip -l "$APK" | grep -E "lib/(arm64-v8a|armeabi-v7a)/.*\.so" || { echo "ERROR: no native libs found in APK"; exit 1; }
+          unzip -l "$APK" | grep -E "lib/(arm64-v8a|armeabi-v7a|x86|x86_64)/.*\.so" || { echo "ERROR: no native libs found in APK"; exit 1; }
       - name: Stage artifact
         shell: bash
         run: |
@@ -603,23 +528,11 @@ jobs:
     if: inputs.build_ios
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: ./.github/actions/setup-build
         with:
-          version: 9
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-ios
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
-      - name: Install deps
-        run: pnpm install --frozen-lockfile
+          rust-targets: aarch64-apple-ios
+          cache-key: ios
+
       - name: Init iOS project
         run: pnpm tauri ios init
       - name: Inject camera permissions
@@ -631,7 +544,7 @@ jobs:
       - name: Build easytier-ios-staticlib for iOS
         run: |
           cd src-tauri
-          cargo build --target aarch64-apple-ios --manifest-path easytier-ios-staticlib/Cargo.toml --release
+          cargo build --target aarch64-apple-ios --manifest-path easytier-ios-staticlib/Cargo.toml ${{ !inputs.debug_mode && '--release' || '' }}
       - name: Inject NetworkExtension target into Xcode project
         run: |
           python3 src-tauri/gen-scripts/ios/inject_ne_target.py \
@@ -641,7 +554,7 @@ jobs:
         run: |
           xcodebuild -project src-tauri/gen/apple/HomeTier.xcodeproj \
             -scheme HomeTier \
-            -configuration Release \
+            -configuration ${{ inputs.debug_mode && 'Debug' || 'Release' }} \
             -destination 'generic/platform=iOS' \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
@@ -683,7 +596,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          push: ${{ startsWith(github.ref, 'refs/tags/') }}
           tags: |
             ${{ steps.repo.outputs.image_repo }}:latest
             ${{ steps.repo.outputs.image_repo }}:${{ github.ref_name }}

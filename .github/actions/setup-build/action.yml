@@ -1,0 +1,62 @@
+name: Setup Build Environment
+description: 公共构建环境准备（checkout/pnpm/node/rust/cache/easytier 下载/Linux 依赖安装）
+
+inputs:
+  rust-targets:
+    description: 'Rust cross-compile targets (comma-separated, 空则用 host target)'
+    required: false
+    default: ''
+  cache-key:
+    description: 'rust-cache key 后缀'
+    required: false
+    default: ''
+  easytier-artifact:
+    description: 'easytier bin artifact 名（空则跳过下载）'
+    required: false
+    default: ''
+  linux-deps:
+    description: '是否安装 Linux 构建依赖 (true/false)'
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 9
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: pnpm
+        cache-dependency-path: pnpm-lock.yaml
+
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ inputs.rust-targets }}
+
+    - uses: swatinem/rust-cache@v2
+      with:
+        workspaces: src-tauri -> target
+        key: ${{ inputs.cache-key }}
+
+    - name: Download easytier bin
+      if: ${{ inputs.easytier-artifact != '' }}
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.easytier-artifact }}
+        path: src-tauri/resources/bin/
+
+    - name: Install Linux deps
+      if: ${{ inputs.linux-deps == 'true' }}
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev libxdo-dev protobuf-compiler
+
+    - name: Install deps
+      shell: bash
+      run: pnpm install --frozen-lockfile

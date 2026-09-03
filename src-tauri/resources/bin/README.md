@@ -19,6 +19,20 @@
 > easytier-core.exe 在 Windows 上创建虚拟网卡（TUN）需要 wintun.dll 在其同目录，否则 `tun::create()` 失败导致
 > `has_virtual_ip=false`。WinDivert64.sys 用于部分流量分流特性。
 
+## ARM64 子目录 (`aarch64/`)
+
+Windows on ARM（`aarch64-pc-windows-msvc`）目标使用 `aarch64/` 子目录下的 ARM64 版本 DLL：
+
+| 文件名 | 说明 | 来源 |
+|--------|------|------|
+| `aarch64/wintun.dll` | Wintun ARM64 驱动库（222,488 字节） | `easytier-windows-arm64-v2.6.4.zip` |
+| `aarch64/packet.dll` | Npcap Packet ARM64 库（203,136 字节） | 同上（原文件名 `Packet.dll`，重命名为小写） |
+
+> ARM64 **不需要** `wpcap.dll`（easytier ARM64 发布包未提供，且 homeTier 未启用 fake_tcp 特性）；
+> **不需要** `WinDivert64.sys`（easytier `cfg_select!` 将 windivert 限定为 `x86_64`/`x86` 编译，
+> ARM64 走 PnetTun 分支，WinDivert 永不加载）。
+> CI 中 ARM64 改用 Npcap SDK 1.16 的 `Lib/ARM64/Packet.lib` + `wpcap.lib` 作为编译期链接库。
+
 ## 为什么直接提交，而不是 CI 下载
 
 - **Npcap SDK zip（如 `npcap-sdk-1.16.zip`）只包含头文件和 `.lib` 导入库，不包含运行时 `packet.dll`/`wpcap.dll`。**
@@ -59,7 +73,8 @@ GitHub Actions 中**不下载** DLL，仅校验提交的 DLL 有效（防止误�
 ## 注意事项
 
 1. **版本兼容性**: 建议使用 Npcap 1.x 版本，确保与 `pnet` crate 兼容
-2. **架构匹配**: 当前 Windows 构建目标为 x86_64，两份 DLL 均为 x64；若未来增加 32 位目标需补充 x86 版本
+2. **架构匹配**: x64 目标使用根目录 DLL，ARM64 目标使用 `aarch64/` 子目录 DLL；
+   `ensure_dlls()`/`downloader.rs`/`daemon.rs` 通过 `cfg!(target_arch="aarch64")` 选择正确子目录
 3. **运行期兜底**: `downloader.rs` 会跳过小于 10,000 字节的占位文件，避免把无效 DLL 复制到
    easytier-core.exe 目录导致其加载失败
 
