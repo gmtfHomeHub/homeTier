@@ -1181,7 +1181,7 @@ async fn list_apps_handler(
 async fn get_system_apps_handler(
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    Json(crate::server::system_apps::load_system_apps(&state.data_dir)).into_response()
+    Json(crate::system_apps::load_system_apps(&state.data_dir)).into_response()
 }
 
 async fn share_app_handler(

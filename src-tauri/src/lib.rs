@@ -13,6 +13,7 @@ pub mod log;
 pub mod platform;
 pub mod proxy;
 pub mod screen;
+pub mod system_apps;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod server;
 pub mod space;
@@ -144,7 +145,6 @@ pub fn run() -> std::process::ExitCode {
             commands::app::delete_app,
              commands::app::list_apps,
              commands::app::share_app,
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::app::get_system_apps,
             commands::config::get_app_config,
             commands::config::set_app_config,
