@@ -67,6 +67,18 @@ else
   done
 fi
 
+# 4. build.gradle.kts 必须启用 cleartext traffic（否则 WebView 加载 127.0.0.1 代理报 ERROR_CLEARTEXT_NOT_PERMITTED）
+BUILD_GRADLE="src-tauri/gen/android/app/build.gradle.kts"
+if [ ! -f "$BUILD_GRADLE" ]; then
+  echo "ERROR: build.gradle.kts 不存在"
+  FAIL=1
+elif ! grep -q 'manifestPlaceholders\["usesCleartextTraffic"\] = "true"' "$BUILD_GRADLE"; then
+  echo "ERROR: build.gradle.kts 未启用 cleartext traffic（fix-android-build-gradle.sh 未生效？）"
+  FAIL=1
+else
+  echo "OK: build.gradle.kts 已启用 cleartext traffic (usesCleartextTraffic=true)"
+fi
+
 if [ "$FAIL" -ne 0 ]; then
   echo ""
   echo "[verify-android-injection] ❌ 校验失败：Android 工程存在缺失，终止构建（APK 会缺 VPN 组件）"
