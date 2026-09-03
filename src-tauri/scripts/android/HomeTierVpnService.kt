@@ -155,8 +155,10 @@ class HomeTierVpnService : VpnService() {
             if (routeParts.size != 2) throw IllegalArgumentException("Invalid route cidr string")
             runCatching { full.addRoute(routeParts[0], routeParts[1].toInt()) }
         }
+        // 仅应用前端传入的 excludedApps（默认空）。不硬编码排除自身：homeTier app 内的
+        // HTTP 代理需经 TUN 访问虚拟 IP 转发应用请求。路由仅含虚拟 IP 网段，easytier peer
+        // 通信走公网不在 routes，不会环路。
         for (app in disallowedApplications) runCatching { full.addDisallowedApplication(app) }
-        runCatching { full.addDisallowedApplication(packageName) } // 排除自身防环路
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) full.setMetered(false)
 
         full.establish()?.let { return it }
@@ -166,7 +168,7 @@ class HomeTierVpnService : VpnService() {
         Log.w("HomeTierVpn", "establish() returned null with full config, retrying with minimal config")
         val minimal = base()
         runCatching { minimal.addRoute(address, prefix) }
-        runCatching { minimal.addDisallowedApplication(packageName) }
+        // minimal 回退配置同样不排除自身（理由同 full）
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) minimal.setMetered(false)
 
         return minimal.establish()

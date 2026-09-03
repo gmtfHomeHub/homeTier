@@ -254,7 +254,9 @@ export async function connectWithVpn(
     virtualIpCidr: 24,
     mtu: 1500,
     routes: [`${virtualIp.split(".").slice(0, 3).join(".")}.0/24`],
-    excludedApps: ["com.hometier.app"],
+    // 不排除 homeTier 自身：app 内 HTTP 代理需经 VPN TUN 访问虚拟 IP 转发请求。
+    // Kotlin VpnService 已移除硬编码 addDisallowedApplication(packageName)。
+    excludedApps: [],
     dnsServers: [virtualIp],
   });
 
