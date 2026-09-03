@@ -14,12 +14,12 @@ pub struct SystemApp {
     pub icon: Option<String>,
     #[serde(default)]
     pub desc: Option<String>,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_false")]
     pub enabled: bool,
 }
 
-fn default_true() -> bool {
-    true
+fn default_false() -> bool {
+    false
 }
 
 fn builtin_system_apps() -> Vec<SystemApp> {
@@ -29,28 +29,28 @@ fn builtin_system_apps() -> Vec<SystemApp> {
             path: "/chat".to_string(),
             icon: Some("lucide:message-square".to_string()),
             desc: None,
-            enabled: true,
+            enabled: false,
         },
         SystemApp {
             name: "appNav.systemVoice".to_string(),
             path: "/voice".to_string(),
             icon: Some("lucide:mic".to_string()),
             desc: None,
-            enabled: true,
+            enabled: false,
         },
         SystemApp {
             name: "appNav.systemScreen".to_string(),
             path: "/screen".to_string(),
             icon: Some("lucide:monitor-up".to_string()),
             desc: None,
-            enabled: true,
+            enabled: false,
         },
         SystemApp {
             name: "appNav.systemFiles".to_string(),
             path: "/files".to_string(),
             icon: Some("lucide:folder-open".to_string()),
             desc: None,
-            enabled: true,
+            enabled: false,
         },
     ]
 }
