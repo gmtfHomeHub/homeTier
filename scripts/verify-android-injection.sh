@@ -79,6 +79,23 @@ else
   echo "OK: build.gradle.kts 已启用 cleartext traffic (usesCleartextTraffic=true)"
 fi
 
+# 5. build.gradle.kts 必须包含 ML Kit bundled model 修复（否则无 GMS 设备扫码永远无响应）
+# fix-android-build-gradle.sh 会排除 play-services-mlkit-barcode-scanning（轻量模型，依赖 GMS）
+# 并加入 com.google.mlkit:barcode-scanning（内置模型，全设备可用）。
+# 若此步骤未生效，APK 在无 Google Play Services 的设备上 scanner.process() 静默失败。
+if [ ! -f "$BUILD_GRADLE" ]; then
+  echo "ERROR: build.gradle.kts 不存在（重复检查）"
+  FAIL=1
+elif ! grep -q 'com.google.mlkit:barcode-scanning' "$BUILD_GRADLE"; then
+  echo "ERROR: build.gradle.kts 缺少 com.google.mlkit:barcode-scanning（ML Kit 内置模型修复未生效？）"
+  FAIL=1
+else
+  echo "OK: build.gradle.kts 已引入 ML Kit 内置模型 (com.google.mlkit:barcode-scanning)"
+fi
+if [ -f "$BUILD_GRADLE" ] && ! grep -q 'play-services-mlkit-barcode-scanning' "$BUILD_GRADLE"; then
+  echo "WARN: build.gradle.kts 中未见轻量模型排除项 exclude(play-services-mlkit-barcode-scanning)，请确认 fix 脚本已应用"
+fi
+
 if [ "$FAIL" -ne 0 ]; then
   echo ""
   echo "[verify-android-injection] ❌ 校验失败：Android 工程存在缺失，终止构建（APK 会缺 VPN 组件）"

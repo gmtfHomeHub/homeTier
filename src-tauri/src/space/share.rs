@@ -134,4 +134,19 @@ mod tests {
         assert_eq!(decrypted.virtual_ip, info.virtual_ip);
     }
 
+    #[test]
+    fn test_user_provided_link() {
+        let link = "homeTier://join?v=3&d=ojOTPldkQuQVspxPcwsUi57SApb5cG6z2H33baYjsvvaDGUVD20n7x0k0AKOLXfpy-oRoXQ1d_BNhVA7JUPohe5DqXQ7UaRVKJDtdNODed-M93xaOT5cphaKsCH1y7XzoP80D-bVN-2k6VJofVXYuSXUeQCDY5EhRYdJ84ZOOD5o-C1BUTfxSfuKBHhY30XnDE-sruV_P68582az4Up3l1bKXEnTuUqLLk-HNLyxUReAwL3DdILZ7tM_jShdTU7iLkCj2AlHBcwgTSGymYrDOLLpV8lkAOUBzkYZ";
+        match super::decrypt_share_link(link) {
+            Ok(info) => {
+                println!("OK: network_name={}, secret={}, ip={:?}, dhcp={:?}",
+                    info.network_name, info.network_secret, info.virtual_ip, info.dhcp);
+                println!("peer_urls={:?}", info.peer_urls);
+            }
+            Err(e) => {
+                panic!("Failed to parse user-provided link: {}", e);
+            }
+        }
+    }
+
 }
