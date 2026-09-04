@@ -112,8 +112,9 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
       }
       // 提示用户对准二维码
       toastInfo(t("space.scanningQR"));
-      // 超时自动取消（60秒无识别则退出扫描）
+      // 超时自动取消（60秒无识别则退出扫描，并提示用户而非静默回落表单）
       timeoutId = setTimeout(() => {
+        toastInfo(t("space.scanNoResult"));
         cancelScan().catch(() => {});
       }, 60000);
       // 原生全屏扫描，指定 QR 格式 + 后置摄像头
