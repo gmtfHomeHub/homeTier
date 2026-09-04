@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { parseShareLink } from "../../utils/api";
@@ -6,9 +6,9 @@ import { detectDeviceMode } from "../../utils/device";
 import type { ShareInfo } from "../../types";
 import { X, QrCode } from "lucide-react";
 import { Button, TextField, Flex } from "@radix-ui/themes";
-import { toastError } from "../../utils/toast";
+import { toastError, toastInfo } from "../../utils/toast";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
-import { scan, requestPermissions, Format } from "@tauri-apps/plugin-barcode-scanner";
+import { scan, cancel as cancelScan, requestPermissions, Format } from "@tauri-apps/plugin-barcode-scanner";
 
 interface JoinSpaceDialogProps {
   onClose: () => void;
@@ -87,8 +87,22 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
     }
   };
 
+  // 扫描期间拦截 Android 硬件返回键 → 取消扫描而非关闭 App
+  useEffect(() => {
+    if (!scanning) return;
+    const onPopState = () => cancelScan().catch(() => {});
+    // push 一个 dummy state，使 WebView canGoBack()=true，返回键触发 popstate 而非 finish activity
+    window.history.pushState({ qrScanning: true }, "");
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      if (window.history.state?.qrScanning) window.history.back();
+    };
+  }, [scanning]);
+
   const startScan = useCallback(async () => {
     setScanning(true);
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       // 请求相机权限
       const perm = await requestPermissions();
@@ -96,6 +110,12 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
         toastError(t("space.cameraUnavailable"));
         return;
       }
+      // 提示用户对准二维码
+      toastInfo(t("space.scanningQR"));
+      // 超时自动取消（60秒无识别则退出扫描）
+      timeoutId = setTimeout(() => {
+        cancelScan().catch(() => {});
+      }, 60000);
       // 原生全屏扫描，指定 QR 格式 + 后置摄像头
       const result = await scan({
         formats: [Format.QRCode],
@@ -105,12 +125,13 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
       const info = await parseShareLink(result.content);
       setPendingShare(info);
     } catch (e) {
-      // 用户取消扫描时 scan() reject，不报错；仅对真实异常提示
+      // 用户取消（含超时取消、返回键取消）时 scan() reject "cancelled"，不报错
       const msg = String(e);
-      if (!msg.includes("cancel") && !msg.includes("Cancel")) {
+      if (!msg.toLowerCase().includes("cancel")) {
         toastError(msg);
       }
     } finally {
+      if (timeoutId) clearTimeout(timeoutId);
       setScanning(false);
     }
   }, [t]);

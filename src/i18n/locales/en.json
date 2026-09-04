@@ -246,6 +246,7 @@
     "scanToJoin": "Scan to join",
     "cameraUnavailable": "Camera unavailable",
     "scanNoResult": "No QR code detected, please align and retry",
+    "scanningQR": "Scanning, point camera at QR code…",
     "confirmJoinTitle": "Confirm joining space",
     "confirmJoinIp": "IP address",
     "dhcpAuto": "DHCP auto-assign",

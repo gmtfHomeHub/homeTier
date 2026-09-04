@@ -246,6 +246,7 @@
     "scanToJoin": "掃碼加入",
     "cameraUnavailable": "無法存取相機",
     "scanNoResult": "未辨識到 QR Code，請對準後重試",
+    "scanningQR": "掃描中，將相機對準 QR Code…",
     "confirmJoinTitle": "確認加入空間",
     "confirmJoinIp": "IP 位址",
     "dhcpAuto": "DHCP 自動分配",

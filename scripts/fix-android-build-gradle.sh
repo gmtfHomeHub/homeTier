@@ -40,6 +40,29 @@ else
     echo "[fix-android-build-gradle] usesCleartextTraffic placeholder not found or already true"
 fi
 
+# --- ML Kit: 切换到内置模型（不依赖 Google Play Services） ---
+# tauri-plugin-barcode-scanner 默认依赖 play-services-mlkit-barcode-scanning（轻量模型），
+# 需要 Google Play Services。在无 GMS 的设备上（华为/国产 ROM），scan() 能打开相机但永远
+# 无法识别二维码——ML Kit 条码模型从 GMS 加载失败，scanner.process() 静默失败。
+# 解决：排除轻量模型，改用 com.google.mlkit:barcode-scanning（内置模型，~3MB，全设备可用）。
+if ! grep -q 'com.google.mlkit:barcode-scanning' "$BUILD_GRADLE"; then
+    cat >> "$BUILD_GRADLE" << 'MLKIT_EOF'
+
+// --- ML Kit bundled model (no Google Play Services dependency) ---
+// Replaces play-services-mlkit-barcode-scanning (thin model, requires GMS)
+// with com.google.mlkit:barcode-scanning (bundled model, works on all devices)
+configurations.all {
+    exclude(group = "com.google.android.gms", module = "play-services-mlkit-barcode-scanning")
+}
+dependencies {
+    implementation("com.google.mlkit:barcode-scanning:17.2.0")
+}
+MLKIT_EOF
+    echo "[fix-android-build-gradle] Switched ML Kit to bundled model (no GMS dependency)"
+else
+    echo "[fix-android-build-gradle] ML Kit bundled model already present"
+fi
+
 # Check if signing config already exists
 if grep -q "signingConfigs" "$BUILD_GRADLE"; then
     echo "[fix-android-build-gradle] Signing config already present, skipping"
