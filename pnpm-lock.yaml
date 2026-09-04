@@ -17,6 +17,9 @@ importers:
       '@tauri-apps/api':
         specifier: ^2
         version: 2.11.1
+      '@tauri-apps/plugin-barcode-scanner':
+        specifier: ^2.4.6
+        version: 2.4.6
       '@tauri-apps/plugin-clipboard-manager':
         specifier: ^2
         version: 2.3.2
@@ -44,9 +47,6 @@ importers:
       framer-motion:
         specifier: ^11
         version: 11.0.0(react-dom@18.3.0(react@18.3.0))(react@18.3.0)
-      html5-qrcode:
-        specifier: ^2
-        version: 2.3.8
       i18next:
         specifier: ^23
         version: 23.0.0
@@ -1423,6 +1423,9 @@ packages:
     engines: {node: '>= 10'}
     hasBin: true
 
+  '@tauri-apps/plugin-barcode-scanner@2.4.6':
+    resolution: {integrity: sha512-9B2u+Sma002p1MzH5kGYFg8dPVNVbIHpyye6PY1A9AOeR7IOUAXS02VaUpnyXqJkUUnF/s2g7MgaB7wY9Ko6cg==}
+
   '@tauri-apps/plugin-clipboard-manager@2.3.2':
     resolution: {integrity: sha512-CUlb5Hqi2oZbcZf4VUyUH53XWPPdtpw43EUpCza5HWZJwxEoDowFzNUDt1tRUXA8Uq+XPn17Ysfptip33sG4eQ==}
 
@@ -1887,9 +1890,6 @@ packages:
 
   html-parse-stringify@3.0.1:
     resolution: {integrity: sha512-KknJ50kTInJ7qIScF3jeaFRpMpE8/lfiTdzf/twXyPBLAGrLRTmkz3AdTnKeh40X8k9L2fdYwEp/42WGXIRGcg==}
-
-  html5-qrcode@2.3.8:
-    resolution: {integrity: sha512-jsr4vafJhwoLVEDW3n1KvPnCCXWaQfRng0/EEYk1vNcQGcG/htAdhJX0be8YyqMoSz7+hZvOZSTAepsabiuhiQ==}
 
   i18next@23.0.0:
     resolution: {integrity: sha512-nwggKtf7ZQWq1t21qGUGhrwoyRWHJNTy016jOPl6ZDfxGZAUyK1FWm3EgELgfO4ujNifCHmxJ6pyDdcX7cagWg==}
@@ -3763,6 +3763,10 @@ snapshots:
       '@tauri-apps/cli-win32-ia32-msvc': 2.11.4
       '@tauri-apps/cli-win32-x64-msvc': 2.11.4
 
+  '@tauri-apps/plugin-barcode-scanner@2.4.6':
+    dependencies:
+      '@tauri-apps/api': 2.11.1
+
   '@tauri-apps/plugin-clipboard-manager@2.3.2':
     dependencies:
       '@tauri-apps/api': 2.11.1
@@ -4266,8 +4270,6 @@ snapshots:
   html-parse-stringify@3.0.1:
     dependencies:
       void-elements: 3.1.0
-
-  html5-qrcode@2.3.8: {}
 
   i18next@23.0.0:
     dependencies:

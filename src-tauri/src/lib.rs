@@ -37,6 +37,9 @@ pub fn run() -> std::process::ExitCode {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init());
 
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let builder = builder.plugin(tauri_plugin_barcode_scanner::init());
+
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
 

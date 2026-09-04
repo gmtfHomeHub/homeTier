@@ -13,6 +13,7 @@
     "os:default",
     "notification:default",
     "dialog:default",
+    "barcode-scanner:default",
     "hometiervpnservice:default"
   ],
   "platforms": ["linux", "windows", "macOS", "android", "iOS"]

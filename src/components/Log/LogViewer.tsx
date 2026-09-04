@@ -7,6 +7,7 @@ import { Button, Select, Checkbox, Text, Flex, Badge, Dialog, DropdownMenu, Butt
 import { List, useDynamicRowHeight, type RowComponentProps } from "react-window";
 import { toastSuccess, toastError } from "../../utils/toast";
 import { isMobile } from "../../utils/platform";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 interface LogViewerProps {
   spaceId?: string;
@@ -239,7 +240,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
 
   const copyText = useCallback(async (text: string) => {
     try {
-      await navigator.clipboard.writeText(text);
+      await writeText(text);
       toastSuccess(t("log.copiedToClipboard"));
     } catch (e) {
       toastError(t("log.copyFailed"));

@@ -6,6 +6,7 @@ import Tip from "../Common/Tip";
 import { X, Copy, Check, HelpCircle } from "lucide-react";
 import { toastSuccess, toastError } from "../../utils/toast";
 import { generateShareLink } from "../../utils/api";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 interface ShareSpaceDialogProps {
   spaceId: string;
@@ -34,7 +35,7 @@ export function ShareSpaceDialog({ spaceId, onClose }: ShareSpaceDialogProps) {
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(link);
+      await writeText(link);
       setCopied(true);
       toastSuccess(t("space.copiedToClipboard"));
       setTimeout(() => setCopied(false), 2000);

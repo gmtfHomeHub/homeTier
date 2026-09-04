@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { parseShareLink } from "../../utils/api";
@@ -7,13 +7,11 @@ import type { ShareInfo } from "../../types";
 import { X, QrCode } from "lucide-react";
 import { Button, TextField, Flex } from "@radix-ui/themes";
 import { toastError } from "../../utils/toast";
+import { readText } from "@tauri-apps/plugin-clipboard-manager";
+import { scan, requestPermissions, Format } from "@tauri-apps/plugin-barcode-scanner";
 
 interface JoinSpaceDialogProps {
   onClose: () => void;
-}
-
-interface Html5QrcodeScanner {
-  stop(): Promise<void>;
 }
 
 export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
@@ -24,10 +22,6 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
-  const [scanError, setScanError] = useState<string | null>(null);
-  const [decodeWarn, setDecodeWarn] = useState<string | null>(null);
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
-  const decodeErrorRef = useRef(0);
   const joinSpace = useSpaceStore((s) => s.joinSpace);
 
   const isMobile = detectDeviceMode() === "mobile";
@@ -83,87 +77,43 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
   };
 
   const handlePasteLink = async () => {
-    setError(null);
     try {
-      const text = await navigator.clipboard.readText();
+      const text = await readText();
       if (!text.trim()) return;
       const info = await parseShareLink(text.trim());
       setPendingShare(info);
     } catch (e) {
-      setError(String(e));
       toastError(String(e));
     }
   };
 
-  const applyShareInfo = useCallback((info: ShareInfo) => {
-    setPendingShare(info);
-  }, []);
-
   const startScan = useCallback(async () => {
     setScanning(true);
-    setScanError(null);
-    setDecodeWarn(null);
-    decodeErrorRef.current = 0;
     try {
-      const { Html5Qrcode } = await import("html5-qrcode");
-      const scanner = new Html5Qrcode("qr-reader");
-      scannerRef.current = scanner;
-      await scanner.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 220, height: 220 } },
-        // onScanSuccess：区分“没解到”和“解到但解析失败”
-        async (decodedText: string) => {
-          console.log("[qr-scan] decoded:", decodedText);
-          try {
-            await scanner.stop();
-            setScanning(false);
-            const info = await parseShareLink(decodedText);
-            console.log("[qr-scan] parse ok:", info);
-            applyShareInfo(info);
-          } catch (err) {
-            console.error("[qr-scan] parse/stop failed:", err);
-            setError(String(err));
-            toastError(String(err));
-          }
-        },
-        // onScanFailure：记录解码失败次数，暴露“相机开着但解不到”的真实情况
-        () => {
-          decodeErrorRef.current += 1;
-          if (decodeErrorRef.current === 20) {
-            setDecodeWarn(t("space.scanNoResult"));
-          }
-        },
-      ).catch((err) => {
-        console.error("[qr-scan] start failed:", err);
-        setScanning(false);
-        setScanError(`${t("space.cameraUnavailable")}：${String(err)}`);
+      // 请求相机权限
+      const perm = await requestPermissions();
+      if (perm !== "granted") {
+        toastError(t("space.cameraUnavailable"));
+        return;
+      }
+      // 原生全屏扫描，指定 QR 格式 + 后置摄像头
+      const result = await scan({
+        formats: [Format.QRCode],
+        cameraDirection: "back",
       });
-    } catch (err) {
-      console.error("[qr-scan] init failed:", err);
+      // 扫描成功，解析分享链接
+      const info = await parseShareLink(result.content);
+      setPendingShare(info);
+    } catch (e) {
+      // 用户取消扫描时 scan() reject，不报错；仅对真实异常提示
+      const msg = String(e);
+      if (!msg.includes("cancel") && !msg.includes("Cancel")) {
+        toastError(msg);
+      }
+    } finally {
       setScanning(false);
-      setScanError(`${t("space.cameraUnavailable")}：${String(err)}`);
     }
-  }, [t, applyShareInfo]);
-
-  const stopScan = useCallback(async () => {
-    if (scannerRef.current) {
-      try {
-        await scannerRef.current.stop();
-      } catch (_) {
-        console.log(_);
-      }
-      scannerRef.current = null;
-    }
-    setScanning(false);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
-      }
-    };
-  }, []);
+  }, [t]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -184,27 +134,7 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
           </div>
         </div>
 
-        {scanning ? (
-          <div className="space-y-3">
-            <p className="text-sm text-center">
-              {t("space.scanToJoin")}
-            </p>
-            <div id="qr-reader" className="w-full h-[260px] overflow-hidden" />
-            {scanError && (
-              <p className="text-xs text-[var(--color-danger)] text-center">
-                {scanError}
-              </p>
-            )}
-            {decodeWarn && (
-              <p className="text-xs text-[var(--color-text-secondary)] text-center">
-                {decodeWarn}
-              </p>
-            )}
-            <Button onClick={stopScan} variant="outline" size="2" className="w-full">
-              {t("common.cancel")}
-            </Button>
-          </div>
-        ) : pendingShare ? (
+        {pendingShare ? (
           <div className="space-y-4">
             <div className="rounded-lg bg-[var(--color-surface-hover)] p-4 space-y-3">
               <div>
