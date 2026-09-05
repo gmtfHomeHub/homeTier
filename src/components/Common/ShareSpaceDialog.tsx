@@ -87,7 +87,15 @@ export function ShareSpaceDialog({ spaceId, onClose }: ShareSpaceDialogProps) {
               <div className="flex justify-center">
                 <div className="p-3 bg-white rounded-xl w-full max-w-[284px]">
                   <div className="w-full aspect-square">
-                    <QRCodeSVG value={link} size={260} className="w-full h-full" />
+                    {/* level="M"（15% 纠错，屏幕扫码平衡之选）；marginSize={4} 保证 ISO 4 模块静默区。
+                        若实测屏幕反光/遮挡扫不出，可改 level="Q"（25% 纠错，代价 +1~2 version）*/}
+                    <QRCodeSVG
+                      value={link}
+                      size={260}
+                      level="M"
+                      marginSize={4}
+                      className="w-full h-full"
+                    />
                   </div>
                 </div>
               </div>
