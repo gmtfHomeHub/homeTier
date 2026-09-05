@@ -164,7 +164,7 @@ Self {
     pub async fn join(&self, config: NetworkConfig, name: Option<String>) -> Result<Space, String> {
         let network_name = config.network_name.clone();
         let network_secret = config.network_secret.clone();
-        let space = Space {
+        let mut space = Space {
             id: Uuid::new_v4(),
             name: name.clone().unwrap_or_else(|| network_name.clone()),
             description: None,
@@ -198,6 +198,7 @@ Self {
         let config_json = serde_json::to_string(&config)
             .map_err(|e| format!("序列化配置失败: {}", e))?;
         self.db.update_space_config(&space.id.to_string(), &config_json)?;
+        space.config_json = Some(config_json);
         crate::log_info!(
             format!("加入空间: 配置已写入 config json (dhcp={}, ip={}, peers={}, listeners={})",
                 config.dhcp,
@@ -891,7 +892,7 @@ impl SpaceManager {
     pub async fn join(&self, config: NetworkConfig, name: Option<String>) -> Result<Space, String> {
         let network_name = config.network_name.clone();
         let network_secret = config.network_secret.clone();
-        let space = Space {
+        let mut space = Space {
             id: Uuid::new_v4(),
             name: name.clone().unwrap_or_else(|| network_name.clone()),
             description: None,
@@ -925,6 +926,7 @@ impl SpaceManager {
         let config_json = serde_json::to_string(&config)
             .map_err(|e| format!("序列化配置失败: {}", e))?;
         self.db.update_space_config(&space.id.to_string(), &config_json)?;
+        space.config_json = Some(config_json);
         crate::log_info!(
             format!("加入空间: 配置已写入 config json (dhcp={}, ip={}, peers={}, listeners={})",
                 config.dhcp,
