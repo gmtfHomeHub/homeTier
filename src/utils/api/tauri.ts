@@ -14,6 +14,7 @@ import type {
   AclRule,
   PortForwardRule,
   ShareInfo,
+  ParseQrResult,
   TraySpace,
   TrayLabels,
   SendFileResult,
@@ -49,8 +50,12 @@ export async function generateShareLink(spaceId: string, ip?: string): Promise<s
   return invoke("generate_share_link", { spaceId, ip });
 }
 
-export async function parseShareLink(link: string): Promise<ShareInfo> {
-  return invoke("parse_share_link", { link });
+export async function parseQR(link: string): Promise<ParseQrResult> {
+  return invoke("parse_qr", { link });
+}
+
+export async function parseShareData(data: string): Promise<ShareInfo> {
+  return invoke("parse_share_data", { data });
 }
 
 export async function connectSpace(spaceId: string): Promise<void> {

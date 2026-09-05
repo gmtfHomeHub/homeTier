@@ -12,6 +12,7 @@ pub mod file;
 pub mod log;
 pub mod platform;
 pub mod proxy;
+pub mod qr;
 pub mod screen;
 pub mod system_apps;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -58,7 +59,8 @@ pub fn run() -> std::process::ExitCode {
             commands::space::get_space_config,
             commands::space::update_space_config,
             commands::space::generate_share_link,
-            commands::space::parse_share_link,
+            commands::space::parse_share_data,
+            commands::qr::parse_qr,
             commands::space::connect_space,
             commands::space::disconnect_space,
             commands::space::get_space_status,

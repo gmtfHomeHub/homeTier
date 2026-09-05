@@ -1,31 +1,30 @@
 import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useSpaceStore } from "../../stores/spaceStore";
-import { parseShareLink } from "../../utils/api";
-import { detectDeviceMode } from "../../utils/device";
+import { resolveJoinShareInfo } from "../../utils/share";
 import type { ShareInfo } from "../../types";
-import { X, QrCode } from "lucide-react";
+import { X } from "lucide-react";
 import { Button, TextField, Flex } from "@radix-ui/themes";
 import { toastError } from "../../utils/toast";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
-import { ScanQRPanel } from "./ScanQRPanel";
 
 interface JoinSpaceDialogProps {
+  /** 由外部（如 SpaceList 扫一扫分发器）预先解析好的 ShareInfo，传入即直接进入确认态 */
+  initialShare?: ShareInfo;
   onClose: () => void;
 }
 
-export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
+export function JoinSpaceDialog({ initialShare, onClose }: JoinSpaceDialogProps) {
   const { t } = useTranslation();
   const [networkName, setNetworkName] = useState("");
   const [networkSecret, setNetworkSecret] = useState("");
-  const [pendingShare, setPendingShare] = useState<ShareInfo | null>(null);
+  const [pendingShare, setPendingShare] = useState<ShareInfo | null>(
+    initialShare ?? null
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [scanning, setScanning] = useState(false);
   const [pastedLink, setPastedLink] = useState("");
   const joinSpace = useSpaceStore((s) => s.joinSpace);
-
-  const isMobile = detectDeviceMode() === "mobile";
 
   const buildConfigJson = useCallback((info: ShareInfo): string => {
     const config: Record<string, unknown> = {
@@ -81,34 +80,19 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
     try {
       const text = await readText();
       if (!text.trim()) return;
-      const info = await parseShareLink(text.trim());
+      const info = await resolveJoinShareInfo(text.trim());
       setPendingShare(info);
     } catch (e) {
       toastError(String(e));
     }
   };
 
-  const startScan = useCallback(() => {
-    setScanning(true);
-  }, []);
-
-  // ScanQRPanel 回调：扫描到文本后先关面板再解析，失败时 toast（此时无相机预览遮挡）
-  const handleScanResult = useCallback(async (text: string) => {
-    setScanning(false);
-    try {
-      const info = await parseShareLink(text);
-      setPendingShare(info);
-    } catch (e) {
-      toastError(String(e));
-    }
-  }, []);
-
   // 粘贴/手填分享链接（兜底入口，相机不可用时必经）
   const handleUseLink = useCallback(async () => {
     const text = pastedLink.trim();
     if (!text) return;
     try {
-      const info = await parseShareLink(text);
+      const info = await resolveJoinShareInfo(text);
       setPendingShare(info);
     } catch (e) {
       toastError(String(e));
@@ -117,24 +101,14 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      {scanning && (
-        <ScanQRPanel onResult={handleScanResult} onCancel={() => setScanning(false)} />
-      )}
       <div className="bg-[var(--color-surface)] rounded-xl p-6 w-96 shadow-xl animate-fade-in">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">
             {pendingShare ? t("space.confirmJoinTitle") : t("space.joinSpace")}
           </h2>
-          <div className="flex items-center gap-1">
-            {isMobile && !scanning && !pendingShare && (
-              <Button onClick={startScan} variant="ghost" size="2">
-                <QrCode size={20} />
-              </Button>
-            )}
-            <Button onClick={onClose} variant="ghost" size="2">
-              <X size={20} />
-            </Button>
-          </div>
+          <Button onClick={onClose} variant="ghost" size="2">
+            <X size={20} />
+          </Button>
         </div>
 
         {pendingShare ? (
@@ -234,14 +208,15 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
                 </Button>
               </div>
               <div className="mt-2 flex items-center gap-2">
-                <Button type="button" onClick={handlePasteLink} variant="ghost" color="blue" size="1">
+                <Button
+                  type="button"
+                  onClick={handlePasteLink}
+                  variant="ghost"
+                  color="blue"
+                  size="1"
+                >
                   {t("space.pasteShareLink")}
                 </Button>
-                {isMobile && (
-                  <span className="text-xs text-[var(--color-text-secondary)]">
-                    {t("space.scanToJoin")}
-                  </span>
-                )}
               </div>
             </div>
             {error && (

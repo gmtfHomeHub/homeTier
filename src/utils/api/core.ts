@@ -15,6 +15,7 @@ export type {
   AclRule,
   PortForwardRule,
   ShareInfo,
+  ParseQrResult,
   CheckAppUpdate,
   AppUpdateOutcome,
 } from "../../types";

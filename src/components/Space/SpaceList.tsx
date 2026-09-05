@@ -1,7 +1,7 @@
 import { useSpaceStore } from "../../stores/spaceStore";
 import { useSpaceConnect } from "../../hooks/useSpaceConnect";
 import { useNavigate } from "react-router-dom";
-import { Share2, Trash2, Settings, X, LogIn, Plus, Ellipsis, House } from "lucide-react";
+import { Share2, Trash2, Settings, X, LogIn, Plus, Ellipsis, House, ScanLine } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { ShareSpaceDialog } from "../Common/ShareSpaceDialog";
@@ -9,13 +9,16 @@ import { ConfirmDialog } from "../Common/ConfirmDialog";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { MemberCount } from "../Common/MemberCount";
 import { Button, Flex, Grid, Badge, DropdownMenu } from "@radix-ui/themes";
-import { getSystemConfig, updateSpaceConfig } from "../../utils/api";
+import { getSystemConfig, updateSpaceConfig, parseQR, parseShareData } from "../../utils/api";
 import { toastError } from "../../utils/toast";
 import type { NetworkConfig } from "../../types/network";
 import { DEFAULT_NETWORK_CONFIG } from "../../types/network";
 import { getSpaceIp, handleStopProp } from "../../utils";
 import { CreateSpaceDialog } from "../Space/CreateSpaceDialog";
 import { JoinSpaceDialog } from "../Space/JoinSpaceDialog";
+import { ScanQRPanel } from "./ScanQRPanel";
+import { QR_EVENT_JOIN_SPACE } from "../../utils/share";
+import type { ShareInfo } from "../../types";
 
 export function SpaceList() {
   const { spaces, deleteSpace, loadSpaces, loadSpacesOnce } = useSpaceStore();
@@ -30,6 +33,8 @@ export function SpaceList() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [pendingShare, setPendingShare] = useState<ShareInfo | null>(null);
 
   const configSpace = spaces.find(s => s.id === configTarget);
 
@@ -93,6 +98,23 @@ export function SpaceList() {
     }
   };
 
+  // 扫一扫通用分发器：parseQR 后按 event 分发业务（j_s → 加入空间）
+  const handleScanResult = async (text: string) => {
+    setScanOpen(false);
+    try {
+      const { event, data } = await parseQR(text);
+      if (event === QR_EVENT_JOIN_SPACE) {
+        const info = await parseShareData(data);
+        setPendingShare(info);
+        setShowJoin(true);
+      } else {
+        toastError(t("qr.unsupportedEvent", { event }));
+      }
+    } catch (e) {
+      toastError(String(e));
+    }
+  };
+
   return (
     <div className="flex-1 p-6 overflow-y-auto">
       <Flex align="center" justify="between" className="mb-6">
@@ -111,6 +133,10 @@ export function SpaceList() {
             <DropdownMenu.Item onClick={() => setShowJoin(true)}>
               <LogIn size={16} />
               {t("space.join")}
+            </DropdownMenu.Item>
+            <DropdownMenu.Item onClick={() => setScanOpen(true)}>
+              <ScanLine size={16} />
+              {t("space.scan")}
             </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Root>
@@ -306,6 +332,10 @@ export function SpaceList() {
         </div>
       )}
 
+      {scanOpen && (
+        <ScanQRPanel onResult={handleScanResult} onCancel={() => setScanOpen(false)} />
+      )}
+
       {shareTarget && (
         <ShareSpaceDialog
           spaceId={shareTarget}
@@ -314,7 +344,15 @@ export function SpaceList() {
       )}
 
       {showCreate && <CreateSpaceDialog onClose={() => setShowCreate(false)} />}
-      {showJoin && <JoinSpaceDialog onClose={() => setShowJoin(false)} />}
+      {showJoin && (
+        <JoinSpaceDialog
+          initialShare={pendingShare ?? undefined}
+          onClose={() => {
+            setShowJoin(false);
+            setPendingShare(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -27,6 +27,12 @@ export interface ShareInfo {
   listener_urls?: string[];
 }
 
+/** parseQR 返回：事件标识 + base64 编码的业务数据 */
+export interface ParseQrResult {
+  event: string;
+  data: string;
+}
+
 export interface Member {
   id: string;
   space_id: string;

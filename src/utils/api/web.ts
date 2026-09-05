@@ -12,6 +12,7 @@ import type {
   AclRule,
   PortForwardRule,
   ShareInfo,
+  ParseQrResult,
   SendFileResult,
   FileTransferProgress,
   CheckAppUpdate,
@@ -121,10 +122,18 @@ export async function generateShareLink(spaceId: string, ip?: string): Promise<s
   return res.link;
 }
 
-export async function parseShareLink(link: string): Promise<ShareInfo> {
-  const res = await request<ShareInfo>("/space/share/parse", {
+export async function parseQR(link: string): Promise<ParseQrResult> {
+  const res = await request<ParseQrResult>("/qr/parse", {
     method: "POST",
     body: JSON.stringify({ link }),
+  });
+  return res;
+}
+
+export async function parseShareData(data: string): Promise<ShareInfo> {
+  const res = await request<ShareInfo>("/space/share/parse-data", {
+    method: "POST",
+    body: JSON.stringify({ data }),
   });
   return res;
 }

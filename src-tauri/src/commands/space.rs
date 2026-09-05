@@ -4,6 +4,8 @@ use crate::space::manager::SpaceManager;
 use crate::db::Database;
 use std::sync::Arc;
 use uuid::Uuid;
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine as _;
 
 #[tauri::command]
 pub async fn get_space_config(
@@ -92,10 +94,11 @@ pub async fn generate_share_link(
 }
 
 #[tauri::command]
-pub async fn parse_share_link(
-    link: String,
-) -> Result<ShareInfo, String> {
-    crate::space::share::decrypt_share_link(&link)
+pub async fn parse_share_data(data: String) -> Result<ShareInfo, String> {
+    let bytes = STANDARD
+        .decode(&data)
+        .map_err(|e| format!("分享数据解码失败: {}", e))?;
+    crate::space::share::decode_share_binary(&bytes)
 }
 
 #[tauri::command]

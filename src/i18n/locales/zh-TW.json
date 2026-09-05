@@ -243,7 +243,6 @@
     "dhcpHint": "未提供 IP 時 DHCP 將預設為 true",
     "createShare": "建立分享",
     "shareFailed": "分享連結建立失敗",
-    "scanToJoin": "掃碼加入",
     "cameraUnavailable": "無法存取相機",
     "scanNoResult": "未辨識到 QR Code，請對準後重試",
     "scanningQR": "掃描中，將相機對準 QR Code…",
@@ -282,7 +281,8 @@
     "spaceConfigTitle": "空間設定 - {{name}}",
     "spaceConfigSubtitle": "空間級 EasyTier 設定（優先級高於系統級）",
     "saveConfig": "儲存設定",
-    "confirmDeleteMessage": "確定要刪除空間「{{name}}」嗎？此操作不可撤銷。"
+    "confirmDeleteMessage": "確定要刪除空間「{{name}}」嗎？此操作不可撤銷。",
+    "scan": "掃一掃"
   },
   "chat": {
     "title": "聊天",
@@ -640,5 +640,8 @@
     "justNow": "剛剛",
     "minutesAgo": "{{count}}分鐘前",
     "hoursAgo": "{{count}}小時前"
+  },
+  "qr": {
+    "unsupportedEvent": "暫不支援的 QR 碼類型：{{event}}"
   }
 }

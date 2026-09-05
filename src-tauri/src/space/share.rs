@@ -1,11 +1,9 @@
-//! 空间分享链接编解码。
+//! `ShareInfo` 二进制编解码（join_space 业务载荷）。
 //!
-//! 链接格式：`homeTier://join?v=1&d={base64url([nonce 12][ciphertext+tag])}`
-//! 载荷流程：
-//!   ShareInfo → **二进制编码（小端序，单字节长度前缀，可选字段 bitmask）**
-//!           → **自适应压缩**（zstd level 3；压缩后不小于原文则走 raw）
-//!           → **AES-256-GCM 加密**（密钥 = SHA-256("homeTier-share-link-v1")）
-//!           → base64url（无 padding）
+//! 本模块只负责 `ShareInfo ↔ 二进制` 的紧凑序列化；加密 / URL 封装 /
+//! 事件路由（`e` 字段）由通用传输层 [`crate::qr`] 负责，业务方组合调用：
+//! - 生成：`encode_share_binary(&info)` → `qr::encrypt_qr(EVENT_JOIN_SPACE, &bytes)`
+//! - 解析：`qr::decrypt_qr(link)` → 校验 event == `j_s` → `decode_share_binary(&bytes)`
 //!
 //! 二进制布局（相对 `encode_share_binary` 输出）：
 //!   offset  size  field
@@ -24,23 +22,10 @@
 //!   ...     1     listener_count
 //!   ...     M×(1+L) listener_urls
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use base64::Engine as _;
-
 use crate::types::ShareInfo;
-use crate::utils::compress::{adaptive_compress, adaptive_decompress};
-use crate::utils::encrypt::share_key;
 
-/// 分享链接前缀。
-pub const SHARE_LINK_PREFIX: &str = "homeTier://join";
-/// 链接版本号（仅 v1）。
-pub const LINK_VERSION: u8 = 1;
 /// 二进制 payload 版本标记（首字节）。
 const PAYLOAD_VERSION: u8 = 1;
-
-/// 分享链接参数名。
-const PARAM_VERSION: &str = "v";
-const PARAM_DATA: &str = "d";
 
 // ---- 二进制可选字段 bitmask ----
 const FLAG_NAME: u8 = 0x01;
@@ -219,55 +204,6 @@ pub fn decode_share_binary(data: &[u8]) -> Result<ShareInfo, String> {
     })
 }
 
-// ---- 公开 API ----
-
-/// 生成分享链接（v1: 二进制编码 + 自适应压缩 + AES-256-GCM 加密）。
-pub fn encrypt_share_payload(info: &ShareInfo) -> Result<String, String> {
-    let binary = encode_share_binary(info)?;
-    let payload = adaptive_compress(&binary);
-    let enc = share_key().encrypt(&payload)?;
-    let encoded = URL_SAFE_NO_PAD.encode(&enc);
-    Ok(format!(
-        "{}?{}={}&{}={}",
-        SHARE_LINK_PREFIX,
-        PARAM_VERSION,
-        LINK_VERSION,
-        PARAM_DATA,
-        encoded
-    ))
-}
-
-/// 解析分享链接。仅支持 v1。
-pub fn decrypt_share_link(link: &str) -> Result<ShareInfo, String> {
-    let url = url::Url::parse(link.trim()).map_err(|_| "无效的分享链接".to_string())?;
-    // 注意：url crate 会把 scheme 规范化为小写（homeTier -> hometier）
-    if url.scheme().to_lowercase() != "hometier" || url.host_str() != Some("join") {
-        return Err("无效的分享链接格式".to_string());
-    }
-
-    let expected_version = LINK_VERSION.to_string();
-    let version = url
-        .query_pairs()
-        .find(|(k, _)| k == PARAM_VERSION)
-        .map(|(_, v)| v.into_owned());
-    if version.as_deref() != Some(expected_version.as_str()) {
-        return Err("不支持的分享链接版本".to_string());
-    }
-
-    let data = url
-        .query_pairs()
-        .find(|(k, _)| k == PARAM_DATA)
-        .map(|(_, v)| v.into_owned())
-        .ok_or_else(|| "分享链接缺少加密数据".to_string())?;
-
-    let raw = URL_SAFE_NO_PAD
-        .decode(&data)
-        .map_err(|e| format!("分享数据解码失败: {}", e))?;
-    let plaintext = share_key().decrypt(&raw)?;
-    let binary = adaptive_decompress(&plaintext)?;
-    decode_share_binary(&binary)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -325,80 +261,17 @@ mod tests {
         assert_eq!(decoded, info);
     }
 
+    /// join_space 端到端：ShareInfo → 二进制 → qr 传输层 → 反向还原。
     #[test]
-    fn link_roundtrip_full() {
+    fn join_space_e2e_roundtrip() {
         let info = sample_full();
-        let link = encrypt_share_payload(&info).unwrap();
-        assert!(link.starts_with("homeTier://join?v=1&d="));
-        let decoded = decrypt_share_link(&link).unwrap();
+        let data = encode_share_binary(&info).unwrap();
+        let link = crate::qr::encrypt_qr(crate::qr::EVENT_JOIN_SPACE, &data).unwrap();
+        assert!(link.starts_with("homeTier://qr?v=1&d="));
+        let (event, decoded_data) = crate::qr::decrypt_qr(&link).unwrap();
+        assert_eq!(event, crate::qr::EVENT_JOIN_SPACE);
+        let decoded = decode_share_binary(&decoded_data).unwrap();
         assert_eq!(decoded, info);
-    }
-
-    #[test]
-    fn link_roundtrip_minimal() {
-        let info = sample_minimal();
-        let link = encrypt_share_payload(&info).unwrap();
-        let decoded = decrypt_share_link(&link).unwrap();
-        assert_eq!(decoded, info);
-    }
-
-    /// 关键体积断言：v1（二进制）链接严格小于"JSON → zstd → AES-GCM → base64"等价流程。
-    #[test]
-    fn link_size_smaller_than_json_pipeline() {
-        use aes_gcm::aead::Aead;
-        use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
-
-        let info = sample_full();
-
-        // 基准：JSON 序列化 + zstd 压缩 + 同一密钥 AES-GCM 加密
-        let json_bytes = serde_json::to_vec(&info).unwrap();
-        let json_z = zstd::stream::encode_all(json_bytes.as_slice(), 3).unwrap();
-        let cipher = Aes256Gcm::new_from_slice(&[0u8; 32]).unwrap();
-        let nonce = Nonce::from_slice(&[0u8; 12]);
-        let ct = cipher.encrypt(nonce, json_z.as_slice()).unwrap();
-        let mut json_blob = vec![0u8; 12];
-        json_blob.extend(ct);
-        let json_link = format!(
-            "homeTier://join?v=1&d={}",
-            URL_SAFE_NO_PAD.encode(&json_blob)
-        );
-
-        let v1_link = encrypt_share_payload(&info).unwrap();
-
-        println!(
-            "JSON pipeline link: {}B, v1 link: {}B (节省 {}B, {:.1}%)",
-            json_link.len(),
-            v1_link.len(),
-            json_link.len() - v1_link.len(),
-            100.0 * (json_link.len() - v1_link.len()) as f64 / json_link.len() as f64,
-        );
-        assert!(
-            v1_link.len() < json_link.len(),
-            "v1 链接应比 JSON 版本更短"
-        );
-    }
-
-    #[test]
-    fn rejects_v3_link() {
-        // 旧 v3 链接应被拒绝（项目尚未上线，不做兼容）
-        assert!(decrypt_share_link("homeTier://join?v=3&d=xxx").is_err());
-    }
-
-    #[test]
-    fn rejects_bad_scheme() {
-        assert!(decrypt_share_link("https://homeTier/join?v=1&d=xxx").is_err());
-    }
-
-    #[test]
-    fn rejects_missing_data_param() {
-        assert!(decrypt_share_link("homeTier://join?v=1").is_err());
-    }
-
-    #[test]
-    fn rejects_corrupted_payload() {
-        // 随机字节作为密文，解密应失败
-        let link = "homeTier://join?v=1&d=AAAAAAAAAAAAAAAAAAAAAAAA";
-        assert!(decrypt_share_link(link).is_err());
     }
 
     #[test]

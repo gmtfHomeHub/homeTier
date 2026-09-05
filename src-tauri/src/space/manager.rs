@@ -329,7 +329,8 @@ Self {
             listener_urls: effective.listener_urls.clone(),
         };
         crate::log_info!(format!("生成分享链接: {} (v2 加密)", info.network_name), &space_id.to_string());
-        crate::space::share::encrypt_share_payload(&info)
+        let data = crate::space::share::encode_share_binary(&info)?;
+        crate::qr::encrypt_qr(crate::qr::EVENT_JOIN_SPACE, &data)
     }
 
     /// 等待 daemon 就绪（ping 轮询，最多 10s），失败返回错误
@@ -1038,7 +1039,8 @@ impl SpaceManager {
             listener_urls,
         };
         crate::log_info!(format!("生成分享链接: {} (v2 加密, peers={}, listeners={})", info.network_name, info.peer_urls.len(), info.listener_urls.len()), &space_id.to_string());
-        crate::space::share::encrypt_share_payload(&info)
+        let data = crate::space::share::encode_share_binary(&info)?;
+        crate::qr::encrypt_qr(crate::qr::EVENT_JOIN_SPACE, &data)
     }
 
     /// 连接空间（Mobile: 直接调用库）

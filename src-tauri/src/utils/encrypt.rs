@@ -57,9 +57,9 @@ impl FixedKeyGcm {
     }
 }
 
-/// 分享链接专用密钥（版本化种子，便于未来轮换）。
-pub fn share_key() -> FixedKeyGcm {
-    FixedKeyGcm::new_from_seed(b"homeTier-share-link-v1")
+/// 通用二维码专用密钥（版本化种子，便于未来轮换）。
+pub fn qr_key() -> FixedKeyGcm {
+    FixedKeyGcm::new_from_seed(b"homeTier-qr-v1")
 }
 
 #[cfg(test)]
@@ -92,10 +92,10 @@ mod tests {
     }
 
     #[test]
-    fn share_key_is_stable() {
+    fn qr_key_is_stable() {
         // 相同种子的密钥应一致，加密结果应可解密
-        let k = share_key();
+        let k = qr_key();
         let ct = k.encrypt(b"payload").unwrap();
-        assert_eq!(share_key().decrypt(&ct).unwrap(), b"payload".to_vec());
+        assert_eq!(qr_key().decrypt(&ct).unwrap(), b"payload".to_vec());
     }
 }

@@ -34,7 +34,8 @@ pub fn cmd_router(app_state: Arc<AppState>) -> Router {
         .route("/space/{space_id}/config", get(get_space_config_handler).post(update_space_config_handler))
         .route("/space/{space_id}/config/patch", post(patch_space_config_handler))
         .route("/space/{space_id}/share", post(generate_share_link_handler))
-        .route("/space/share/parse", post(parse_share_link_handler))
+        .route("/qr/parse", post(parse_qr_handler))
+        .route("/space/share/parse-data", post(parse_share_data_handler))
         .route("/space/{space_id}/signal", post(send_signal_handler))
         .route("/space/{space_id}/acl", get(get_acl_rules_handler).post(create_acl_rule_handler))
         .route("/space/{space_id}/acl/update", post(update_acl_rule_handler))
@@ -356,16 +357,46 @@ async fn generate_share_link_handler(
     }
 }
 
-async fn parse_share_link_handler(
+async fn parse_qr_handler(
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let link = body["link"].as_str().unwrap_or("").to_string();
     if link.is_empty() {
         return (StatusCode::BAD_REQUEST, "缺少 link").into_response();
     }
-    match crate::space::share::decrypt_share_link(&link) {
-        Ok(info) => Json(info).into_response(),
+    match crate::qr::decrypt_qr(&link) {
+        Ok((event, data)) => {
+            use base64::engine::general_purpose::STANDARD;
+            use base64::Engine as _;
+            Json(serde_json::json!({
+                "event": event,
+                "data": STANDARD.encode(&data),
+            }))
+            .into_response()
+        }
         Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+    }
+}
+
+async fn parse_share_data_handler(
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let data = body["data"].as_str().unwrap_or("").to_string();
+    if data.is_empty() {
+        return (StatusCode::BAD_REQUEST, "缺少 data").into_response();
+    }
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine as _;
+    match STANDARD.decode(&data) {
+        Ok(bytes) => match crate::space::share::decode_share_binary(&bytes) {
+            Ok(info) => Json(info).into_response(),
+            Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+        },
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            format!("分享数据解码失败: {}", e),
+        )
+            .into_response(),
     }
 }
 
