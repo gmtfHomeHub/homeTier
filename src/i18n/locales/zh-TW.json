@@ -282,7 +282,16 @@
     "spaceConfigSubtitle": "空間級 EasyTier 設定（優先級高於系統級）",
     "saveConfig": "儲存設定",
     "confirmDeleteMessage": "確定要刪除空間「{{name}}」嗎？此操作不可撤銷。",
-    "scan": "掃一掃"
+    "scan": "掃一掃",
+    "shareApps": "分享應用",
+    "appShareTitle": "應用分享",
+    "selectApps": "選擇應用",
+    "selectNodes": "選擇節點",
+    "confirmShare": "確認分享",
+    "appsImported": "已匯入 {{count}} 個應用到空間「{{name}}」",
+    "noAvailableNodes": "暫無可用節點",
+    "noVirtualIp": "無虛擬 IP",
+    "nodeFilterHint": "已過濾當前節點和服務器節點"
   },
   "chat": {
     "title": "聊天",

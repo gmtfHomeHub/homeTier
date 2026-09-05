@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { Card, Text, Flex, Grid } from "@radix-ui/themes";
 import { useTranslation } from "react-i18next";
 import { Signal, Wifi, Activity, Users } from "lucide-react";
-import { getSpacePeers, getNetworkStats } from "../../utils/api";
+import { getNetworkStats } from "../../utils/api";
 import type { PeerInfo } from "../../types";
 import { PeerTableDialog } from "./peerTableDialog";
+import { usePeerStore } from "../../stores/peerStore";
 
 interface StatsData {
   rx_bytes: number;
@@ -25,14 +26,17 @@ export function NetworkStatsPanel({ spaceId, connected = false }: NetworkStatsPa
     avg_latency_ms: 0,
   });
   const [loading, setLoading] = useState(true);
-  const [peersList, setPeersList] = useState<PeerInfo[]>([]);
   const [showPeersDialog, setShowPeersDialog] = useState(false);
+  const peersList = usePeerStore((s) => s.peers[spaceId] ?? []);
+  const fetchPeers = usePeerStore((s) => s.fetchPeers);
+  const startPolling = usePeerStore((s) => s.startPolling);
+  const stopPolling = usePeerStore((s) => s.stopPolling);
 
   useEffect(() => {
     if (!connected) {
       setStats({ rx_bytes: 0, tx_bytes: 0, avg_latency_ms: 0 });
-      setPeersList([]);
       setLoading(false);
+      stopPolling(spaceId);
       return;
     }
     let cancelled = false;
@@ -47,11 +51,6 @@ export function NetworkStatsPanel({ spaceId, connected = false }: NetworkStatsPa
             });
           }
         });
-        getSpacePeers(spaceId).then((getPeerList) => {
-          if (!cancelled) {
-            setPeersList(getPeerList);
-          }
-        });
       } catch (error) {
         console.error("Failed to load network stats:", error);
       } finally {
@@ -59,15 +58,19 @@ export function NetworkStatsPanel({ spaceId, connected = false }: NetworkStatsPa
       }
     };
 
-    const interval = setInterval(loadStats, 2000);
+    // 启动 peer 轮询（统一由 peerStore 管理）
+    startPolling(spaceId);
     loadStats();
+    const interval = setInterval(loadStats, 2000);
 
     return () => {
       cancelled = true;
       clearInterval(interval);
+      stopPolling(spaceId);
     };
-  }, [spaceId, connected]);
+  }, [spaceId, connected, startPolling, stopPolling]);
 
+  // 当 peersList 变化时自动更新对话框数据
   const formatLocalBytes = (bytes: number): string => {
     if (bytes === 0) return "0 B";
     const k = 1024;
@@ -85,10 +88,10 @@ export function NetworkStatsPanel({ spaceId, connected = false }: NetworkStatsPa
     return (
       <Card className="w-full">
         <div className="p-4 border-b border-[var(--color-border)]">
-          <Text size="2" weight="bold">{loading ? t('network.stats') : t('network.stats')}</Text>
+          <Text size="2" weight="bold">{t('network.stats')}</Text>
         </div>
         <div className="pb-4 text-center">
-          <Text size="1" color="gray">{loading ? t("common.loading") : t('network.disconnected')}</Text>
+          <Text size="1" color="gray">{t("common.loading")}</Text>
         </div>
       </Card>
     );

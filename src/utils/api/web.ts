@@ -13,6 +13,10 @@ import type {
   PortForwardRule,
   ShareInfo,
   ParseQrResult,
+  AppImport,
+  AddAppPayload,
+  PeerTarget,
+  ImportAddAppsResult,
   SendFileResult,
   FileTransferProgress,
   CheckAppUpdate,
@@ -136,6 +140,25 @@ export async function parseShareData(data: string): Promise<ShareInfo> {
     body: JSON.stringify({ data }),
   });
   return res;
+}
+
+export async function generateAddAppLink(
+  spaceId: string,
+  appIds: string[],
+  targetPeerIds: number[]
+): Promise<string> {
+  const res = await request<{ link: string }>("/space/add-app-link", {
+    method: "POST",
+    body: JSON.stringify({ spaceId, appIds, targetPeerIds }),
+  });
+  return res.link;
+}
+
+export async function importAddApps(data: string): Promise<ImportAddAppsResult> {
+  return request<ImportAddAppsResult>("/qr/import-add-apps", {
+    method: "POST",
+    body: JSON.stringify({ data }),
+  });
 }
 
 export async function getSpaceConfig(spaceId: string): Promise<string | null> {

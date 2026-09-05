@@ -9,15 +9,15 @@ import { ConfirmDialog } from "../Common/ConfirmDialog";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { MemberCount } from "../Common/MemberCount";
 import { Button, Flex, Grid, Badge, DropdownMenu } from "@radix-ui/themes";
-import { getSystemConfig, updateSpaceConfig, parseQR, parseShareData } from "../../utils/api";
-import { toastError } from "../../utils/toast";
+import { getSystemConfig, updateSpaceConfig, parseQR, parseShareData, importAddApps } from "../../utils/api";
+import { toastError, toastSuccess } from "../../utils/toast";
 import type { NetworkConfig } from "../../types/network";
 import { DEFAULT_NETWORK_CONFIG } from "../../types/network";
 import { getSpaceIp, handleStopProp } from "../../utils";
 import { CreateSpaceDialog } from "../Space/CreateSpaceDialog";
 import { JoinSpaceDialog } from "../Space/JoinSpaceDialog";
 import { ScanQRPanel } from "./ScanQRPanel";
-import { QR_EVENT_JOIN_SPACE } from "../../utils/share";
+import { QR_EVENT_JOIN_SPACE, QR_EVENT_ADD_APP } from "../../utils/share";
 import type { ShareInfo } from "../../types";
 
 export function SpaceList() {
@@ -98,7 +98,7 @@ export function SpaceList() {
     }
   };
 
-  // 扫一扫通用分发器：parseQR 后按 event 分发业务（j_s → 加入空间）
+  // 扫一扫通用分发器：parseQR 后按 event 分发业务（j_s → 加入空间，a_a → 导入应用）
   const handleScanResult = async (text: string) => {
     setScanOpen(false);
     try {
@@ -107,6 +107,10 @@ export function SpaceList() {
         const info = await parseShareData(data);
         setPendingShare(info);
         setShowJoin(true);
+      } else if (event === QR_EVENT_ADD_APP) {
+        const result = await importAddApps(data);
+        toastSuccess(t("space.appsImported", { count: result.imported, name: result.space_name }));
+        await loadSpaces();
       } else {
         toastError(t("qr.unsupportedEvent", { event }));
       }

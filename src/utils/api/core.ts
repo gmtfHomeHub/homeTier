@@ -16,6 +16,10 @@ export type {
   PortForwardRule,
   ShareInfo,
   ParseQrResult,
+  AppImport,
+  AddAppPayload,
+  PeerTarget,
+  ImportAddAppsResult,
   CheckAppUpdate,
   AppUpdateOutcome,
 } from "../../types";

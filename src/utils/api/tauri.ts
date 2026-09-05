@@ -15,6 +15,10 @@ import type {
   PortForwardRule,
   ShareInfo,
   ParseQrResult,
+  AppImport,
+  AddAppPayload,
+  PeerTarget,
+  ImportAddAppsResult,
   TraySpace,
   TrayLabels,
   SendFileResult,
@@ -56,6 +60,18 @@ export async function parseQR(link: string): Promise<ParseQrResult> {
 
 export async function parseShareData(data: string): Promise<ShareInfo> {
   return invoke("parse_share_data", { data });
+}
+
+export async function generateAddAppLink(
+  spaceId: string,
+  appIds: string[],
+  targetPeerIds: number[]
+): Promise<string> {
+  return invoke("generate_add_app_link", { spaceId, appIds, targetPeerIds });
+}
+
+export async function importAddApps(data: string): Promise<ImportAddAppsResult> {
+  return invoke("import_add_apps", { data });
 }
 
 export async function connectSpace(spaceId: string): Promise<void> {

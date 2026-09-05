@@ -282,7 +282,16 @@
     "spaceConfigSubtitle": "Space-level EasyTier config (overrides system)",
     "saveConfig": "Save Config",
     "confirmDeleteMessage": "Are you sure you want to delete space \"{{name}}\"? This action cannot be undone.",
-    "scan": "Scan"
+    "scan": "Scan",
+    "shareApps": "Share Apps",
+    "appShareTitle": "App Share",
+    "selectApps": "Select Apps",
+    "selectNodes": "Select Nodes",
+    "confirmShare": "Confirm Share",
+    "appsImported": "Imported {{count}} apps to space \"{{name}}\"",
+    "noAvailableNodes": "No available nodes",
+    "noVirtualIp": "No virtual IP",
+    "nodeFilterHint": "Current node and server nodes filtered"
   },
   "chat": {
     "title": "Chat",

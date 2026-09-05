@@ -31,6 +31,8 @@ const PARAM_DATA: &str = "d";
 
 /// 事件：扫码加入空间（join_space）。
 pub const EVENT_JOIN_SPACE: &str = "j_s";
+/// 事件：扫码导入应用（add_app）。
+pub const EVENT_ADD_APP: &str = "a_a";
 
 /// 单字节长度前缀的 event 最大字节数。
 const MAX_EVENT_LEN: usize = 255;

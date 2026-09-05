@@ -9,6 +9,11 @@ import type { ShareInfo } from "../types";
 export const QR_EVENT_JOIN_SPACE = "j_s";
 
 /**
+ * add_app 事件标识，与后端 `crate::qr::EVENT_ADD_APP` 保持一致。
+ */
+export const QR_EVENT_ADD_APP = "a_a";
+
+/**
  * 解析二维码文本为 `ShareInfo`（仅接受 `j_s` 事件）。
  *
  * - 事件不是 `j_s` 时抛错（由调用方 catch + toast）。

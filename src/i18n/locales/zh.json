@@ -282,7 +282,16 @@
     "spaceConfigSubtitle": "空间级 EasyTier 配置（优先级高于系统级）",
     "saveConfig": "保存配置",
     "confirmDeleteMessage": "确定要删除空间「{{name}}」吗？此操作不可撤销。",
-    "scan": "扫一扫"
+    "scan": "扫一扫",
+    "shareApps": "分享应用",
+    "appShareTitle": "应用分享",
+    "selectApps": "选择应用",
+    "selectNodes": "选择节点",
+    "confirmShare": "确认分享",
+    "appsImported": "已导入 {{count}} 个应用到空间「{{name}}」",
+    "noAvailableNodes": "暂无可用节点",
+    "noVirtualIp": "无虚拟 IP",
+    "nodeFilterHint": "已过滤当前节点和服务器节点"
   },
   "chat": {
     "title": "聊天",
