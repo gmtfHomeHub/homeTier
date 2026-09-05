@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { parseShareLink } from "../../utils/api";
@@ -6,9 +6,9 @@ import { detectDeviceMode } from "../../utils/device";
 import type { ShareInfo } from "../../types";
 import { X, QrCode } from "lucide-react";
 import { Button, TextField, Flex } from "@radix-ui/themes";
-import { toastError, toastInfo } from "../../utils/toast";
+import { toastError } from "../../utils/toast";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
-import { scan, cancel as cancelScan, requestPermissions, Format } from "@tauri-apps/plugin-barcode-scanner";
+import { ScanQRPanel } from "./ScanQRPanel";
 
 interface JoinSpaceDialogProps {
   onClose: () => void;
@@ -22,6 +22,7 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [pastedLink, setPastedLink] = useState("");
   const joinSpace = useSpaceStore((s) => s.joinSpace);
 
   const isMobile = detectDeviceMode() === "mobile";
@@ -87,58 +88,38 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
     }
   };
 
-  // 扫描期间拦截 Android 硬件返回键 → 取消扫描而非关闭 App
-  useEffect(() => {
-    if (!scanning) return;
-    const onPopState = () => cancelScan().catch(() => {});
-    // push 一个 dummy state，使 WebView canGoBack()=true，返回键触发 popstate 而非 finish activity
-    window.history.pushState({ qrScanning: true }, "");
-    window.addEventListener("popstate", onPopState);
-    return () => {
-      window.removeEventListener("popstate", onPopState);
-      if (window.history.state?.qrScanning) window.history.back();
-    };
-  }, [scanning]);
-
-  const startScan = useCallback(async () => {
+  const startScan = useCallback(() => {
     setScanning(true);
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  }, []);
+
+  // ScanQRPanel 回调：扫描到文本后先关面板再解析，失败时 toast（此时无相机预览遮挡）
+  const handleScanResult = useCallback(async (text: string) => {
+    setScanning(false);
     try {
-      // 请求相机权限
-      const perm = await requestPermissions();
-      if (perm !== "granted") {
-        toastError(t("space.cameraUnavailable"));
-        return;
-      }
-      // 提示用户对准二维码
-      toastInfo(t("space.scanningQR"));
-      // 超时自动取消（60秒无识别则退出扫描，并提示用户而非静默回落表单）
-      timeoutId = setTimeout(() => {
-        toastInfo(t("space.scanNoResult"));
-        cancelScan().catch(() => {});
-      }, 60000);
-      // 原生全屏扫描，指定 QR 格式 + 后置摄像头
-      const result = await scan({
-        formats: [Format.QRCode],
-        cameraDirection: "back",
-      });
-      // 扫描成功，解析分享链接
-      const info = await parseShareLink(result.content);
+      const info = await parseShareLink(text);
       setPendingShare(info);
     } catch (e) {
-      // 用户取消（含超时取消、返回键取消）时 scan() reject "cancelled"，不报错
-      const msg = String(e);
-      if (!msg.toLowerCase().includes("cancel")) {
-        toastError(msg);
-      }
-    } finally {
-      if (timeoutId) clearTimeout(timeoutId);
-      setScanning(false);
+      toastError(String(e));
     }
-  }, [t]);
+  }, []);
+
+  // 粘贴/手填分享链接（兜底入口，相机不可用时必经）
+  const handleUseLink = useCallback(async () => {
+    const text = pastedLink.trim();
+    if (!text) return;
+    try {
+      const info = await parseShareLink(text);
+      setPendingShare(info);
+    } catch (e) {
+      toastError(String(e));
+    }
+  }, [pastedLink]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      {scanning && (
+        <ScanQRPanel onResult={handleScanResult} onCancel={() => setScanning(false)} />
+      )}
       <div className="bg-[var(--color-surface)] rounded-xl p-6 w-96 shadow-xl animate-fade-in">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">
@@ -225,15 +206,43 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
                 placeholder={t("space.networkSecretPlaceholder")}
               />
             </div>
-            <div className="flex items-center gap-2">
-              <Button type="button" onClick={handlePasteLink} variant="ghost" color="blue" size="1">
-                {t("space.pasteShareLink")}
-              </Button>
-              {isMobile && (
-                <span className="text-xs text-[var(--color-text-secondary)]">
-                  {t("space.scanToJoin")}
-                </span>
-              )}
+            <div>
+              <label className="block mb-1 text-sm font-medium">
+                {t("space.pasteLinkLabel")}
+              </label>
+              <div className="flex items-center gap-2">
+                <TextField.Root
+                  value={pastedLink}
+                  onChange={(e) => setPastedLink(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleUseLink();
+                    }
+                  }}
+                  placeholder={t("space.pasteLinkPlaceholder")}
+                />
+                <Button
+                  type="button"
+                  onClick={handleUseLink}
+                  variant="ghost"
+                  color="blue"
+                  size="2"
+                  disabled={!pastedLink.trim()}
+                >
+                  {t("common.confirm")}
+                </Button>
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <Button type="button" onClick={handlePasteLink} variant="ghost" color="blue" size="1">
+                  {t("space.pasteShareLink")}
+                </Button>
+                {isMobile && (
+                  <span className="text-xs text-[var(--color-text-secondary)]">
+                    {t("space.scanToJoin")}
+                  </span>
+                )}
+              </div>
             </div>
             {error && (
               <p className="text-xs text-[var(--color-danger)]">{error}</p>
