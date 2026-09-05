@@ -95,7 +95,7 @@ pub fn encode_share_binary(info: &ShareInfo) -> Result<Vec<u8>, String> {
         write_string(&mut out, s, "virtual_ip")?;
     }
     if let Some(b) = info.dhcp {
-        out.push(if *b { 1 } else { 0 });
+        out.push(if b { 1 } else { 0 });
     }
 
     if info.peer_urls.len() > 255 {
@@ -124,14 +124,14 @@ fn read_string(input: &mut &[u8]) -> Result<String, String> {
         return Err("分享数据截断: 缺少长度字节".to_string());
     }
     let len = input[0] as usize;
-    input = &input[1..];
+    *input = &input[1..];
     if input.len() < len {
         return Err("分享数据截断: 字符串长度不匹配".to_string());
     }
     let s = std::str::from_utf8(&input[..len])
         .map_err(|_| "分享数据损坏: 字符串非 UTF-8".to_string())?
         .to_string();
-    input = &input[len..];
+    *input = &input[len..];
     Ok(s)
 }
 
@@ -352,10 +352,10 @@ mod tests {
 
         // 基准：JSON 序列化 + zstd 压缩 + 同一密钥 AES-GCM 加密
         let json_bytes = serde_json::to_vec(&info).unwrap();
-        let json_z = zstd::stream::encode_all(&json_bytes, 3).unwrap();
+        let json_z = zstd::stream::encode_all(json_bytes.as_slice(), 3).unwrap();
         let cipher = Aes256Gcm::new_from_slice(&[0u8; 32]).unwrap();
         let nonce = Nonce::from_slice(&[0u8; 12]);
-        let ct = cipher.encrypt(nonce, &json_z).unwrap();
+        let ct = cipher.encrypt(nonce, json_z.as_slice()).unwrap();
         let mut json_blob = vec![0u8; 12];
         json_blob.extend(ct);
         let json_link = format!(
