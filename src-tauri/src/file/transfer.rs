@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 use crate::types::{FileInfo, TransferProgress, TransferStatus};
-use crate::file::compress;
+use crate::utils::compress;
 use crate::crypto;
 use crate::file::server::FileServer;
 

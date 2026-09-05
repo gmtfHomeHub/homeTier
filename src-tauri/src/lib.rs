@@ -18,6 +18,7 @@ pub mod system_apps;
 pub mod server;
 pub mod space;
 pub mod types;
+pub mod utils;
 pub mod voice;
 
 use std::sync::Arc;
