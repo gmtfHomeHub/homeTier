@@ -114,15 +114,13 @@ export function SpaceDetail() {
                     {t("space.logs")}
                   </DropdownMenu.Item>
                 )}
-                {isOwner && (
-                  <DropdownMenu.Item
-                    color="red"
-                    onClick={() => setShowDeleteConfirm(true)}
-                  >
-                    <Trash2 size={16} />
-                    {t("space.deleteSpace")}
-                  </DropdownMenu.Item>
-                )}
+                <DropdownMenu.Item
+                  color="red"
+                  onClick={() => setShowDeleteConfirm(true)}
+                >
+                  <Trash2 size={16} />
+                  {t("space.deleteSpace")}
+                </DropdownMenu.Item>
               </DropdownMenu.Content>
             </DropdownMenu.Root>
           </Flex>
