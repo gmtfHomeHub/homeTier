@@ -1269,6 +1269,55 @@ impl SpaceManager {
         self.db.list_files(space_id, limit)
     }
 
+    /// 获取有效配置（合并组配置和本地配置）
+    pub async fn get_effective_config(&self, space_id: &Uuid) -> Result<NetworkConfig, String> {
+        let spaces = self.spaces.read().await;
+        let space = spaces.iter().find(|s| &s.id == space_id)
+            .ok_or_else(|| "Space not found".to_string())?;
+
+        // 从 DB 加载组配置 (config_json) 作为基础配置
+        let base_config = match self.db.get_space_config(&space_id.to_string()) {
+            Ok(Some(json)) => {
+                crate::log_info!(format!("get_effective_config: 加载 config_json: {}", json), &space_id.to_string());
+                match NetworkConfig::from_config_json(&json) {
+                    Ok(mut cfg) => {
+                        crate::log_info!(format!("get_effective_config: config_json 解析成功: virtual_ipv4={}, network_name={}, instance_id={}", cfg.virtual_ipv4, cfg.network_name, cfg.instance_id), &space_id.to_string());
+                        // 从 config_json 解析成功，补充 identity 字段（防止 config_json 中缺失）
+                        if cfg.network_name.is_empty() {
+                            cfg.network_name = space.network_name.clone();
+                        }
+                        if cfg.network_secret.is_empty() {
+                            cfg.network_secret = space.network_secret.clone();
+                        }
+                        cfg
+                    }
+                    Err(e) => {
+                        crate::log_warn!(format!("get_effective_config: config_json 解析失败，使用空间基础配置: {}", e), &space_id.to_string());
+                        NetworkConfig {
+                            network_name: space.network_name.clone(),
+                            network_secret: space.network_secret.clone(),
+                            dhcp: true,
+                            ..Default::default()
+                        }
+                    }
+                }
+            }
+            Ok(None) => {
+                NetworkConfig {
+                    network_name: space.network_name.clone(),
+                    network_secret: space.network_secret.clone(),
+                    dhcp: true,
+                    ..Default::default()
+                }
+            }
+            Err(e) => return Err(format!("读取空间配置失败: {}", e)),
+        };
+
+        let config = base_config;
+
+        Ok(config)
+    }
+
     /// 设置 TUN 文件描述符（移动端专用：从 VpnService/NetworkExtension 获取 fd 后注入）
     ///
     /// 幂等：前端 JS 与 Rust 侧均监听 tun-ready 事件（双保险），同一 fd 重复注入时
