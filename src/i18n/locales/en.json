@@ -249,6 +249,7 @@
     "scanningQR": "Scanning, point camera at QR code…",
     "cameraNotSupported": "Camera scanning not supported in this environment, please paste the link",
     "scanningStatus": "Scanning · {{frames}} frames · {{seconds}}s",
+    "startingCamera": "Starting camera…",
     "pasteLinkLabel": "Or paste a share link",
     "pasteLinkPlaceholder": "homeTier share link…",
     "confirmJoinTitle": "Confirm joining space",

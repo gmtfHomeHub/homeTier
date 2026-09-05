@@ -1001,27 +1001,41 @@ impl SpaceManager {
         Ok(spaces)
     }
 
-    /// 生成分享链接（Mobile: 基于空间基础信息加密）
+    /// 生成分享链接（Mobile: 携带分享者的对端/监听地址 + 接收方 IP）
     pub async fn generate_share_link(&self, space_id: &Uuid, ip: Option<String>) -> Result<String, String> {
         let spaces = self.spaces.read().await;
         let space = spaces.iter().find(|s| &s.id == space_id)
             .ok_or_else(|| "Space not found".to_string())?;
+        let network_name = space.network_name.clone();
+        let network_secret = space.network_secret.clone();
+        let space_name = space.name.clone();
+        drop(spaces);
+
         let virtual_ip = ip
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
-        // 先借用计算结果，避免之后 move 后 borrow
-        let dhcp = virtual_ip.is_none();
+        let dhcp = Some(virtual_ip.is_none());
+
+        // 从 DB config_json 读取分享者的对端/监听地址（与桌面 get_effective_config 对齐）
+        let (peer_urls, listener_urls) = match self.db.get_space_config(&space_id.to_string()) {
+            Ok(Some(json)) => match NetworkConfig::from_config_json(&json) {
+                Ok(cfg) => (cfg.peer_urls, cfg.listener_urls),
+                Err(_) => (Vec::new(), Vec::new()),
+            },
+            _ => (Vec::new(), Vec::new()),
+        };
+
         let info = ShareInfo {
-            network_name: space.network_name.clone(),
-            network_secret: space.network_secret.clone(),
+            network_name,
+            network_secret,
             host_hint: None,
             virtual_ip,
-            dhcp: Some(dhcp),
-            name: Some(space.name.clone()),
-            peer_urls: Vec::new(),
-            listener_urls: Vec::new(),
+            dhcp,
+            name: Some(space_name),
+            peer_urls,
+            listener_urls,
         };
-        crate::log_info!(format!("生成分享链接: {} (v2 加密)", info.network_name), &space_id.to_string());
+        crate::log_info!(format!("生成分享链接: {} (v2 加密, peers={}, listeners={})", info.network_name, info.peer_urls.len(), info.listener_urls.len()), &space_id.to_string());
         crate::space::share::encrypt_share_payload(&info)
     }
 

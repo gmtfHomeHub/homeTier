@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import jsQR from "jsqr";
+import { Loader2 } from "lucide-react";
 
 interface ScanQRPanelProps {
   onResult: (text: string) => void;
@@ -37,6 +38,8 @@ export function ScanQRPanel({ onResult, onCancel }: ScanQRPanelProps) {
 
   const [error, setError] = useState<string | null>(null);
   const [display, setDisplay] = useState({ frames: 0, seconds: SCAN_TIMEOUT_S });
+  const [ready, setReady] = useState(false);
+  const readyRef = useRef(false);
 
   // 拦截 Android 硬件返回键 → 取消扫描而非退出 Activity
   useEffect(() => {
@@ -86,6 +89,10 @@ export function ScanQRPanel({ onResult, onCancel }: ScanQRPanelProps) {
         const v = videoRef.current;
         const c = canvasRef.current;
         if (v && c && v.readyState >= 2 && v.videoWidth > 0) {
+          if (!readyRef.current) {
+            readyRef.current = true;
+            setReady(true);
+          }
           const w = v.videoWidth;
           const h = v.videoHeight;
           const scale = Math.min(1, DECODE_MAX_DIM / Math.max(w, h));
@@ -136,12 +143,20 @@ export function ScanQRPanel({ onResult, onCancel }: ScanQRPanelProps) {
     <div className="fixed inset-0 z-[60] bg-black flex flex-col select-none">
       <video
         ref={videoRef}
-        className="w-full h-full object-contain"
+        className={`w-full h-full object-contain transition-opacity duration-300 ${ready ? "opacity-100" : "opacity-0"}`}
         playsInline
         muted
         autoPlay
       />
       <canvas ref={canvasRef} className="hidden" />
+
+      {/* 相机启动占位：授权弹框显示期间 / 首帧到达前，避免裸露 video 默认“暂停”外观 */}
+      {!ready && !error && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white/80">
+          <Loader2 className="w-10 h-10 animate-spin" />
+          <span className="text-sm">{t("space.startingCamera")}</span>
+        </div>
+      )}
 
       {/* 顶部状态栏 */}
       <div className="absolute top-0 inset-x-0 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] flex items-center justify-between text-white">
@@ -157,8 +172,8 @@ export function ScanQRPanel({ onResult, onCancel }: ScanQRPanelProps) {
         </button>
       </div>
 
-      {/* 取景框（仅扫描中显示） */}
-      {!error && (
+      {/* 取景框（仅相机就绪后显示，加载期只显示 spinner） */}
+      {ready && !error && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="w-[70vmin] h-[70vmin] max-w-[400px] max-h-[400px] rounded-xl border-2 border-white/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
         </div>
