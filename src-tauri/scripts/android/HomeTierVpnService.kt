@@ -1,15 +1,17 @@
 // HomeTierVpnService.kt - Android VpnService implementation
 package com.hometier.app
 
-import android.app.Activity
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
+import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.util.Log
-import androidx.core.content.ContextCompat
-import com.hometier.app.screen.ScreenShareManager
-import java.net.InetAddress
 
 class HomeTierVpnService : VpnService() {
 
@@ -27,6 +29,7 @@ class HomeTierVpnService : VpnService() {
         const val DISALLOWED_APPLICATIONS = "disallowedApplications"
         const val MTU = "mtu"
         const val CHANNEL_ID = "hometier_vpn_channel"
+        const val NOTIFICATION_ID = 1001
     }
 
     override fun onCreate() {
@@ -43,15 +46,23 @@ class HomeTierVpnService : VpnService() {
         dns = intent?.getStringExtra(DNS)
         Log.i("HomeTierVpn", "onStartCommand spaceId=$spaceId ipv4Addr=$ipv4Addr")
 
-        val fd = createVpnInterface(intent?.extras)
-        if (fd != null) {
-            // fd 注入：通过 Tauri 命令传回 Rust
-            val result = Intent()
-            result.putExtra("fd", fd.detachFd())
-            result.putExtra("spaceId", spaceId)
-            // 这里直接调用 Tauri 插件的回调机制
-            // 简化：通过事件总线通知
-            // 实际 fd 注入在 Kotlin 插件的 startVpn 中通过 set_tun_fd 命令完成
+        // Android 8+: startForegroundService 被调用后必须在 5s 内 startForeground，
+        // 否则系统抛出 ForegroundServiceDidNotStartInTimeException 并杀进程。
+        // VpnService 属 systemExempted 类型（manifest 已声明），与 VPN 前台服务兼容。
+        val notification = buildNotification("homeTier VPN")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+
+        val pfd = createVpnInterface(intent?.extras)
+        if (pfd != null) {
+            // fd 注入：通过 TauriEventBus 发出 vpn:tun-ready 事件，
+            // Rust 侧 setup.rs 的 listen("vpn:tun-ready") 与 JS 侧 mobileVpn.ts 双路接收后
+            // 调用 set_tun_fd 命令将 fd 注入 EasyTier（双保险，幂等）。
+            val fdNum = pfd.detachFd()
+            TauriEventBus.emit("vpn:tun-ready", "{\"spaceId\":\"$spaceId\",\"fd\":$fdNum}")
         }
 
         return START_STICKY

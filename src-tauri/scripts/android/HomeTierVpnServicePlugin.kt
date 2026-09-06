@@ -17,6 +17,7 @@ import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import android.util.Log
 import android.webkit.WebView
 import com.hometier.app.screen.ScreenShareManager
 
