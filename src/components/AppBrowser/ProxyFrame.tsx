@@ -21,6 +21,8 @@ interface ProxyFrameProps {
   onBack: () => void;
   onError?: () => void;
   onNavState?: (state: FrameNavState) => void;
+  /** 自动重试回调（首次 upstream 连接失败时调用，由父组件决定是否重试） */
+  onRetry?: () => void;
 }
 
 function useContainerSize<T extends HTMLElement>() {
@@ -44,24 +46,36 @@ function parseProxyKey(proxyUrl: string): string {
   return m?.[1] ?? "";
 }
 
-export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, onOpenBrowser, onBack, onError, onNavState }: ProxyFrameProps) {
+export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, onOpenBrowser, onBack, onError, onNavState, onRetry }: ProxyFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { ref: containerRef, width: cw, height: ch } = useContainerSize<HTMLDivElement>();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [stage, setStage] = useState("connecting");
+  const loadedRef = useRef(false); // 单向锁：一旦 onLoad 触发，永不再显示 loading overlay
+  const retriedRef = useRef(false); // 仅重试一次
   const proxyKey = parseProxyKey(proxyUrl);
 
   // 监听后端代理转发进度，按 key 匹配更新阶段文案
   useEffect(() => {
     if (!proxyKey) return;
-    const un = listen<{ key: string; stage: string }>("proxy:load-progress", (e) => {
+    const un = listen<{ key: string; stage: string; error?: string }>("proxy:load-progress", (e) => {
       if (e.payload.key !== proxyKey) return;
       setStage(e.payload.stage);
-      if (e.payload.stage === "error") setLoading(false);
+      if (e.payload.stage === "error") {
+        setLoading(false);
+        // 仅对连接超时/连接失败做一次自动重试（其它错误如 DNS/状态码不可恢复）
+        const isRetriable = (e.payload.error?.includes("connect_timeout") ?? false)
+          || (e.payload.error?.includes("connect_failed") ?? false);
+        if (!retriedRef.current && isRetriable && onRetry) {
+          retriedRef.current = true;
+          // 延迟 2s 重试，给 peer 路由建立留出时间
+          setTimeout(() => onRetry(), 2000);
+        }
+      }
     });
     return () => { un.then((fn) => fn()); };
-  }, [proxyKey]);
+  }, [proxyKey, onRetry]);
 
   // 超时兑底：每个阶段 10s 无新事件则提示慢；stage 变化重置计时
   useEffect(() => {
@@ -102,7 +116,7 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, onOpenBrowser, 
 
   return (
     <div ref={containerRef} className="absolute inset-0 overflow-hidden bg-white">
-      {loading && (
+      {loading && !loadedRef.current && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-white/85 backdrop-blur-sm">
           <Loader2 size={32} className="animate-spin text-[var(--color-primary)]" />
           <Text size="2" className="text-[var(--color-text-secondary)]">
@@ -130,7 +144,12 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, onOpenBrowser, 
           title={name}
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-pointer-lock allow-popups-to-escape-sandbox allow-top-navigation"
           allow="fullscreen; camera; microphone; display-capture; focus"
-          onLoad={() => setLoading(false)}
+          onLoad={() => {
+            if (!loadedRef.current) {
+              loadedRef.current = true;
+              setLoading(false);
+            }
+          }}
           onError={onError}
         />
       </div>

@@ -237,8 +237,9 @@ export function AppWorkspace() {
       <div className="relative flex-1 bg-white">
         {spaceTabs.map((tab) => {
           const isActive = tab.key === activeKey;
-          const refreshKey = refreshNonce[tab.key] ?? 0;
           const showFrame = tab.proxyUrl && !tab.loadError;
+          // 刷新时在 proxyUrl 后追加 nonce，触发 iframe 重新加载而不重挂载 ProxyFrame
+          const displayUrl = showFrame ? `${tab.proxyUrl}${tab.proxyUrl.includes('?') ? '&' : '?'}__nonce=${refreshNonce[tab.key] ?? 0}` : tab.proxyUrl;
           return (
             <div
               key={tab.key}
@@ -247,15 +248,16 @@ export function AppWorkspace() {
             >
               {showFrame ? (
                 <ProxyFrame
-                  key={refreshKey}
+                  key={tab.key}
                   tabKey={tab.key}
-                  proxyUrl={tab.proxyUrl}
+                  proxyUrl={displayUrl}
                   name={tab.app.name}
                   deviceMode={deviceMode}
                   onOpenBrowser={handleOpenInBrowser}
                   onBack={handleBack}
                   onError={() => setLoadError(tab.key, true)}
                   onNavState={(s) => handleNavState(tab.key, s)}
+                  onRetry={() => setRefreshNonce((m) => ({ ...m, [tab.key]: (m[tab.key] ?? 0) + 1 }))}
                 />
               ) : tab.loadError ? (
                 <ProxyErrorFallback onOpenBrowser={handleOpenInBrowser} onBack={handleBack} />
