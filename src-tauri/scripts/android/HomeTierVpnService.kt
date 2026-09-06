@@ -98,7 +98,7 @@ class HomeTierVpnService : VpnService() {
 
         val ipParts = ipv4Addr.split("/")
         val (address, prefix) = if (ipParts.size == 2) {
-            ipParts[0] to ipParts[1].toIntOrNull() ?: 24
+            ipParts[0] to (ipParts[1].toIntOrNull() ?: 24)
         } else {
             Log.w("HomeTierVpn", "Invalid IP addr string: '$ipv4Addr', falling back to default")
             "10.144.144.1" to 24

@@ -96,7 +96,7 @@ class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity
 
             // 幂等：若 VPN 已在为同一 spaceId 运行，直接返回成功，避免重复建连触发 "Invalid IP addr string"
             if (HomeTierVpnService.self != null && HomeTierVpnService.ipv4Addr != null) {
-                val currentSpaceId = HomeTierVpnService.self?.intent?.getStringExtra(HomeTierVpnService.SPACE_ID)
+                val currentSpaceId = HomeTierVpnService.intent?.getStringExtra(HomeTierVpnService.SPACE_ID)
                 if (args.spaceId == currentSpaceId) {
                     Log.i("HomeTierVpn", "VPN already running for spaceId=${args.spaceId}, skipping restart")
                     ret.put("running", true)
