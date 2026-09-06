@@ -137,7 +137,7 @@ export async function startVpn(
 
     // 4. 启动 VpnService；need_prepare 时自动重新授权并重试一次
     for (let attempt = 0; attempt < 2; attempt++) {
-      const ret = await invoke<{ errorMsg?: string }>(`plugin:${PLUGIN}|start_vpn`, {
+      const ret = await invoke<{ errorMsg?: string; running?: boolean }>(`plugin:${PLUGIN}|start_vpn`, {
         spaceId: config.spaceId,
         ipv4Addr: `${config.virtualIp}/${config.virtualIpCidr}`,
         routes: config.routes,
@@ -157,6 +157,12 @@ export async function startVpn(
           break;
         }
         continue; // 重试启动
+      }
+      // VPN 已在为同一 space 运行（Kotlin 返回 running: true），无需再次等待 tun-ready
+      if (ret?.running === true) {
+        console.log("VPN already running for this space, resolving immediately");
+        settle(0);
+        break;
       }
       break;
     }
@@ -274,6 +280,19 @@ export async function connectWithVpn(
     const spaces = await api.listSpaces();
     const sp = spaces.find((s) => s.id === spaceId);
     if (sp?.virtual_ip) {
+      break;
+    }
+    await new Promise((r) => setTimeout(r, POLL_MS));
+  }
+
+  // 等待 mesh 路由建立：至少有一个 peer 在线（member_count >= 2，含本机）
+  // 最多再等 15s，总计约 25s，覆盖 mesh 建连时间
+  const meshPollStart = Date.now();
+  const MESH_MAX_POLL = 15_000;
+  while (Date.now() - meshPollStart < MESH_MAX_POLL) {
+    const spaces = await api.listSpaces();
+    const sp = spaces.find((s) => s.id === spaceId);
+    if (sp && (sp.member_count ?? 0) >= 2) {
       break;
     }
     await new Promise((r) => setTimeout(r, POLL_MS));

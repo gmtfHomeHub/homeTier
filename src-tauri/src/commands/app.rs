@@ -289,16 +289,17 @@ pub async fn import_add_apps(
         .map_err(|e| format!("载荷解析失败: {}", e))?;
 
     // 2. 遍历本地空间，匹配 name + network_name + target_peers
-    let spaces = space_manager.list().await?;
+    // 使用 DB 直接查询，避免 space_manager.list() 更新缓存导致瞬态 DIS 污染前端状态
+    let rows = db.list_spaces()?;
     let mut matched_space_id: Option<uuid::Uuid> = None;
     let mut matched_space_name = String::new();
 
-    for space in spaces {
-        if space.name != payload.name {
+    for row in rows {
+        if row.name != payload.name {
             continue;
         }
         // 解析 config_json 取 network_name
-        let config_json = match space.config_json.as_ref() {
+        let config_json = match row.config_json.as_ref() {
             Some(j) => j,
             None => continue,
         };
@@ -308,7 +309,11 @@ pub async fn import_add_apps(
             continue;
         }
         // 验证 target_peers：该空间当前在线 peer 是否包含所有 target peer_id
-        let current_peers = space_manager.get_peers(&space.id).await.unwrap_or_default();
+        let space_id = match uuid::Uuid::parse_str(&row.id) {
+            Ok(id) => id,
+            Err(_) => continue,
+        };
+        let current_peers = space_manager.get_peers(&space_id).await.unwrap_or_default();
         let current_peer_ids: std::collections::HashSet<u32> = 
             current_peers.iter().map(|p| p.peer_id).collect();
         let all_targets_present = payload.target_peers.iter()
@@ -316,8 +321,8 @@ pub async fn import_add_apps(
         if !all_targets_present {
             continue;
         }
-        matched_space_id = Some(space.id);
-        matched_space_name = space.name.clone();
+        matched_space_id = Some(space_id);
+        matched_space_name = row.name.clone();
         break;
     }
 

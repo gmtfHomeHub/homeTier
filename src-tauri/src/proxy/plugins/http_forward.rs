@@ -402,8 +402,8 @@ impl HttpForwardPlugin {
         }
 
         // 重试配置
-        const MAX_RETRIES: u32 = 3;
-        const RETRY_BASE_MS: u64 = 500;
+        const MAX_RETRIES: u32 = 5;
+        const RETRY_BASE_MS: u64 = 2000;
         let mut attempt: u32 = 0;
         let mut req_builder_opt = Some(req_builder);
 
@@ -529,11 +529,6 @@ impl HttpForwardPlugin {
         };
         emit_progress("connecting", None);
 
-        // 重试配置：针对连接类错误最多重试 3 次，指数退避 500ms→1s→2s
-        const MAX_RETRIES: u32 = 3;
-        const RETRY_BASE_MS: u64 = 500;
-        let mut attempt: u32 = 0;
-
         let method = req.method().clone();
         let proxy_prefix_host = req
             .headers()
@@ -625,6 +620,10 @@ let body_bytes = BodyExt::collect(req.into_body())
 
         emit_progress("fetching", None);
         // 重试循环：仅对连接类错误（超时/连接失败/请求失败）重试
+        // 增加重试次数和延迟，等待 EasyTier mesh 路由建立（可能需 10-20s）
+        const MAX_RETRIES: u32 = 5;
+        const RETRY_BASE_MS: u64 = 2000;
+        let mut attempt: u32 = 0;
         let mut req_builder_opt = Some(req_builder);
         'retry: loop {
             let send_builder = match req_builder_opt.as_ref().and_then(|b| b.try_clone()) {

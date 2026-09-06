@@ -58,6 +58,7 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, o
   const proxyKey = parseProxyKey(proxyUrl);
 
   // refreshNonce 变化时启动新加载会话并重载 iframe（不再用 URL nonce 参数）
+  const reloadTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => {
     if (refreshNonce > 0) {
       loadSessionRef.current++;
@@ -67,10 +68,20 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, o
       setLoading(true);
       setStage("connecting");
       iframeRef.current?.contentWindow?.location.reload();
+      // 兜底：5s 内未触发 onLoad（如 iframe 白屏/跨域阻塞），强制显示 loading 避免黑屏
+      reloadTimeoutRef.current = setTimeout(() => {
+        if (!loadedRef.current && loading) {
+          setStage("slow");
+        }
+      }, 5000);
     }
+    return () => {
+      if (reloadTimeoutRef.current) clearTimeout(reloadTimeoutRef.current);
+    };
   }, [refreshNonce]);
 
   // 监听后端代理转发进度，按 key + session 匹配（隔离旧请求的残留事件）
+  // 依赖 refreshNonce：当刷新计数器变化时重新绑定监听器，使 session 匹配新会话
   useEffect(() => {
     if (!proxyKey) return;
     const session = loadSessionRef.current;
@@ -79,24 +90,27 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, o
       if (loadSessionRef.current !== session) return;
       setStage(e.payload.stage);
       if (e.payload.stage === "error") {
-        setLoading(false);
         const isRetriable = (e.payload.error?.includes("connect_timeout") ?? false)
           || (e.payload.error?.includes("connect_failed") ?? false);
         if (!retriedRef.current && isRetriable) {
           retriedRef.current = true;
+          // 不隐藏 loading，直接进入重试；重试逻辑会重置 loading 状态
           setTimeout(() => {
-            loadSessionRef.current++;
+            // 不递增 loadSessionRef，使重试的进度事件仍被当前监听器接收
             sessionStartRef.current = Date.now();
             loadedRef.current = false;
             setLoading(true);
             setStage("connecting");
             iframeRef.current?.contentWindow?.location.reload();
           }, 2000);
+        } else {
+          // 非可重试错误或已重试过：显示错误状态
+          setLoading(false);
         }
       }
     });
     return () => { un.then((fn) => fn()); };
-  }, [proxyKey]);
+  }, [proxyKey, refreshNonce]);
 
   // 固定 10s 超时提示（不再随 stage 变化重置）
   useEffect(() => {

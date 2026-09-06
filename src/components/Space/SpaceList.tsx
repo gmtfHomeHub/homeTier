@@ -109,7 +109,7 @@ export function SpaceList() {
         setShowJoin(true);
       } else if (event === QR_EVENT_ADD_APP) {
         const result = await importAddApps(data);
-        toastSuccess(t("space.appsImported", { count: result.imported, name: result.space_name }));
+        toastSuccess(t("space.appsImported", { count: result.imported, name: result.spaceName }));
         await loadSpaces();
       } else {
         toastError(t("qr.unsupportedEvent", { event }));

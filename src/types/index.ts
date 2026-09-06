@@ -60,8 +60,8 @@ export interface PeerTarget {
 
 /** import_add_apps 返回 */
 export interface ImportAddAppsResult {
-  space_id: string;
-  space_name: string;
+  spaceId: string;
+  spaceName: string;
   imported: number;
 }
 
