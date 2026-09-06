@@ -91,10 +91,26 @@ class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity
     fun startVpn(invoke: Invoke) {
         val args = invoke.parseArgs(StartVpnArgs::class.java)
         activity.runOnUiThread {
+            val ret = JSObject()
+
+            // 幂等：若 VPN 已在为同一 spaceId 运行，直接返回成功，避免重复建连触发 "Invalid IP addr string"
+            if (HomeTierVpnService.self != null && HomeTierVpnService.ipv4Addr != null) {
+                val currentSpaceId = HomeTierVpnService.self?.intent?.getStringExtra(HomeTierVpnService.SPACE_ID)
+                if (args.spaceId == currentSpaceId) {
+                    Log.i("HomeTierVpn", "VPN already running for spaceId=${args.spaceId}, skipping restart")
+                    ret.put("running", true)
+                    ret.put("ipv4Addr", HomeTierVpnService.ipv4Addr)
+                    ret.put("routes", HomeTierVpnService.routes)
+                    ret.put("dns", HomeTierVpnService.dns)
+                    invoke.resolve(ret)
+                    return@runOnUiThread
+                }
+            }
+
+            // 需要切换 space 或首次建连：先撤销旧服务
             HomeTierVpnService.self?.onRevoke()
 
             val it = VpnService.prepare(activity)
-            val ret = JSObject()
             if (it != null) {
                 ret.put("errorMsg", "need_prepare")
             } else {
