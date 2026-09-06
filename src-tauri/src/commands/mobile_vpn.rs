@@ -1,6 +1,4 @@
-// Mobile VPN status command - queries the Kotlin/Swift VPN service process
-use tauri::{AppHandle, Manager};
-
+// Mobile VPN status command - placeholder (Tauri 2 cannot invoke native plugins from Rust)
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct VpnStatus {
     pub running: bool,
@@ -11,27 +9,15 @@ pub struct VpnStatus {
 
 #[tauri::command]
 pub async fn get_vpn_status(
-    space_id: String,
-    app_handle: AppHandle,
+    _space_id: String,
 ) -> Result<VpnStatus, String> {
-    // Invoke the plugin command from Rust (Tauri 2 supports this)
-    // This calls the Kotlin plugin's get_vpn_status on Android
-    // On iOS, it would call the equivalent (if implemented)
-    let result: Result<VpnStatus, _> = app_handle
-        .invoke("plugin:hometiervpnservice|get_vpn_status", serde_json::json!({ "spaceId": space_id }))
-        .await;
-
-    match result {
-        Ok(status) => Ok(status),
-        Err(e) => {
-            // On non-mobile or if plugin not available, return default
-            crate::log_warn!(format!("get_vpn_status failed: {}", e));
-            Ok(VpnStatus {
-                running: false,
-                ipv4_addr: None,
-                routes: vec![],
-                dns: None,
-            })
-        }
-    }
+    // Tauri 2 不支持从 Rust 侧调用原生插件命令（无 AppHandle::invoke）。
+    // 前端通过 `plugin:hometiervpnservice|get_vpn_status` 直接调用 Kotlin/Swift 插件。
+    // 此命令作为占位符保留，返回默认状态。
+    Ok(VpnStatus {
+        running: false,
+        ipv4_addr: None,
+        routes: vec![],
+        dns: None,
+    })
 }
