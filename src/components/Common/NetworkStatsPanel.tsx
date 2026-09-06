@@ -2,16 +2,9 @@ import { useEffect, useState } from "react";
 import { Card, Text, Flex, Grid } from "@radix-ui/themes";
 import { useTranslation } from "react-i18next";
 import { Signal, Wifi, Activity, Users } from "lucide-react";
-import { getNetworkStats } from "../../utils/api";
 import type { PeerInfo } from "../../types";
 import { PeerTableDialog } from "./peerTableDialog";
 import { usePeerStore } from "../../stores/peerStore";
-
-interface StatsData {
-  rx_bytes: number;
-  tx_bytes: number;
-  avg_latency_ms: number;
-}
 
 interface NetworkStatsPanelProps {
   spaceId: string;
@@ -20,57 +13,32 @@ interface NetworkStatsPanelProps {
 
 export function NetworkStatsPanel({ spaceId, connected = false }: NetworkStatsPanelProps) {
   const { t } = useTranslation();
-  const [stats, setStats] = useState<StatsData>({
-    rx_bytes: 0,
-    tx_bytes: 0,
-    avg_latency_ms: 0,
-  });
   const [loading, setLoading] = useState(true);
   const [showPeersDialog, setShowPeersDialog] = useState(false);
   const peersList = usePeerStore((s) => s.peers[spaceId] ?? []);
-  const fetchPeers = usePeerStore((s) => s.fetchPeers);
+  const stats = usePeerStore((s) => s.stats[spaceId] ?? { rx_bytes: 0, tx_bytes: 0, avg_latency_ms: 0 });
   const startPolling = usePeerStore((s) => s.startPolling);
   const stopPolling = usePeerStore((s) => s.stopPolling);
+  const clearPeers = usePeerStore((s) => s.clearPeers);
 
   useEffect(() => {
     if (!connected) {
-      setStats({ rx_bytes: 0, tx_bytes: 0, avg_latency_ms: 0 });
-      setLoading(false);
+      // 断开时：清零统计、停止轮询、清理 peers 与 stats
       stopPolling(spaceId);
+      clearPeers(spaceId);
+      setLoading(false);
       return;
     }
-    let cancelled = false;
-    const loadStats = async () => {
-      try {
-        getNetworkStats(spaceId).then((networkStats) => {
-          if (!cancelled) {
-            setStats({
-              rx_bytes: networkStats.rx_bytes,
-              tx_bytes: networkStats.tx_bytes,
-              avg_latency_ms: networkStats.avg_latency_ms,
-            });
-          }
-        });
-      } catch (error) {
-        console.error("Failed to load network stats:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    // 启动 peer 轮询（统一由 peerStore 管理）
+    // 启动统一轮询（peers + stats）
     startPolling(spaceId);
-    loadStats();
-    const interval = setInterval(loadStats, 2000);
-
+    // 首次拉取后取消 loading
+    const timer = setTimeout(() => setLoading(false), 100);
     return () => {
-      cancelled = true;
-      clearInterval(interval);
+      clearTimeout(timer);
       stopPolling(spaceId);
     };
-  }, [spaceId, connected, startPolling, stopPolling]);
+  }, [spaceId, connected, startPolling, stopPolling, clearPeers]);
 
-  // 当 peersList 变化时自动更新对话框数据
   const formatLocalBytes = (bytes: number): string => {
     if (bytes === 0) return "0 B";
     const k = 1024;
