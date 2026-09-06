@@ -491,17 +491,18 @@ impl HttpForwardPlugin {
             .map(|a| a.contains("text/html"))
             .unwrap_or(false);
         let app_handle = &self.app_handle;
-        let emit_progress = |stage: &str| {
+        let emit_progress = |stage: &str, error: Option<&str>| {
             if is_document && !proxy_key.is_empty() {
                 if let Some(h) = app_handle {
-                    let _ = h.emit(
-                        "proxy:load-progress",
-                        serde_json::json!({"key": proxy_key, "stage": stage}),
-                    );
+                    let mut payload = serde_json::json!({"key": proxy_key, "stage": stage});
+                    if let Some(err) = error {
+                        payload["error"] = serde_json::json!(err);
+                    }
+                    let _ = h.emit("proxy:load-progress", payload);
                 }
             }
         };
-        emit_progress("connecting");
+        emit_progress("connecting", None);
 
         let method = req.method().clone();
         let proxy_prefix_host = req
@@ -592,10 +593,10 @@ let body_bytes = BodyExt::collect(req.into_body())
             req_builder = req_builder.header(key.as_str(), value.as_str());
         }
 
-        emit_progress("fetching");
+        emit_progress("fetching", None);
         match req_builder.send().await {
             Ok(upstream) => {
-                emit_progress("processing");
+                emit_progress("processing", None);
                 let status = upstream.status();
                 let upstream_headers = upstream.headers().clone();
 
@@ -816,7 +817,7 @@ let body_bytes = BodyExt::collect(req.into_body())
                     stream_body(upstream.bytes_stream())
                 };
 
-                emit_progress("ready");
+                emit_progress("ready", None);
                 let mut resp = builder.body(body).unwrap();
                 if let Some(csp_override) = csp_override {
                     if csp_override.is_empty() {
@@ -829,7 +830,21 @@ let body_bytes = BodyExt::collect(req.into_body())
                 Ok(resp)
             }
             Err(e) => {
-                emit_progress("error");
+                // 分类错误以便前端精确提示与重试策略
+                let err_msg = if e.is_connect() {
+                    if e.is_timeout() {
+                        format!("connect_timeout to {}", forward_url)
+                    } else {
+                        format!("connect_failed to {}", forward_url)
+                    }
+                } else if e.is_request() {
+                    format!("request_failed (possibly DNS) to {}", forward_url)
+                } else if e.is_status() {
+                    format!("status_error to {}", forward_url)
+                } else {
+                    format!("unknown_error to {}: {}", forward_url, e)
+                };
+                emit_progress("error", Some(&err_msg));
                 crate::log_error!(format!("上游请求失败 {} {}", forward_url, e));
                 Ok(Response::builder()
                     .status(StatusCode::BAD_GATEWAY)
