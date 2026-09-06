@@ -266,6 +266,19 @@ export async function connectWithVpn(
     return error || "VPN 连接失败（未获取到 TUN 接口）";
   }
 
+  // 等待 EasyTier 分配虚拟 IP（最多 10s）—— mesh 建连到虚拟 IP 可达有数秒延迟
+  const pollStart = Date.now();
+  const POLL_MS = 500;
+  const MAX_POLL = 10_000;
+  while (Date.now() - pollStart < MAX_POLL) {
+    const spaces = await api.listSpaces();
+    const sp = spaces.find((s) => s.id === spaceId);
+    if (sp?.virtual_ip) {
+      break;
+    }
+    await new Promise((r) => setTimeout(r, POLL_MS));
+  }
+
   return null;
 }
 

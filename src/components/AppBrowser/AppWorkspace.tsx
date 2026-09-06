@@ -84,13 +84,12 @@ export function AppWorkspace() {
       // 后端失败仍切换本地展示
     }
     setDeviceMode(next);
-    setRefreshNonce((m) => {
-      const n: Record<string, number> = {};
-      for (const tab of openApps) n[tab.key] = (m[tab.key] ?? 0) + 1;
-      return n;
-    });
+    // 仅重载当前活跃标签
+    if (activeKey) {
+      setRefreshNonce((m) => ({ ...m, [activeKey]: (m[activeKey] ?? 0) + 1 }));
+    }
     setNavStates({});
-  }, [deviceMode, setDeviceMode, openApps]);
+  }, [deviceMode, setDeviceMode, activeKey]);
 
   // 监听后端下载完成事件，提示文件保存位置（替代轮询，避免误报）
   useEffect(() => {
@@ -238,8 +237,7 @@ export function AppWorkspace() {
         {spaceTabs.map((tab) => {
           const isActive = tab.key === activeKey;
           const showFrame = tab.proxyUrl && !tab.loadError;
-          // 刷新时在 proxyUrl 后追加 nonce，触发 iframe 重新加载而不重挂载 ProxyFrame
-          const displayUrl = showFrame ? `${tab.proxyUrl}${tab.proxyUrl.includes('?') ? '&' : '?'}__nonce=${refreshNonce[tab.key] ?? 0}` : tab.proxyUrl;
+          const displayUrl = tab.proxyUrl;
           return (
             <div
               key={tab.key}
@@ -253,11 +251,11 @@ export function AppWorkspace() {
                   proxyUrl={displayUrl}
                   name={tab.app.name}
                   deviceMode={deviceMode}
+                  refreshNonce={refreshNonce[tab.key] ?? 0}
                   onOpenBrowser={handleOpenInBrowser}
                   onBack={handleBack}
                   onError={() => setLoadError(tab.key, true)}
                   onNavState={(s) => handleNavState(tab.key, s)}
-                  onRetry={() => setRefreshNonce((m) => ({ ...m, [tab.key]: (m[tab.key] ?? 0) + 1 }))}
                 />
               ) : tab.loadError ? (
                 <ProxyErrorFallback onOpenBrowser={handleOpenInBrowser} onBack={handleBack} />

@@ -6,7 +6,7 @@ import { useAppTabsStore } from "../../stores/appTabsStore";
 import { usePeerStore } from "../../stores/peerStore";
 import * as api from "../../utils/api";
 
-/** 等待空间至少有一个已连接 peer（含本机），最多等待 30s（与 EasyTier 建连超时契约一致） */
+/** 等待空间至少有一个已连接 peer（含本机）且虚拟 IP 已分配，最多等待 30s */
 async function waitForPeerReady(spaceId: string): Promise<boolean> {
   const start = Date.now();
   const MAX_WAIT_MS = 30_000;
@@ -14,7 +14,8 @@ async function waitForPeerReady(spaceId: string): Promise<boolean> {
 
   while (Date.now() - start < MAX_WAIT_MS) {
     const peers = usePeerStore.getState().peers[spaceId] ?? [];
-    if (peers.length > 0) {
+    const space = useSpaceStore.getState().spaces.find((sp) => sp.id === spaceId);
+    if (peers.length > 0 && space?.virtual_ip) {
       return true;
     }
     await new Promise((r) => setTimeout(r, POLL_MS));

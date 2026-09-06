@@ -5,7 +5,7 @@ import type { Space } from "../types";
 import { SpaceStatus } from "../enum";
 import i18n from "../i18n";
 import { isMobile } from "../utils/platform";
-import { connectWithVpn, disconnectWithVpn } from "../services/mobileVpn";
+import { connectWithVpn, disconnectWithVpn, getVpnStatus } from "../services/mobileVpn";
 
 interface SpaceStore {
   spaces: Space[];
@@ -42,9 +42,28 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
   currentSpaceId: null,
 
   loadSpaces: async () => {
+    const prev = get().spaces;
     const spaces = await api.listSpaces();
     set({ spaces });
     syncTrayMenu(spaces);
+
+    // 异步复核：前次 CED 现变 DIS 的空间，可能是 list() 瞬态，2s 后重新查询
+    const transient = prev.filter(
+      (p) =>
+        p.status === SpaceStatus.CED &&
+        spaces.find((s) => s.id === p.id && s.status === SpaceStatus.DIS)
+    );
+    if (transient.length > 0) {
+      setTimeout(async () => {
+        try {
+          const rechecked = await api.listSpaces();
+          set({ spaces: rechecked });
+          syncTrayMenu(rechecked);
+        } catch {
+          // 静默失败
+        }
+      }, 2000);
+    }
   },
 
   loadSpacesOnce: async () => {
@@ -98,6 +117,27 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
       return;
     }
 
+    const mobile = await isMobile();
+
+    // 移动端：查 VPN 实时状态，避免 list() 瞬态 DIS 误触发重连
+    if (mobile) {
+      try {
+        const vpnStatus = await getVpnStatus();
+        if (vpnStatus.running) {
+          // VPN 实际运行中，list() 返回了瞬态 DIS，恢复 CED
+          set((state) => ({
+            spaces: state.spaces.map((s) =>
+              s.id === spaceId ? { ...s, status: SpaceStatus.CED } : s
+            ),
+          }));
+          syncTrayMenu(get().spaces);
+          return;
+        }
+      } catch {
+        // getVpnStatus 失败，继续走正常连接流程
+      }
+    }
+
     // 互斥：将其他已连接的空间设为 disconnected，目标空间设为 connecting
     const prevConnected = get().spaces.find((s) => s.status === SpaceStatus.CED || s.status === SpaceStatus.ING);
     set((state) => ({
@@ -108,8 +148,6 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
       }),
     }));
 
-    // 移动端 VPN 特殊流程
-    const mobile = await isMobile();
     if (mobile) {
       try {
         // 移动端：prepareVpn -> connectSpace -> startVpn (事件驱动 setTunFd)

@@ -972,13 +972,34 @@ impl SpaceManager {
     /// 获取空间列表
     pub async fn list(&self) -> Result<Vec<Space>, String> {
         let rows = self.db.list_spaces()?;
+        // 获取之前缓存的状态，用于检测 CED→DIS 的瞬态变化
+        let prev_spaces = self.spaces.read().await.clone();
         let mut spaces = Vec::new();
         for row in rows {
             let id: Uuid = row.id.parse().unwrap_or_default();
-            let is_running = self.easytier.is_running(&id);
+            let mut is_running = self.easytier.is_running(&id);
+
+            // 二次确认：如果之前是 Connected 但现在显示 Disconnected，可能是瞬态
+            let was_connected = prev_spaces
+                .iter()
+                .find(|s| s.id == id)
+                .map(|s| s.status == SpaceStatus::Connected)
+                .unwrap_or(false);
+            if !is_running && was_connected {
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                is_running = self.easytier.is_running(&id);
+            }
+
             let status = if is_running { SpaceStatus::Connected } else { SpaceStatus::Disconnected };
             let member_count = if is_running { self.easytier.get_connected_peers(&id).unwrap_or(0) + 1 } else { 0 };
-            let virtual_ip = if is_running { self.easytier.get_virtual_ip(&id) } else { None };
+            // CED→DIS 瞬态时保留之前的 virtual_ip，前端会异步复核
+            let virtual_ip = if is_running {
+                self.easytier.get_virtual_ip(&id)
+            } else if was_connected {
+                prev_spaces.iter().find(|s| s.id == id).and_then(|s| s.virtual_ip.clone())
+            } else {
+                None
+            };
 
             spaces.push(Space {
                 id,

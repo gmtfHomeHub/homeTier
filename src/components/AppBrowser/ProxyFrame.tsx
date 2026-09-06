@@ -17,12 +17,11 @@ interface ProxyFrameProps {
   proxyUrl: string;
   name: string;
   deviceMode: DeviceMode;
+  refreshNonce: number;
   onOpenBrowser: () => void;
   onBack: () => void;
   onError?: () => void;
   onNavState?: (state: FrameNavState) => void;
-  /** 自动重试回调（首次 upstream 连接失败时调用，由父组件决定是否重试） */
-  onRetry?: () => void;
 }
 
 function useContainerSize<T extends HTMLElement>() {
@@ -46,43 +45,68 @@ function parseProxyKey(proxyUrl: string): string {
   return m?.[1] ?? "";
 }
 
-export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, onOpenBrowser, onBack, onError, onNavState, onRetry }: ProxyFrameProps) {
+export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, onOpenBrowser, onBack, onError, onNavState }: ProxyFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { ref: containerRef, width: cw, height: ch } = useContainerSize<HTMLDivElement>();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [stage, setStage] = useState("connecting");
-  const loadedRef = useRef(false); // 单向锁：一旦 onLoad 触发，永不再显示 loading overlay
-  const retriedRef = useRef(false); // 仅重试一次
+  const loadedRef = useRef(false);
+  const retriedRef = useRef(false);
+  const loadSessionRef = useRef(0);
+  const sessionStartRef = useRef(Date.now());
   const proxyKey = parseProxyKey(proxyUrl);
 
-  // 监听后端代理转发进度，按 key 匹配更新阶段文案
+  // refreshNonce 变化时启动新加载会话并重载 iframe（不再用 URL nonce 参数）
+  useEffect(() => {
+    if (refreshNonce > 0) {
+      loadSessionRef.current++;
+      sessionStartRef.current = Date.now();
+      loadedRef.current = false;
+      retriedRef.current = false;
+      setLoading(true);
+      setStage("connecting");
+      iframeRef.current?.contentWindow?.location.reload();
+    }
+  }, [refreshNonce]);
+
+  // 监听后端代理转发进度，按 key + session 匹配（隔离旧请求的残留事件）
   useEffect(() => {
     if (!proxyKey) return;
+    const session = loadSessionRef.current;
     const un = listen<{ key: string; stage: string; error?: string }>("proxy:load-progress", (e) => {
       if (e.payload.key !== proxyKey) return;
+      if (loadSessionRef.current !== session) return;
       setStage(e.payload.stage);
       if (e.payload.stage === "error") {
         setLoading(false);
-        // 仅对连接超时/连接失败做一次自动重试（其它错误如 DNS/状态码不可恢复）
         const isRetriable = (e.payload.error?.includes("connect_timeout") ?? false)
           || (e.payload.error?.includes("connect_failed") ?? false);
-        if (!retriedRef.current && isRetriable && onRetry) {
+        if (!retriedRef.current && isRetriable) {
           retriedRef.current = true;
-          // 延迟 2s 重试，给 peer 路由建立留出时间
-          setTimeout(() => onRetry(), 2000);
+          setTimeout(() => {
+            loadSessionRef.current++;
+            sessionStartRef.current = Date.now();
+            loadedRef.current = false;
+            setLoading(true);
+            setStage("connecting");
+            iframeRef.current?.contentWindow?.location.reload();
+          }, 2000);
         }
       }
     });
     return () => { un.then((fn) => fn()); };
-  }, [proxyKey, onRetry]);
+  }, [proxyKey]);
 
-  // 超时兑底：每个阶段 10s 无新事件则提示慢；stage 变化重置计时
+  // 固定 10s 超时提示（不再随 stage 变化重置）
   useEffect(() => {
     if (!loading) return;
-    const timer = setTimeout(() => setStage("slow"), 10000);
+    const session = loadSessionRef.current;
+    const timer = setTimeout(() => {
+      if (loadSessionRef.current === session) setStage("slow");
+    }, 10000);
     return () => clearTimeout(timer);
-  }, [loading, stage]);
+  }, [loading]);
 
   // 监听注入脚本的导航状态上报（__ht_nav），桥接给工具栏
   useLayoutEffect(() => {
@@ -147,7 +171,16 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, onOpenBrowser, 
           onLoad={() => {
             if (!loadedRef.current) {
               loadedRef.current = true;
-              setLoading(false);
+              const elapsed = Date.now() - sessionStartRef.current;
+              const remaining = Math.max(0, 300 - elapsed);
+              const session = loadSessionRef.current;
+              if (remaining > 0) {
+                setTimeout(() => {
+                  if (loadSessionRef.current === session) setLoading(false);
+                }, remaining);
+              } else {
+                setLoading(false);
+              }
             }
           }}
           onError={onError}
