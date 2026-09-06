@@ -250,7 +250,24 @@ export async function connectWithVpn(
   }
 
   // 2. Start EasyTier network first (it waits for the tun fd)
-  await api.connectSpace(spaceId);
+  // 若上一实例未完全清理导致启动失败，重试一次（等待 2s 后重试）
+  let connectErr: string | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await api.connectSpace(spaceId);
+      connectErr = null;
+      break;
+    } catch (e) {
+      connectErr = String(e);
+      if (attempt === 0) {
+        console.warn("connectSpace failed, retrying in 2s:", e);
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
+  }
+  if (connectErr) {
+    return `连接空间失败: ${connectErr}`;
+  }
 
   // 3. Start VPN service and get fd
   const { fd, error } = await startVpn({

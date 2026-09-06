@@ -110,7 +110,8 @@ export function SpaceList() {
       } else if (event === QR_EVENT_ADD_APP) {
         const result = await importAddApps(data);
         toastSuccess(t("space.appsImported", { count: result.imported, name: result.spaceName }));
-        await loadSpaces();
+        // 扫码导入应用仅为 DB 写操作，不应刷新空间状态（避免 list() 瞬态 DIS 覆盖真实 CED）
+        // 如需刷新应用列表，应由调用方在关闭弹窗后单独触发
       } else {
         toastError(t("qr.unsupportedEvent", { event }));
       }

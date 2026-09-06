@@ -925,12 +925,26 @@ impl EasyTierManager {
             self.stop_network(&instance_id).await?;
         }
 
-        // 使用库方式启动
-        let running = launcher_internal::start_easytier(cfg, instance_id, &self.config_dir, initial_config).await?;
-        self.instances.insert(instance_id, running);
-
-        crate::log_info!(format!("EasyTierManager: 网络实例已启动 (Mobile), id={}", instance_id));
-        Ok(instance_id)
+        // 重试启动：前一次实例可能未完全清理（Drop 不保证资源即时释放），最多重试 3 次
+        let mut last_error = String::new();
+        for attempt in 0..3 {
+            if attempt > 0 {
+                crate::log_warn!(format!("EasyTierManager: 启动重试 {}/3, id={}", attempt, instance_id));
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+            match launcher_internal::start_easytier(cfg, instance_id, &self.config_dir, initial_config.clone()).await {
+                Ok(running) => {
+                    self.instances.insert(instance_id, running);
+                    crate::log_info!(format!("EasyTierManager: 网络实例已启动 (Mobile), id={}", instance_id));
+                    return Ok(instance_id);
+                }
+                Err(e) => {
+                    last_error = format!("尝试 {}/3 失败: {}", attempt + 1, e);
+                    crate::log_warn!(last_error.clone());
+                }
+            }
+        }
+        Err(format!("启动网络实例失败 (Mobile, 重试耗尽): {}", last_error))
     }
 
     /// 停止网络实例

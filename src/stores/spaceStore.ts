@@ -44,14 +44,36 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
   loadSpaces: async () => {
     const prev = get().spaces;
     const spaces = await api.listSpaces();
-    set({ spaces });
-    syncTrayMenu(spaces);
 
-    // 异步复核：前次 CED 现变 DIS 的空间，可能是 list() 瞬态，2s 后重新查询
+    // 移动端：若前次 CED 现变 DIS，优先查 VPN 实时状态（Kotlin VpnService 是否运行）
+    // 避免 list() 瞬态 DIS 覆盖真实连接状态（Rust is_running() 与 Kotlin VpnService 两层可能不同步）
+    const mobile = await isMobile();
+    let finalSpaces = spaces;
+    if (mobile) {
+      const disSpaces = spaces.filter((s) => s.status === SpaceStatus.DIS);
+      if (disSpaces.length > 0) {
+        try {
+          const vpnStatus = await getVpnStatus();
+          if (vpnStatus.running) {
+            // VPN 实际运行中，恢复这些空间为 CED
+            finalSpaces = spaces.map((s) =>
+              s.status === SpaceStatus.DIS ? { ...s, status: SpaceStatus.CED } : s
+            );
+          }
+        } catch {
+          // getVpnStatus 失败，保持 list() 结果
+        }
+      }
+    }
+
+    set({ spaces: finalSpaces });
+    syncTrayMenu(finalSpaces);
+
+    // 异步复核：前次 CED 现变 DIS 的空间（且 VPN 未运行），可能是 list() 瞬态，2s 后重新查询
     const transient = prev.filter(
       (p) =>
         p.status === SpaceStatus.CED &&
-        spaces.find((s) => s.id === p.id && s.status === SpaceStatus.DIS)
+        finalSpaces.find((s) => s.id === p.id && s.status === SpaceStatus.DIS)
     );
     if (transient.length > 0) {
       setTimeout(async () => {
