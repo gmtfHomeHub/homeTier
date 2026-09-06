@@ -1,5 +1,5 @@
 use tauri::State;
-use crate::types::{Space, ShareInfo, Member};
+use crate::types::{Space, ShareInfo, Member, SpaceStatus};
 use crate::space::manager::SpaceManager;
 use crate::db::Database;
 use std::sync::Arc;
@@ -70,8 +70,36 @@ pub async fn delete_space(
 #[tauri::command]
 pub async fn list_spaces(
     space_manager: State<'_, Arc<SpaceManager>>,
+    app_handle: tauri::AppHandle,
 ) -> Result<Vec<Space>, String> {
-    space_manager.list().await
+    let mut spaces = space_manager.list().await?;
+
+    // On mobile, query VPN status for each space to detect VPN-hosted EasyTier instances
+    #[cfg(any(target_os = "android", target_os = "ios"))] {
+        use crate::commands::mobile_vpn::VpnStatus;
+        for space in &mut spaces {
+            // Invoke plugin's get_vpn_status
+            let vpn_result: Result<VpnStatus, _> = app_handle
+                .invoke(
+                    "plugin:hometiervpnservice|get_vpn_status",
+                    serde_json::json!({ "spaceId": space.id.to_string() }),
+                )
+                .await;
+            if let Ok(vpn_status) = vpn_result {
+                if vpn_status.running {
+                    space.status = SpaceStatus::Connected;
+                    if let Some(ip) = vpn_status.ipv4_addr {
+                        // Extract IP from CIDR (e.g., "10.144.144.1/24" -> "10.144.144.1")
+                        if let Some(ip_only) = ip.split('/').next() {
+                            space.virtual_ip = Some(ip_only.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(spaces)
 }
 
 #[tauri::command]

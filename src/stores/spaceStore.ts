@@ -93,6 +93,11 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
   setCurrentSpace: (id) => set({ currentSpaceId: id }),
 
   connectSpace: async (spaceId) => {
+    // 幂等：若已连接（CED），直接返回，避免重复连接触发 "Invalid IP addr string"
+    if (get().spaces.find((s) => s.id === spaceId && s.status === SpaceStatus.CED)) {
+      return;
+    }
+
     // 互斥：将其他已连接的空间设为 disconnected，目标空间设为 connecting
     const prevConnected = get().spaces.find((s) => s.status === SpaceStatus.CED || s.status === SpaceStatus.ING);
     set((state) => ({
@@ -111,8 +116,11 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
         const space = get().spaces.find((s) => s.id === spaceId);
         if (!space) throw new Error("Space not found");
 
-        // 空串/null 均回退默认 IP，防止传空给 startVpn 的 ipv4Addr 触发 "Invalid IP addr string"
-        const virtualIp = space.virtual_ip && space.virtual_ip.trim() ? space.virtual_ip : "10.144.144.1";
+        // 空串/null/非法 IPv4 均回退默认 IP，防止传空给 startVpn 的 ipv4Addr 触发 "Invalid IP addr string"
+        const ipv4Regex = /^\d{1,3}(\.\d{1,3}){3}$/;
+        const virtualIp = space.virtual_ip && space.virtual_ip.trim() && ipv4Regex.test(space.virtual_ip.trim())
+          ? space.virtual_ip.trim()
+          : "10.144.144.1";
         const errorMsg = await connectWithVpn(spaceId, space.name, virtualIp);
         if (errorMsg) {
           throw new Error(errorMsg);
