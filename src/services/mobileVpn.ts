@@ -319,6 +319,45 @@ export async function connectWithVpn(
     await new Promise((r) => setTimeout(r, POLL_MS));
   }
 
+  // 等待 1s 让 poll_instance_status 任务有时间更新 mesh 路由
+  await new Promise((r) => setTimeout(r, 1000));
+
+  // 获取 mesh 子网代理路由，将代理子网加入 VPN 路由
+  // （访问真实局域网 IP 如 192.168.31.44 需要 VPN 包含该子网路由）
+  let meshRoutes: string[] = [];
+  try {
+    meshRoutes = await api.getMeshRoutes(spaceId);
+  } catch (e) {
+    console.warn("获取 mesh 路由失败:", e);
+  }
+
+  // 构建完整路由列表：虚拟 IP 子网 + 所有 mesh proxy_cidrs
+  const fullRoutes = new Set<string>();
+  fullRoutes.add(`${virtualIp.split(".").slice(0, 3).join(".")}.0/24`);
+  for (const r of meshRoutes) {
+    fullRoutes.add(r);
+  }
+
+  // 如果 mesh 路由多于初始路由，重启 VPN 以包含所有子网
+  // （VpnService 不支持运行时动态添加路由，需重建 session）
+  if (fullRoutes.size > 1) {
+    console.log(`VPN 路由更新: 添加 mesh 子网代理路由 (${fullRoutes.size} 条)`);
+    await stopVpn();
+    const { fd: fd2, error: err2 } = await startVpn({
+      spaceId,
+      networkName,
+      virtualIp,
+      virtualIpCidr: 24,
+      mtu: 1500,
+      routes: Array.from(fullRoutes),
+      excludedApps: [],
+      dnsServers: [],
+    });
+    if (fd2 === null) {
+      console.error("VPN 路由更新失败:", err2);
+    }
+  }
+
   // 等待 EasyTier TUN 设备就绪：set_tun_fd 成功后 setup_nic_ctx_for_mobile 异步创建 TUN 设备，
   // 此处额外等待 2s 让 TUN 设备完成初始化，避免代理首次连接时 SYN 丢包。
   await new Promise((r) => setTimeout(r, 2000));

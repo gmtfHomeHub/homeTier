@@ -296,6 +296,10 @@ export async function getSpacePeers(spaceId: string): Promise<PeerInfo[]> {
   return invoke<PeerInfo[]>("get_space_peers", { spaceId });
 }
 
+export async function getMeshRoutes(spaceId: string): Promise<string[]> {
+  return invoke<string[]>("get_mesh_routes", { spaceId });
+}
+
 export async function addApp(
   spaceId: string,
   name: string,

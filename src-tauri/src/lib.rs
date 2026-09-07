@@ -73,6 +73,7 @@ pub fn run() -> std::process::ExitCode {
             #[cfg(any(target_os = "android", target_os = "ios"))]
             commands::mobile_vpn::get_vpn_status,
             commands::network::get_network_stats,
+            commands::network::get_mesh_routes,
             commands::network::update_group_config,
             commands::network::get_space_peers,
             commands::chat::send_message,

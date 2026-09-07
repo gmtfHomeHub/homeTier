@@ -56,6 +56,7 @@ pub fn cmd_router(app_state: Arc<AppState>) -> Router {
         // 网络
         .route("/network/{space_id}/stats", get(get_network_stats_handler))
         .route("/network/{space_id}/peers", get(get_space_peers_handler))
+        .route("/network/{space_id}/mesh_routes", get(get_mesh_routes_handler))
         // 日志
         .route("/log/list", get(get_logs_handler))
         .route("/log/space/{space_id}", get(get_space_logs_handler))
@@ -581,6 +582,20 @@ async fn get_space_peers_handler(
     match state.space_manager.get_peers(&id).await {
         Ok(peers) => Json(peers).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    }
+}
+
+async fn get_mesh_routes_handler(
+    State(state): State<Arc<AppState>>,
+    Path(space_id): Path<String>,
+) -> impl IntoResponse {
+    let id = match parse_uuid(&space_id).await {
+        Ok(u) => u,
+        Err(e) => return e.into_response(),
+    };
+    match state.easy_tier.get_mesh_routes(&id).await {
+        Some(routes) => Json(routes).into_response(),
+        None => (StatusCode::NOT_FOUND, "Instance not found").into_response(),
     }
 }
 

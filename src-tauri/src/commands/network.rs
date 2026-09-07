@@ -36,6 +36,17 @@ pub async fn get_network_stats(
     }
 }
 
+/// 获取 Mesh 可达的子网代理路由（用于移动端 VpnService 动态路由）
+#[tauri::command]
+pub async fn get_mesh_routes(
+    space_id: String,
+    easytier: State<'_, Arc<EasyTierManager>>,
+) -> Result<Vec<String>, String> {
+    let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
+    easytier.get_mesh_routes(&id).await
+        .ok_or_else(|| "Instance not found or mesh routes unavailable".to_string())
+}
+
 #[tauri::command]
 pub async fn update_group_config(
     space_id: String,

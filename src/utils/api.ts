@@ -70,6 +70,7 @@ export const getPendingDownloads = impl.getPendingDownloads;
 export const syncTrayMenu = impl.syncTrayMenu;
 
 export const getNetworkStats = impl.getNetworkStats;
+export const getMeshRoutes = impl.getMeshRoutes;
 
 export const sendMessage = impl.sendMessage;
 export const getMessageHistory = impl.getMessageHistory;

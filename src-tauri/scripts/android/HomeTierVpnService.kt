@@ -117,10 +117,10 @@ class HomeTierVpnService : VpnService() {
         dns?.let { runCatching { full.addDnsServer(it) } }
         for (route in routes) {
             val routeParts = route.split("/")
-            if (routeParts.size == 2) {
-                runCatching { full.addRoute(routeParts[0], routeParts[1].toIntOrNull() ?: 24) }
-            } else {
-                Log.w("HomeTierVpn", "Invalid route cidr string: '$route', skipping")
+            when (routeParts.size) {
+                2 -> runCatching { full.addRoute(routeParts[0], routeParts[1].toIntOrNull() ?: 24) }
+                1 -> runCatching { full.addRoute(routeParts[0], 32) } // 单 IP 视为 /32
+                else -> Log.w("HomeTierVpn", "Invalid route cidr string: '$route', skipping")
             }
         }
         // 仅应用前端传入的 excludedApps（默认空）。不硬编码排除自身：homeTier app 内的

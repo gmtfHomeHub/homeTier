@@ -739,6 +739,52 @@ impl EasyTierManager {
         self.query_rpc_status(instance_id, rpc_port).await
     }
 
+    /// 获取 Mesh 可达的子网代理路由（桌面端: 通过 RPC 查询 collect_network_info 并提取 proxy_cidrs）
+    pub async fn get_mesh_routes(&self, instance_id: &Uuid) -> Option<Vec<String>> {
+        let rpc_port = self.get_instance_rpc_port(instance_id)?;
+        self.query_mesh_routes(instance_id, rpc_port).await
+    }
+
+    /// 通过 RPC 查询 mesh routes（复用 collect_network_info）
+    async fn query_mesh_routes(&self, instance_id: &Uuid, rpc_port: u16) -> Option<Vec<String>> {
+        use easytier::proto::rpc_impl::standalone::StandAloneClient;
+        use easytier::proto::rpc_types::controller::BaseController;
+        use easytier::tunnel::tcp::TcpTunnelConnector;
+        use easytier::proto::api::manage::WebClientServiceClientFactory;
+
+        let url_str = format!("tcp://127.0.0.1:{}", rpc_port);
+        let url = url_str.parse().ok()?;
+        let connector = TcpTunnelConnector::new(url);
+        let mut client = StandAloneClient::new(connector);
+
+        let ctrl = BaseController::default();
+        let web_service = client
+            .scoped_client::<WebClientServiceClientFactory<BaseController>>("".to_string())
+            .await
+            .ok()?;
+
+        let proto_uuid: easytier::proto::common::Uuid = (*instance_id).into();
+        let inst_id_str = instance_id.to_string();
+
+        let req = easytier::proto::api::manage::CollectNetworkInfoRequest {
+            inst_ids: vec![proto_uuid],
+        };
+
+        let resp = web_service.collect_network_info(ctrl, req).await.ok()?;
+        let running_info = resp.info.as_ref()?.map.get(&inst_id_str)?;
+
+        let mut mesh_routes_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+        
+        // 从所有 Route.proxy_cidrs 提取
+        for route in &running_info.routes {
+            for cidr in &route.proxy_cidrs {
+                mesh_routes_set.insert(cidr.clone());
+            }
+        }
+
+        Some(mesh_routes_set.into_iter().collect())
+    }
+
     /// 运行时修改配置（重启子进程应用新配置）
     pub async fn patch_config(
         &self,
@@ -1022,6 +1068,12 @@ impl EasyTierManager {
         self.get_network_stats(instance_id).await
     }
 
+    /// 获取 Mesh 可达的子网代理路由（Mobile: 从实例状态获取）
+    pub async fn get_mesh_routes(&self, instance_id: &Uuid) -> Option<Vec<String>> {
+        let instance = self.instances.get(instance_id)?;
+        Some(instance.get_mesh_routes().await)
+    }
+
     /// 升级版本（Mobile 不支持）
     pub async fn upgrade(&self, _version: &str, _source: Option<BinarySource>) -> Result<(), String> {
         Err("Mobile 不支持版本升级".into())
@@ -1080,6 +1132,8 @@ mod launcher_internal {
         config_content: Arc<RwLock<Option<String>>>,
         status: Arc<RwLock<InstanceStatus>>,
         pub instance: Option<easytier::launcher::NetworkInstance>,
+        // Mobile: RPC 服务器句柄，用于显式停止释放端口
+        rpc_server: Option<easytier::rpc_service::api::ApiRpcServer<easytier::tunnel::tcp::TcpTunnelListener>>,
     }
 
     struct InstanceStatus {
@@ -1090,6 +1144,8 @@ mod launcher_internal {
         tx_bytes: u64,
         avg_latency_ms: f64,
         peers: Vec<PeerInfo>,
+        // Mesh 可达的子网代理路由（从所有 Route.proxy_cidrs 去重聚合）
+        mesh_routes: Vec<String>,
     }
 
     /// 启动 EasyTier 网络实例（库方式）
@@ -1219,6 +1275,19 @@ mod launcher_internal {
             }
         };
 
+        // 创建并启动 RPC 服务器（移动端库模式必须显式启动，否则无法通过 RPC 查询状态/peer）
+        let rpc_portal = crate::config::get_u16(crate::config::KEY_EASYTIER_RPC_PORT, crate::daemon::ipc::EASYTIER_DAEMON_RPC_PORT);
+        let rpc_addr = format!("127.0.0.1:{}", rpc_portal);
+        let rpc_server = easytier::rpc_service::api::ApiRpcServer::new(
+            Some(rpc_addr.clone()),
+            None, // rpc_portal_whitelist: 暂不配置，使用默认空白名单
+            Arc::new(easytier::instance_manager::NetworkInstanceManager::new())
+        ).map_err(|e| format!("创建 RPC 服务器失败: {:?}", e))?;
+        
+        // 启动 RPC 服务器（非阻塞，内部 spawn 接受循环）
+        let rpc_server = rpc_server.serve().await.map_err(|e| format!("启动 RPC 服务器失败: {:?}", e))?;
+        crate::log_info!(format!("start_easytier: RPC 服务器已启动, addr={}", rpc_addr), &instance_id.to_string());
+
         let status = Arc::new(RwLock::new(InstanceStatus {
             virtual_ip: None,
             connected_peers: 0,
@@ -1227,6 +1296,7 @@ mod launcher_internal {
             tx_bytes: 0,
             avg_latency_ms: 0.0,
             peers: Vec::new(),
+            mesh_routes: Vec::new(),
         }));
 
         let status_poll = status.clone();
@@ -1253,6 +1323,7 @@ mod launcher_internal {
             config_content: config_content_ref,
             status,
             instance: Some(instance),
+            rpc_server: Some(rpc_server),
         })
     }
 
@@ -1362,12 +1433,30 @@ mod launcher_internal {
                         la.partial_cmp(&lb).unwrap_or(std::cmp::Ordering::Equal)
                     });
 
+                    // 提取并去重 mesh 子网代理路由（所有 Route.proxy_cidrs 聚合）
+                    let mut mesh_routes_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+                    if let Ok(routes_resp) = &routes_resp {
+                        for r in &routes_resp.routes {
+                            for cidr in &r.proxy_cidrs {
+                                mesh_routes_set.insert(cidr.clone());
+                            }
+                        }
+                    }
+                    // 也包含本地节点的 proxy_cidrs
+                    if let Some(my_info) = &peers_resp.my_info {
+                        for cidr in &my_info.proxy_cidrs {
+                            mesh_routes_set.insert(cidr.clone());
+                        }
+                    }
+                    let mesh_routes: Vec<String> = mesh_routes_set.into_iter().collect();
+
                     let mut s = status.write().await;
                     s.connected_peers = peers_resp.peer_infos.len() as u32;
                     s.rx_bytes = total_rx;
                     s.tx_bytes = total_tx;
                     s.avg_latency_ms = avg_latency;
                     s.peers = peers;
+                    s.mesh_routes = mesh_routes;
                     if let Some(ip) = my_ip {
                         s.virtual_ip = Some(ip);
                     }
@@ -1410,10 +1499,20 @@ mod launcher_internal {
             (s.is_running, s.virtual_ip.clone(), s.connected_peers, s.rx_bytes, s.tx_bytes, s.avg_latency_ms)
         }
 
+        /// 获取 Mesh 可达的子网代理路由（去重后的所有 proxy_cidrs）
+        pub async fn get_mesh_routes(&self) -> Vec<String> {
+            self.status.read().await.mesh_routes.clone()
+        }
+
         pub async fn stop(&mut self) -> Result<Option<String>, String> {
             let latest_config = self.config_path.as_ref().and_then(|p| std::fs::read_to_string(p).ok());
             if let Some(ref cfg) = latest_config {
                 *self.config_content.write().await = Some(cfg.clone());
+            }
+            // 先显式停止 RPC 服务器，释放端口保护，避免重连时端口冲突
+            if self.rpc_server.is_some() {
+                crate::log_info!("RunningInstance: 停止 RPC 服务器", &self.instance_id.to_string());
+                self.rpc_server = None; // Drop 会 unregister_protected_tcp_port 并关闭监听
             }
             if self.instance.is_some() {
                 self.instance.take();

@@ -211,6 +211,10 @@ export async function getSpacePeers(spaceId: string): Promise<PeerInfo[]> {
   return request<PeerInfo[]>(`/network/${spaceId}/peers`);
 }
 
+export async function getMeshRoutes(spaceId: string): Promise<string[]> {
+  return request<string[]>(`/network/${spaceId}/mesh_routes`);
+}
+
 // ---- 日志 ----
 export async function getLogs(level?: string, sinceSeq?: number): Promise<LogEntry[]> {
   const params = new URLSearchParams();
