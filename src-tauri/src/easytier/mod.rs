@@ -1275,18 +1275,33 @@ mod launcher_internal {
             }
         };
 
-        // 创建并启动 RPC 服务器（移动端库模式必须显式启动，否则无法通过 RPC 查询状态/peer）
+        // 尝试创建并启动 RPC 服务器（移动端库模式可选，失败不影响实例启动）
+        // 移动端不依赖 RPC 端口，所有状态查询通过 InstanceStatus 直接读取
+        // 桌面端需要 RPC 服务器供 StandAloneClient 连接查询
         let rpc_portal = crate::config::get_u16(crate::config::KEY_EASYTIER_RPC_PORT, crate::daemon::ipc::EASYTIER_DAEMON_RPC_PORT);
         let rpc_addr = format!("127.0.0.1:{}", rpc_portal);
-        let rpc_server = easytier::rpc_service::api::ApiRpcServer::new(
+        let rpc_server = match easytier::rpc_service::api::ApiRpcServer::new(
             Some(rpc_addr.clone()),
-            None, // rpc_portal_whitelist: 暂不配置，使用默认空白名单
+            None,
             Arc::new(easytier::instance_manager::NetworkInstanceManager::new())
-        ).map_err(|e| format!("创建 RPC 服务器失败: {:?}", e))?;
-        
-        // 启动 RPC 服务器（非阻塞，内部 spawn 接受循环）
-        let rpc_server = rpc_server.serve().await.map_err(|e| format!("启动 RPC 服务器失败: {:?}", e))?;
-        crate::log_info!(format!("start_easytier: RPC 服务器已启动, addr={}", rpc_addr), &instance_id.to_string());
+        ) {
+            Ok(server) => {
+                match server.serve().await {
+                    Ok(served) => {
+                        crate::log_info!(format!("start_easytier: RPC 服务器已启动, addr={}", rpc_addr), &instance_id.to_string());
+                        Some(served)
+                    }
+                    Err(e) => {
+                        crate::log_warn!(format!("start_easytier: RPC 服务器启动失败（非致命）: {:?}", e), &instance_id.to_string());
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                crate::log_warn!(format!("start_easytier: RPC 服务器创建失败（非致命）: {:?}", e), &instance_id.to_string());
+                None
+            }
+        };
 
         let status = Arc::new(RwLock::new(InstanceStatus {
             virtual_ip: None,
@@ -1323,7 +1338,7 @@ mod launcher_internal {
             config_content: config_content_ref,
             status,
             instance: Some(instance),
-            rpc_server: Some(rpc_server),
+            rpc_server,
         })
     }
 
