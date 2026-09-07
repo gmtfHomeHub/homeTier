@@ -1078,8 +1078,8 @@ impl EasyTierManager {
     /// 返回: (is_running, virtual_ip, connected_peers)
     pub async fn get_runtime_snapshot(&self, instance_id: &Uuid) -> Option<(bool, Option<String>, u32)> {
         let instance = self.instances.get(instance_id)?;
-        let status = instance.status.read().await;
-        Some((status.is_running, status.virtual_ip.clone(), status.connected_peers))
+        let (is_running, virtual_ip, connected_peers, _, _, _) = instance.get_runtime_stats().await;
+        Some((is_running, virtual_ip, connected_peers))
     }
 
     /// 升级版本（Mobile 不支持）
