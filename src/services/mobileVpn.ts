@@ -8,6 +8,9 @@ import { invoke } from "@tauri-apps/api/core";
 // The Tauri plugin name is derived from HomeTierVpnServicePlugin -> "hometiervpnservice"
 const PLUGIN = "hometiervpnservice";
 
+let meshRoutesUnlisten: (() => void) | null = null;
+let currentMeshRoutes: Set<string> = new Set();
+
 export interface VpnConfig {
   spaceId: string;
   networkName: string;
@@ -373,6 +376,54 @@ export async function connectWithVpn(
   // 此处额外等待 2s 让 TUN 设备完成初始化，避免代理首次连接时 SYN 丢包。
   await new Promise((r) => setTimeout(r, 2000));
 
+  // 保存当前 mesh 路由集合，用于事件监听时判断是否需要更新
+  for (const r of meshRoutes) {
+    currentMeshRoutes.add(r);
+  }
+
+  // 监听 mesh_routes_updated 事件，动态更新 VPN 路由
+  meshRoutesUnlisten = await listen<{ spaceId: string; routes: string[] }>(
+    "mesh_routes_updated",
+    async (event) => {
+      const { spaceId: sid, routes } = event.payload;
+      if (sid !== spaceId) return;
+
+      // 检查是否有新路由需要添加
+      let hasNewRoutes = false;
+      for (const r of routes) {
+        if (!currentMeshRoutes.has(r)) {
+          hasNewRoutes = true;
+          currentMeshRoutes.add(r);
+        }
+      }
+
+      if (hasNewRoutes) {
+        console.log(`收到 mesh 路由更新事件: ${routes.join(", ")}`);
+        // 重建完整路由列表并重启 VPN
+        const allRoutesList = new Set<string>();
+        allRoutesList.add(`${virtualIp.split(".").slice(0, 3).join(".")}.0/24`);
+        for (const r of currentMeshRoutes) {
+          allRoutesList.add(r);
+        }
+        console.log(`VPN 路由动态更新: 共 ${allRoutesList.size} 条路由`);
+        await stopVpn();
+        const { fd: fd3, error: err3 } = await startVpn({
+          spaceId,
+          networkName,
+          virtualIp,
+          virtualIpCidr: 24,
+          mtu: 1500,
+          routes: Array.from(allRoutesList),
+          excludedApps: [],
+          dnsServers: [],
+        });
+        if (fd3 === null) {
+          console.error("VPN 动态路由更新失败:", err3);
+        }
+      }
+    }
+  );
+
   return null;
 }
 
@@ -386,6 +437,13 @@ export async function disconnectWithVpn(spaceId: string): Promise<boolean> {
   }
 
   try {
+    // 清理 mesh routes 事件监听
+    if (meshRoutesUnlisten) {
+      meshRoutesUnlisten();
+      meshRoutesUnlisten = null;
+    }
+    currentMeshRoutes.clear();
+
     await api.disconnectSpace(spaceId);
     await stopVpn();
     return true;

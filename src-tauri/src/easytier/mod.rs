@@ -963,6 +963,7 @@ impl EasyTierManager {
         cfg: &config::NetworkConfig,
         instance_id: Uuid,
         initial_config: Option<String>,
+        app_handle: Option<tauri::AppHandle>,
     ) -> Result<Uuid, String> {
         crate::log_info!(format!("EasyTierManager: 启动网络实例 (Mobile), network_name={}, id={}", cfg.network_name, instance_id));
 
@@ -978,7 +979,7 @@ impl EasyTierManager {
                 crate::log_warn!(format!("EasyTierManager: 启动重试 {}/3, id={}", attempt, instance_id));
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
-            match launcher_internal::start_easytier(cfg, instance_id, &self.config_dir, initial_config.clone()).await {
+            match launcher_internal::start_easytier(cfg, instance_id, &self.config_dir, initial_config.clone(), app_handle.clone()).await {
                 Ok(running) => {
                     self.instances.insert(instance_id, running);
                     crate::log_info!(format!("EasyTierManager: 网络实例已启动 (Mobile), id={}", instance_id));
@@ -1023,9 +1024,10 @@ impl EasyTierManager {
 
     /// 获取 peer 列表
     pub async fn get_peers(&self, instance_id: &Uuid) -> Result<Vec<launcher_internal::PeerInfo>, String> {
-        let instance = self.instances.get(instance_id)
-            .ok_or_else(|| "Instance not found".to_string())?;
-        Ok(instance.get_peers().await)
+        match self.instances.get(instance_id) {
+            Some(instance) => Ok(instance.get_peers().await),
+            None => Ok(Vec::new()), // 实例不存在（过渡期）时返回空列表
+        }
     }
 
     /// 获取虚拟 IP
@@ -1160,6 +1162,7 @@ mod launcher_internal {
         instance_id: Uuid,
         config_dir: &PathBuf,
         initial_config: Option<String>,
+        app_handle: Option<tauri::AppHandle>,
     ) -> Result<RunningInstance, String> {
         use easytier::common::config::ConfigLoader;
         let network_name = cfg.network_name.clone();
@@ -1295,8 +1298,9 @@ mod launcher_internal {
         let status_poll = status.clone();
         let stop_notifier = instance.get_stop_notifier();
         let instance_id_for_poll = instance_id;
+        let app_handle_for_poll = app_handle.clone();
         tokio::spawn(async move {
-            poll_instance_status(status_poll, api_service, instance_id_for_poll).await;
+            poll_instance_status(status_poll, api_service, instance_id_for_poll, app_handle_for_poll).await;
         });
 
         let status_stop = status.clone();
@@ -1324,9 +1328,19 @@ mod launcher_internal {
         status: Arc<RwLock<InstanceStatus>>,
         api_service: Option<Arc<dyn easytier::rpc_service::InstanceRpcService>>,
         instance_id: Uuid,
+        app_handle: Option<tauri::AppHandle>,
     ) {
+        // 首次快速轮询（500ms），后续每 2 秒轮询一次
+        let mut first_poll = true;
+        let mut last_mesh_routes: Vec<String> = Vec::new();
+
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            if first_poll {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                first_poll = false;
+            } else {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
             let is_running = { status.read().await.is_running };
             if !is_running { break; }
 
@@ -1445,6 +1459,18 @@ mod launcher_internal {
                     let mesh_routes: Vec<String> = mesh_routes_set.into_iter().collect();
                     if !mesh_routes.is_empty() {
                         crate::log_info!(format!("poll_instance_status: 采集到 mesh routes: {}", mesh_routes.join(", ")), &instance_id.to_string());
+                    }
+
+                    // 检测 mesh routes 变化并发送事件
+                    if mesh_routes != last_mesh_routes {
+                        last_mesh_routes = mesh_routes.clone();
+                        if let Some(ref handle) = app_handle {
+                            let payload = serde_json::json!({
+                                "spaceId": instance_id.to_string(),
+                                "routes": mesh_routes,
+                            });
+                            let _ = handle.emit("mesh_routes_updated", payload);
+                        }
                     }
 
                     let mut s = status.write().await;

@@ -1111,7 +1111,7 @@ impl SpaceManager {
         // Emit VPN pending state for mobile
         self.emit_vpn_state(space_id, "pending-vpn", None).await;
 
-        self.easytier.start_network(&cfg, *space_id, None).await?;
+        self.easytier.start_network(&cfg, *space_id, None, self.app_handle.clone()).await?;
 
         // 等待实例就绪：is_running=true 且 virtual_ip 非空且有至少 1 个 peer 连接
         // 避免 connectWithVpn 在 mesh 建连前获取 mesh routes 为空
