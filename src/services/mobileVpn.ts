@@ -9,7 +9,7 @@ import { invoke } from "@tauri-apps/api/core";
 const PLUGIN = "hometiervpnservice";
 
 let meshRoutesUnlisten: (() => void) | null = null;
-let currentMeshRoutes: Set<string> = new Set();
+const currentMeshRoutes: Set<string> = new Set();
 
 export interface VpnConfig {
   spaceId: string;
