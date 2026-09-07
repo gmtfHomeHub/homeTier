@@ -1114,6 +1114,7 @@ mod launcher_internal {
     use tokio::sync::RwLock;
     use std::path::PathBuf;
     use uuid::Uuid;
+    use tauri::Emitter;
     use crate::types::NetworkStatus;
     use super::config;
 
