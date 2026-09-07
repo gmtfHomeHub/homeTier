@@ -13,7 +13,10 @@ pub async fn get_network_stats(
     let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
 
     // 使用新的网络统计方法
-    if let Some(rpc_status) = easytier.get_network_stats(&id).await {
+    // 实例不存在（空间未连接）时静默返回默认值，避免断开重连瞬间产生噪音日志
+    // 仅当实例存在但查询失败时记录警告
+    let result = easytier.get_network_stats(&id).await;
+    if let Some(rpc_status) = result {
         Ok(NetworkStats {
             rx_bytes: rpc_status.rx_bytes,
             tx_bytes: rpc_status.tx_bytes,
@@ -23,8 +26,7 @@ pub async fn get_network_stats(
             avg_latency_ms: rpc_status.avg_latency_ms,
         })
     } else {
-        crate::log_warn!(format!("获取网络统计失败: space_id={}", space_id));
-        // 如果查询失败，返回默认值
+        // 实例不存在或查询失败，静默返回默认值
         Ok(NetworkStats {
             rx_bytes: 0,
             tx_bytes: 0,

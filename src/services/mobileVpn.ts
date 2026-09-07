@@ -319,16 +319,27 @@ export async function connectWithVpn(
     await new Promise((r) => setTimeout(r, POLL_MS));
   }
 
-  // 等待 1s 让 poll_instance_status 任务有时间更新 mesh 路由
-  await new Promise((r) => setTimeout(r, 1000));
-
-  // 获取 mesh 子网代理路由，将代理子网加入 VPN 路由
-  // （访问真实局域网 IP 如 192.168.31.44 需要 VPN 包含该子网路由）
+  // 显式等待 mesh routes 就绪（轮询 getMeshRoutes 直到非空或超时）
+  // 避免 VPN 重启时路由为空，导致无法访问真实局域网 IP
   let meshRoutes: string[] = [];
-  try {
-    meshRoutes = await api.getMeshRoutes(spaceId);
-  } catch (e) {
-    console.warn("获取 mesh 路由失败:", e);
+  const meshRoutesPollStart = Date.now();
+  const MESH_ROUTES_MAX_POLL = 10_000;
+  const MESH_ROUTES_POLL_MS = 500;
+  while (Date.now() - meshRoutesPollStart < MESH_ROUTES_MAX_POLL) {
+    try {
+      const routes = await api.getMeshRoutes(spaceId);
+      if (routes.length > 0) {
+        meshRoutes = routes;
+        console.log(`Mesh routes 就绪: ${meshRoutes.join(", ")}`);
+        break;
+      }
+    } catch (e) {
+      // 忽略暂时性错误，继续轮询
+    }
+    await new Promise((r) => setTimeout(r, MESH_ROUTES_POLL_MS));
+  }
+  if (meshRoutes.length === 0) {
+    console.warn("Mesh routes 轮询超时，VPN 将仅包含虚拟 IP 子网路由");
   }
 
   // 构建完整路由列表：虚拟 IP 子网 + 所有 mesh proxy_cidrs

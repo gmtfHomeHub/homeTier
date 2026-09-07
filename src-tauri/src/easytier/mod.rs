@@ -1074,6 +1074,14 @@ impl EasyTierManager {
         Some(instance.get_mesh_routes().await)
     }
 
+    /// 获取运行时快照（供 SpaceManager.connect 等待就绪使用）
+    /// 返回: (is_running, virtual_ip, connected_peers)
+    pub async fn get_runtime_snapshot(&self, instance_id: &Uuid) -> Option<(bool, Option<String>, u32)> {
+        let instance = self.instances.get(instance_id)?;
+        let status = instance.status.read().await;
+        Some((status.is_running, status.virtual_ip.clone(), status.connected_peers))
+    }
+
     /// 升级版本（Mobile 不支持）
     pub async fn upgrade(&self, _version: &str, _source: Option<BinarySource>) -> Result<(), String> {
         Err("Mobile 不支持版本升级".into())
@@ -1132,8 +1140,6 @@ mod launcher_internal {
         config_content: Arc<RwLock<Option<String>>>,
         status: Arc<RwLock<InstanceStatus>>,
         pub instance: Option<easytier::launcher::NetworkInstance>,
-        // Mobile: RPC 服务器句柄，用于显式停止释放端口
-        rpc_server: Option<easytier::rpc_service::api::ApiRpcServer<easytier::tunnel::tcp::TcpTunnelListener>>,
     }
 
     struct InstanceStatus {
@@ -1275,34 +1281,6 @@ mod launcher_internal {
             }
         };
 
-        // 尝试创建并启动 RPC 服务器（移动端库模式可选，失败不影响实例启动）
-        // 移动端不依赖 RPC 端口，所有状态查询通过 InstanceStatus 直接读取
-        // 桌面端需要 RPC 服务器供 StandAloneClient 连接查询
-        let rpc_portal = crate::config::get_u16(crate::config::KEY_EASYTIER_RPC_PORT, crate::daemon::ipc::EASYTIER_DAEMON_RPC_PORT);
-        let rpc_addr = format!("127.0.0.1:{}", rpc_portal);
-        let rpc_server = match easytier::rpc_service::api::ApiRpcServer::new(
-            Some(rpc_addr.clone()),
-            None,
-            Arc::new(easytier::instance_manager::NetworkInstanceManager::new())
-        ) {
-            Ok(server) => {
-                match server.serve().await {
-                    Ok(served) => {
-                        crate::log_info!(format!("start_easytier: RPC 服务器已启动, addr={}", rpc_addr), &instance_id.to_string());
-                        Some(served)
-                    }
-                    Err(e) => {
-                        crate::log_warn!(format!("start_easytier: RPC 服务器启动失败（非致命）: {:?}", e), &instance_id.to_string());
-                        None
-                    }
-                }
-            }
-            Err(e) => {
-                crate::log_warn!(format!("start_easytier: RPC 服务器创建失败（非致命）: {:?}", e), &instance_id.to_string());
-                None
-            }
-        };
-
         let status = Arc::new(RwLock::new(InstanceStatus {
             virtual_ip: None,
             connected_peers: 0,
@@ -1316,8 +1294,9 @@ mod launcher_internal {
 
         let status_poll = status.clone();
         let stop_notifier = instance.get_stop_notifier();
+        let instance_id_for_poll = instance_id;
         tokio::spawn(async move {
-            poll_instance_status(status_poll, api_service).await;
+            poll_instance_status(status_poll, api_service, instance_id_for_poll).await;
         });
 
         let status_stop = status.clone();
@@ -1338,13 +1317,13 @@ mod launcher_internal {
             config_content: config_content_ref,
             status,
             instance: Some(instance),
-            rpc_server,
         })
     }
 
     async fn poll_instance_status(
         status: Arc<RwLock<InstanceStatus>>,
         api_service: Option<Arc<dyn easytier::rpc_service::InstanceRpcService>>,
+        instance_id: Uuid,
     ) {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -1464,6 +1443,9 @@ mod launcher_internal {
                         }
                     }
                     let mesh_routes: Vec<String> = mesh_routes_set.into_iter().collect();
+                    if !mesh_routes.is_empty() {
+                        crate::log_info!(format!("poll_instance_status: 采集到 mesh routes: {}", mesh_routes.join(", ")), &instance_id.to_string());
+                    }
 
                     let mut s = status.write().await;
                     s.connected_peers = peers_resp.peer_infos.len() as u32;
@@ -1523,11 +1505,6 @@ mod launcher_internal {
             let latest_config = self.config_path.as_ref().and_then(|p| std::fs::read_to_string(p).ok());
             if let Some(ref cfg) = latest_config {
                 *self.config_content.write().await = Some(cfg.clone());
-            }
-            // 先显式停止 RPC 服务器，释放端口保护，避免重连时端口冲突
-            if self.rpc_server.is_some() {
-                crate::log_info!("RunningInstance: 停止 RPC 服务器", &self.instance_id.to_string());
-                self.rpc_server = None; // Drop 会 unregister_protected_tcp_port 并关闭监听
             }
             if self.instance.is_some() {
                 self.instance.take();
