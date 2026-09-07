@@ -141,25 +141,6 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
 
     const mobile = await isMobile();
 
-    // 移动端：查 VPN 实时状态，避免 list() 瞬态 DIS 误触发重连
-    if (mobile) {
-      try {
-        const vpnStatus = await getVpnStatus();
-        if (vpnStatus.running) {
-          // VPN 实际运行中，list() 返回了瞬态 DIS，恢复 CED
-          set((state) => ({
-            spaces: state.spaces.map((s) =>
-              s.id === spaceId ? { ...s, status: SpaceStatus.CED } : s
-            ),
-          }));
-          syncTrayMenu(get().spaces);
-          return;
-        }
-      } catch {
-        // getVpnStatus 失败，继续走正常连接流程
-      }
-    }
-
     // 互斥：将其他已连接的空间设为 disconnected，目标空间设为 connecting
     const prevConnected = get().spaces.find((s) => s.status === SpaceStatus.CED || s.status === SpaceStatus.ING);
     set((state) => ({

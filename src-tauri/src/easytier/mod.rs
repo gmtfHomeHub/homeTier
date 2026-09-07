@@ -1002,7 +1002,7 @@ impl EasyTierManager {
             crate::log_info!(format!("EasyTierManager: 网络实例已停止 (Mobile), id={}", instance_id));
             Ok(config)
         } else {
-            crate::log_warn!(format!("EasyTierManager: 实例未找到 (Mobile), id={}", instance_id));
+            crate::log_debug!(format!("EasyTierManager: 实例未找到 (Mobile, 可能已停止), id={}", instance_id));
             Ok(None)
         }
     }
@@ -1331,14 +1331,14 @@ mod launcher_internal {
         instance_id: Uuid,
         app_handle: Option<tauri::AppHandle>,
     ) {
-        // 首次快速轮询（500ms），后续每 2 秒轮询一次
-        let mut first_poll = true;
+        // 首次快速轮询（500ms），前 10s (20次) 每 500ms 快速轮询，后续每 2 秒轮询一次
+        let mut fast_poll_count = 0;
         let mut last_mesh_routes: Vec<String> = Vec::new();
 
         loop {
-            if first_poll {
+            if fast_poll_count < 20 { // 前 10s (20 * 500ms) 快速轮询
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                first_poll = false;
+                fast_poll_count += 1;
             } else {
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }

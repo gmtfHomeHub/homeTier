@@ -1113,22 +1113,6 @@ impl SpaceManager {
 
         self.easytier.start_network(&cfg, *space_id, None, self.app_handle.clone()).await?;
 
-        // 等待实例就绪：is_running=true 且 virtual_ip 非空且有至少 1 个 peer 连接
-        // 避免 connectWithVpn 在 mesh 建连前获取 mesh routes 为空
-        let mut ready = false;
-        for _ in 0..30 { // 最多等待 30 * 500ms = 15s
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            if let Some((true, Some(_), peers)) = self.easytier.get_runtime_snapshot(space_id).await {
-                if peers > 0 {
-                    ready = true;
-                    break;
-                }
-            }
-        }
-        if !ready {
-            crate::log_warn!(format!("connect: 实例就绪等待超时，is_running 或 virtual_ip 或 peers 未就绪"), &space_id.to_string());
-        }
-
         crate::log_info!(format!("连接空间: {}", space.name), &space_id.to_string());
         Ok(())
     }

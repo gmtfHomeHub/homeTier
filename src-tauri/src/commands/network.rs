@@ -45,8 +45,8 @@ pub async fn get_mesh_routes(
     easytier: State<'_, Arc<EasyTierManager>>,
 ) -> Result<Vec<String>, String> {
     let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
-    easytier.get_mesh_routes(&id).await
-        .ok_or_else(|| "Instance not found or mesh routes unavailable".to_string())
+    // 实例不存在或无 routes 时返回空数组，不报错
+    Ok(easytier.get_mesh_routes(&id).await.unwrap_or_default())
 }
 
 #[tauri::command]
