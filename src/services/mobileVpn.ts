@@ -280,7 +280,11 @@ export async function connectWithVpn(
     // 不排除 homeTier 自身：app 内 HTTP 代理需经 VPN TUN 访问虚拟 IP 转发请求。
     // Kotlin VpnService 已移除硬编码 addDisallowedApplication(packageName)。
     excludedApps: [],
-    dnsServers: [virtualIp],
+    // 不设 DNS：VpnService 仅路由虚拟 IP 子网（非默认网络），
+    // 系统 DNS 查询走默认网络（WiFi/蜂窝）的真实 DNS 服务器，不经 TUN。
+    // 若设为虚拟 IP，DNS 查询经 TUN 发往虚拟 IP，EasyTier 未启用 magic DNS 会丢弃查询，
+    // 导致 reqwest::Client（GaiResolver）解析主机名超时失败。
+    dnsServers: [],
   });
 
   if (fd === null) {
@@ -314,6 +318,10 @@ export async function connectWithVpn(
     }
     await new Promise((r) => setTimeout(r, POLL_MS));
   }
+
+  // 等待 EasyTier TUN 设备就绪：set_tun_fd 成功后 setup_nic_ctx_for_mobile 异步创建 TUN 设备，
+  // 此处额外等待 2s 让 TUN 设备完成初始化，避免代理首次连接时 SYN 丢包。
+  await new Promise((r) => setTimeout(r, 2000));
 
   return null;
 }
