@@ -2,10 +2,10 @@
 package com.hometier.app
 
 import android.content.Context
-import android.net.NetworkInterface
 import android.net.wifi.WifiManager
 import java.net.Inet4Address
 import java.net.InetAddress
+import java.net.NetworkInterface
 import java.util.Collections
 import kotlin.collections.mutableSetOf
 
