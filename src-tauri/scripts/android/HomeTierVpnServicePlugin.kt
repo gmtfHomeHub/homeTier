@@ -157,7 +157,9 @@ class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity
     @Command
     fun detectLanSubnets(invoke: Invoke) {
         activity.runOnUiThread {
+            android.util.Log.i("HomeTierVpn", "detectLanSubnets: 开始探测")
             val subnets = LanSubnetDetector.detect(activity)
+            android.util.Log.i("HomeTierVpn", "detectLanSubnets: 探测结果: $subnets")
             val ret = JSObject()
             ret.put("subnets", subnets)
             invoke.resolve(ret)

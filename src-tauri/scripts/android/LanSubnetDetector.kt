@@ -17,6 +17,7 @@ object LanSubnetDetector {
      * @return 去重后的 CIDR 列表，如 ["192.168.31.0/24"]
      */
     fun detect(context: Context): List<String> {
+        android.util.Log.i("HomeTierVpn", "LanSubnetDetector.detect: 开始探测")
         val subnets = mutableSetOf<String>()
 
         // 1. 优先：WiFi 连接信息（最准确）
@@ -24,18 +25,26 @@ object LanSubnetDetector {
             val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as WifiManager
             val info = wifiManager.connectionInfo
             val ip = info.ipAddress
+            val ssid = info.ssid
+            android.util.Log.i("HomeTierVpn", "LanSubnetDetector: WiFi info - ip=$ip, ssid=$ssid")
             if (ip != 0) {
                 val cidr = intToCidr(ip, 24)
                 subnets.add(cidr)
+                android.util.Log.i("HomeTierVpn", "LanSubnetDetector: WiFi 子网: $cidr")
+            } else {
+                android.util.Log.w("HomeTierVpn", "LanSubnetDetector: WiFi IP 为 0，可能缺少权限或未连接 WiFi")
             }
         } catch (e: Exception) {
+            android.util.Log.e("HomeTierVpn", "LanSubnetDetector: WiFi 探测异常: ${e.message}", e)
             // 忽略，继续兜底
         }
 
         // 2. 兜底：遍历所有网络接口
         try {
             val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+            android.util.Log.i("HomeTierVpn", "LanSubnetDetector: 发现 ${interfaces.size} 个网络接口")
             for (ni in interfaces) {
+                android.util.Log.d("HomeTierVpn", "LanSubnetDetector: 接口 ${ni.name} - isUp=${ni.isUp}, isLoopback=${ni.isLoopback}")
                 if (!ni.isUp || ni.isLoopback || isVirtualInterface(ni.name)) continue
                 val addresses = Collections.list(ni.inetAddresses)
                 for (addr in addresses) {
@@ -44,14 +53,18 @@ object LanSubnetDetector {
                     if (isSiteLocalIpv4(host)) {
                         val cidr = ipToCidr(host, 24)
                         subnets.add(cidr)
+                        android.util.Log.i("HomeTierVpn", "LanSubnetDetector: 接口 ${ni.name} 子网: $cidr")
                     }
                 }
             }
         } catch (e: Exception) {
+            android.util.Log.e("HomeTierVpn", "LanSubnetDetector: 接口枚举异常: ${e.message}", e)
             // 忽略
         }
 
-        return subnets.toList()
+        val result = subnets.toList()
+        android.util.Log.i("HomeTierVpn", "LanSubnetDetector: 最终结果: $result")
+        return result
     }
 
     /** 判断是否为虚拟/隧道接口（需排除） */
@@ -79,9 +92,9 @@ object LanSubnetDetector {
     private fun intToCidr(ipInt: Int, prefix: Int): String {
         val octets = intArrayOf(
             (ipInt shr 24) and 0xFF,
-            (ipInt shr 16) and 0xFF,
-            (ipInt shr 8) and 0xFF,
-            ipInt and 0xFF
+            (ipInt shr 16) & 0xFF,
+            (ipInt shr 8) & 0xFF,
+            ipInt & 0xFF
         )
         // 掩码应用：/24 只保留前三段
         val masked = if (prefix == 24) intArrayOf(octets[0], octets[1], octets[2], 0) else octets

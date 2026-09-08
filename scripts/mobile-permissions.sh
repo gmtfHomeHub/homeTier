@@ -13,6 +13,17 @@ IOS_PLIST="src-tauri/gen/apple/homeTier_iOS/Info.plist"
 [ -f "$IOS_PLIST" ] || echo "[mobile-permissions] WARN: $IOS_PLIST 不存在（tauri ios init 未执行或结构变更）"
 
 if [ -f "$ANDROID_MANIFEST" ]; then
+    # 0. WiFi 权限（用于自动探测物理 LAN 子网：WifiManager.connectionInfo + NetworkInterface 枚举）
+    for perm in ACCESS_WIFI_STATE ACCESS_FINE_LOCATION ACCESS_COARSE_LOCATION; do
+        if ! grep -q "android.permission.$perm" "$ANDROID_MANIFEST"; then
+            sed -i "/<\/manifest>/i \\
+    <uses-permission android:name=\"android.permission.$perm\" />" "$ANDROID_MANIFEST"
+            echo "[mobile-permissions] Injected $perm permission into AndroidManifest.xml"
+        else
+            echo "[mobile-permissions] $perm permission already exists in AndroidManifest.xml"
+        fi
+    done
+
     # 1. CAMERA 权限（用于扫码）
     if ! grep -q 'android.permission.CAMERA' "$ANDROID_MANIFEST"; then
         sed -i '/<\/manifest>/i \

@@ -120,6 +120,14 @@ pub async fn connect_space(
 ) -> Result<(), String> {
     let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
     crate::log_info!(format!("连接空间: {}, auto_proxy_cidrs: {:?}", space_id, auto_proxy_cidrs));
+    // 调试：记录每个 CIDR
+    if let Some(ref cidrs) = auto_proxy_cidrs {
+        for c in cidrs {
+            crate::log_info!(format!("connect_space: 收到 auto_proxy_cidr: {}", c));
+        }
+    } else {
+        crate::log_info!("connect_space: auto_proxy_cidrs 为 None");
+    }
     space_manager.connect(&id, auto_proxy_cidrs).await
 }
 
