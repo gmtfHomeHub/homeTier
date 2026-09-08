@@ -20,7 +20,7 @@ if [ ! -d "$ANDROID_KOTLIN_DIR" ]; then
   echo "ERROR: Kotlin 源码目录不存在: $ANDROID_KOTLIN_DIR（tauri android init 未执行？）"
   FAIL=1
 else
-  for f in HomeTierVpnService.kt HomeTierVpnServicePlugin.kt TauriEventBus.kt MainActivity.kt; do
+  for f in HomeTierVpnService.kt HomeTierVpnServicePlugin.kt TauriEventBus.kt LanSubnetDetector.kt MainActivity.kt; do
     if [ ! -f "$ANDROID_KOTLIN_DIR/$f" ]; then
       echo "ERROR: $f 缺失（$ANDROID_KOTLIN_DIR/$f）"
       FAIL=1

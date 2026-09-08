@@ -66,7 +66,7 @@ fi
 # 复制 Kotlin VpnService/插件/屏幕共享文件到生成的工程中
 # HomeTierVpnService.kt / HomeTierVpnServicePlugin.kt 在 com.hometier.app 包（根目录）
 # ScreenShareManager.kt 在 com.hometier.app.screen 包（screen/ 子目录）
-KOTLIN_SOURCES=("HomeTierVpnService.kt" "HomeTierVpnServicePlugin.kt" "TauriEventBus.kt")
+KOTLIN_SOURCES=("HomeTierVpnService.kt" "HomeTierVpnServicePlugin.kt" "TauriEventBus.kt" "LanSubnetDetector.kt")
 for KF in "${KOTLIN_SOURCES[@]}"; do
     KOTLIN_SOURCE="src-tauri/scripts/android/$KF"
     KOTLIN_DEST="$ANDROID_KOTLIN_DIR/$KF"
