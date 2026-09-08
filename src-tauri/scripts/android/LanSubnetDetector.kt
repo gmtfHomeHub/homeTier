@@ -7,6 +7,7 @@ import android.net.wifi.WifiManager
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.util.Collections
+import kotlin.collections.mutableSetOf
 
 object LanSubnetDetector {
 
