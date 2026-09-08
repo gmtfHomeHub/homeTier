@@ -21,6 +21,21 @@ echo "[fix-android-build-gradle] Patching $BUILD_GRADLE..."
 # Backup
 cp "$BUILD_GRADLE" "$BUILD_GRADLE.bak"
 
+# --- NDK version fix: Tauri 默认写入的 ndkVersion 可能与 CI 实际安装的 NDK 不一致，
+# 导致 Gradle 找不到指定 NDK 版本而失败。根据 NDK_HOME 自动校正。 ---
+if [ -n "${NDK_HOME:-}" ] && [ -d "$NDK_HOME" ]; then
+    ACTUAL_NDK=$(basename "$NDK_HOME")
+    CURRENT_NDK=$(sed -n 's/.*ndkVersion = "\([^"]*\)".*/\1/p' "$BUILD_GRADLE" | head -1)
+    if [ "$CURRENT_NDK" != "$ACTUAL_NDK" ]; then
+        sed -i "s/ndkVersion = \"$CURRENT_NDK\"/ndkVersion = \"$ACTUAL_NDK\"/" "$BUILD_GRADLE"
+        echo "[fix-android-build-gradle] Updated ndkVersion: $CURRENT_NDK -> $ACTUAL_NDK"
+    else
+        echo "[fix-android-build-gradle] ndkVersion already correct: $ACTUAL_NDK"
+    fi
+else
+    echo "[fix-android-build-gradle] NDK_HOME not set, skipping NDK version fix"
+fi
+
 # 将 keystore 复制到生成的 android 工程内（file("../keystore/release.keystore") 相对 app 模块）
 if [ -f "src-tauri/keystore/release.keystore" ]; then
     mkdir -p src-tauri/gen/android/keystore
