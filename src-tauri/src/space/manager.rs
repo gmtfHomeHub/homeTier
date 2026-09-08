@@ -1109,27 +1109,27 @@ impl SpaceManager {
         };
 
         // 兼容模式：自动探测 ∪ 用户配置 → 去重合并
+        // 注意：config.rs 中 proxy_cidrs 优先，因此自动探测的 CIDR 需合并入 proxy_cidrs
         if let Some(auto_cidrs) = auto_proxy_cidrs {
             if !auto_cidrs.is_empty() {
                 use std::collections::HashSet;
-                let mut merged: HashSet<String> = cfg.proxy_networks.iter().map(|p| p.cidr.clone()).collect();
+                let mut merged: HashSet<String> = cfg.proxy_cidrs.iter().cloned().collect();
                 let before = merged.len();
                 for cidr in auto_cidrs {
                     merged.insert(cidr);
                 }
                 let added = merged.len() - before;
                 if added > 0 {
-                    crate::log_info!(format!("connect: 自动探测合并 proxy_networks, 新增 {} 条: {:?}", added, merged), &space_id.to_string());
+                    crate::log_info!(format!("connect: 自动探测合并 proxy_cidrs, 新增 {} 条: {:?}", added, merged), &space_id.to_string());
                 }
-                cfg.proxy_networks = merged.into_iter().map(|c| crate::easytier::config::ProxyNetworkConfig { cidr: c, mapped_cidr: None, allow: None }).collect();
+                cfg.proxy_cidrs = merged.into_iter().collect();
                 cfg.proxy_networks_auto = Some(true);
             }
         }
 
         // 记录最终生效的代理网络配置（便于排查：用户配置 + 自动探测）
         crate::log_info!(format!(
-            "connect: 最终 proxy 配置 — proxy_networks: {:?}, proxy_cidrs: {:?}, proxy_networks_auto: {:?}",
-            cfg.proxy_networks.iter().map(|p| &p.cidr).collect::<Vec<_>>(),
+            "connect: 最终 proxy 配置 — proxy_cidrs: {:?}, proxy_networks_auto: {:?}",
             cfg.proxy_cidrs,
             cfg.proxy_networks_auto
         ), &space_id.to_string());

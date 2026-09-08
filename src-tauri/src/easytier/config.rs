@@ -401,25 +401,20 @@ impl NetworkConfig {
             }
         }
 
-        // Proxy CIDRs — 合并 proxy_cidrs 与 proxy_networks，去重
-        let mut seen_cidrs = std::collections::HashSet::new();
-        
-        // 1. 先加 proxy_cidrs（用户手动配置）
-        for cidr_str in &self.proxy_cidrs {
-            if !cidr_str.is_empty() {
-                if let Ok(cidr) = cidr::Ipv4Cidr::from_str(cidr_str) {
-                    if seen_cidrs.insert(cidr) {
+        // Proxy CIDRs — proxy_cidrs 优先，proxy_networks 仅作兼容兜底
+        if !self.proxy_cidrs.is_empty() {
+            for cidr_str in &self.proxy_cidrs {
+                if !cidr_str.is_empty() {
+                    if let Ok(cidr) = cidr::Ipv4Cidr::from_str(cidr_str) {
                         let _ = cfg.add_proxy_cidr(cidr, None);
                     }
                 }
             }
-        }
-        
-        // 2. 再加 proxy_networks（含自动探测），去重
-        for proxy in &self.proxy_networks {
-            if !proxy.cidr.is_empty() {
-                if let Ok(cidr) = cidr::Ipv4Cidr::from_str(&proxy.cidr) {
-                    if seen_cidrs.insert(cidr) {
+        } else if !self.proxy_networks.is_empty() {
+            // 兼容模式：proxy_cidrs 为空时，回退使用 proxy_networks
+            for proxy in &self.proxy_networks {
+                if !proxy.cidr.is_empty() {
+                    if let Ok(cidr) = cidr::Ipv4Cidr::from_str(&proxy.cidr) {
                         let mapped = proxy
                             .mapped_cidr
                             .as_ref()
