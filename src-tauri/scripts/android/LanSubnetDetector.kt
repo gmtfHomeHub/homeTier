@@ -92,9 +92,9 @@ object LanSubnetDetector {
     private fun intToCidr(ipInt: Int, prefix: Int): String {
         val octets = intArrayOf(
             (ipInt shr 24) and 0xFF,
-            (ipInt shr 16) & 0xFF,
-            (ipInt shr 8) & 0xFF,
-            ipInt & 0xFF
+            (ipInt shr 16) and 0xFF,
+            (ipInt shr 8) and 0xFF,
+            ipInt and 0xFF
         )
         // 掩码应用：/24 只保留前三段
         val masked = if (prefix == 24) intArrayOf(octets[0], octets[1], octets[2], 0) else octets
