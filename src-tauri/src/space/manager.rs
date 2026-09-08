@@ -1121,7 +1121,7 @@ impl SpaceManager {
                 if added > 0 {
                     crate::log_info!(format!("connect: 自动探测合并 proxy_networks, 新增 {} 条: {:?}", added, merged), &space_id.to_string());
                 }
-                cfg.proxy_networks = merged.into_iter().map(|c| crate::easytier::config::ProxyNetworkConfig { cidr: c }).collect();
+                cfg.proxy_networks = merged.into_iter().map(|c| crate::easytier::config::ProxyNetworkConfig { cidr: c, mapped_cidr: None, allow: None }).collect();
                 cfg.proxy_networks_auto = Some(true);
             }
         }
