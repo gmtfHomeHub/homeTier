@@ -1463,7 +1463,9 @@ mod launcher_internal {
                     }
 
                     // 检测 mesh routes 变化并发送事件
-                    if mesh_routes != last_mesh_routes {
+                    // 首次采集到非空 mesh_routes 时也强制触发（last_mesh_routes 初始为空）
+                    let is_first_non_empty = last_mesh_routes.is_empty() && !mesh_routes.is_empty();
+                    if mesh_routes != last_mesh_routes || is_first_non_empty {
                         last_mesh_routes = mesh_routes.clone();
                         if let Some(ref handle) = app_handle {
                             let payload = serde_json::json!({

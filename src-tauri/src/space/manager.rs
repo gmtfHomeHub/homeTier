@@ -1126,6 +1126,14 @@ impl SpaceManager {
             }
         }
 
+        // 记录最终生效的代理网络配置（便于排查：用户配置 + 自动探测）
+        crate::log_info!(format!(
+            "connect: 最终 proxy 配置 — proxy_networks: {:?}, proxy_cidrs: {:?}, proxy_networks_auto: {:?}",
+            cfg.proxy_networks.iter().map(|p| &p.cidr).collect::<Vec<_>>(),
+            cfg.proxy_cidrs,
+            cfg.proxy_networks_auto
+        ), &space_id.to_string());
+
         // Emit VPN pending state for mobile
         self.emit_vpn_state(space_id, "pending-vpn", None).await;
 
