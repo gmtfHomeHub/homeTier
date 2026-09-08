@@ -103,6 +103,9 @@ pub struct NetworkConfig {
     pub peers: Vec<PeerConfig>,
     pub listeners: Vec<String>,
     pub proxy_networks: Vec<ProxyNetworkConfig>,
+    /// 标记 proxy_networks 是否包含自动探测的子网（用于 UI 区分来源）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy_networks_auto: Option<bool>,
     pub flags: HashMap<String, String>,
 }
 
@@ -217,6 +220,7 @@ impl Default for NetworkConfig {
             peers: Vec::new(),
             listeners: Vec::new(),
             proxy_networks: Vec::new(),
+            proxy_networks_auto: None,
             flags: HashMap::new(),
         }
     }

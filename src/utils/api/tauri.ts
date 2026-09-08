@@ -74,8 +74,8 @@ export async function importAddApps(data: string): Promise<ImportAddAppsResult> 
   return invoke("import_add_apps", { data });
 }
 
-export async function connectSpace(spaceId: string): Promise<void> {
-  return invoke("connect_space", { spaceId });
+export async function connectSpace(spaceId: string, autoProxyCidrs?: string[]): Promise<void> {
+  return invoke("connect_space", { spaceId, auto_proxy_cidrs: autoProxyCidrs });
 }
 
 export async function disconnectSpace(spaceId: string): Promise<void> {

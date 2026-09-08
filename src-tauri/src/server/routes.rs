@@ -244,7 +244,7 @@ async fn connect_space_handler(
         Ok(u) => u,
         Err(e) => return e.into_response(),
     };
-    match state.space_manager.connect(&id).await {
+    match state.space_manager.connect(&id, None).await {
         Ok(()) => {
             let event = crate::server::event::ServerEvent::new(
                 crate::server::event::EventType::SpaceUpdated,

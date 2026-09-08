@@ -222,7 +222,7 @@ export async function getVpnStatus(): Promise<{
 
 /**
  * Connect to a space with VPN on mobile.
- * Flow: prepare VPN -> start easytier network -> start VPN -> get fd -> inject fd.
+ * Flow: prepare VPN -> detect LAN subnets -> start easytier network -> start VPN -> get fd -> inject fd.
  * Fast path: wait for virtual_ip only, then return success.
  * Background: mesh_routes_updated event triggers VPN rebuild with new routes.
  *
@@ -252,11 +252,23 @@ export async function connectWithVpn(
     return "VPN 授权被拒绝或失败";
   }
 
-  // 2. Start EasyTier network first (it waits for the tun fd)
+  // 2. 自动探测物理 LAN 子网（移动端所在 WiFi 网段）
+  let autoProxyCidrs: string[] = [];
+  try {
+    const result = await invoke<{ subnets: string[] }>("plugin:hometiervpnservice|detect_lan_subnets");
+    autoProxyCidrs = result?.subnets || [];
+    if (autoProxyCidrs.length > 0) {
+      console.log("自动探测到物理 LAN 子网:", autoProxyCidrs);
+    }
+  } catch (e) {
+    console.warn("物理 LAN 子网探测失败，将不广播物理子网:", e);
+  }
+
+  // 3. Start EasyTier network first (it waits for the tun fd)
   let connectErr: string | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      await api.connectSpace(spaceId);
+      await api.connectSpace(spaceId, autoProxyCidrs);
       connectErr = null;
       break;
     } catch (e) {
@@ -271,7 +283,7 @@ export async function connectWithVpn(
     return `连接空间失败: ${connectErr}`;
   }
 
-  // 3. Start VPN service and get fd (仅虚拟 IP 子网路由)
+  // 4. Start VPN service and get fd (仅虚拟 IP 子网路由)
   const virtualIpSubnet = `${virtualIp.split(".").slice(0, 3).join(".")}.0/24`;
   const { fd, error } = await startVpn({
     spaceId,
@@ -290,7 +302,7 @@ export async function connectWithVpn(
     return error || "VPN 连接失败（未获取到 TUN 接口）";
   }
 
-  // 4. 等待 EasyTier 分配虚拟 IP（最多 10s）
+  // 5. 等待 EasyTier 分配虚拟 IP（最多 10s）
   const pollStart = Date.now();
   const POLL_MS = 500;
   const MAX_POLL = 10_000;
@@ -303,15 +315,18 @@ export async function connectWithVpn(
     await new Promise((r) => setTimeout(r, POLL_MS));
   }
 
-  // 5. 等待 2s 让 TUN 设备完成初始化
+  // 6. 等待 2s 让 TUN 设备完成初始化
   await new Promise((r) => setTimeout(r, 2000));
 
-  // 6. 清理旧监听并启动 mesh routes 事件监听（后台自动重建 VPN）
+  // 7. 清理旧监听并启动 mesh routes 事件监听（后台自动重建 VPN）
   if (meshRoutesUnlisten) {
     meshRoutesUnlisten();
     meshRoutesUnlisten = null;
   }
   currentMeshRoutes.clear();
+
+  // 缓存物理 LAN 子网，用于 VPN 重建时排除
+  const physicalLanSubnet = autoProxyCidrs[0] || "";
 
   meshRoutesUnlisten = await listen<{ spaceId: string; routes: string[] }>(
     "mesh_routes_updated",
@@ -336,7 +351,11 @@ export async function connectWithVpn(
         for (const r of currentMeshRoutes) {
           allRoutesList.add(r);
         }
-        console.log(`VPN 路由动态更新: 共 ${allRoutesList.size} 条路由`);
+        // 排除物理 LAN 子网（直连不走 VPN）
+        if (physicalLanSubnet) {
+          allRoutesList.delete(physicalLanSubnet);
+        }
+        console.log(`VPN 路由动态更新: 共 ${allRoutesList.size} 条路由 (排除物理 LAN: ${physicalLanSubnet || "无"})`);
         await stopVpn();
         const { fd: fd3, error: err3 } = await startVpn({
           spaceId,

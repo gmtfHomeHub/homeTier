@@ -157,6 +157,10 @@ export interface NetworkConfig {
 
   port_forwards: PortForwardConfig[]
   acl?: Acl
+
+  // Proxy networks (auto-detected + user configured)
+  proxy_networks: ProxyNetworkConfig[]
+  proxy_networks_auto?: boolean
 }
 
 export function DEFAULT_NETWORK_CONFIG(): NetworkConfig {
@@ -236,6 +240,8 @@ export function DEFAULT_NETWORK_CONFIG(): NetworkConfig {
         chains: [],
       },
     },
+    proxy_networks: [],
+    proxy_networks_auto: false,
   }
 }
 
@@ -246,6 +252,22 @@ export interface PortForwardConfig {
   dst_port: number,
   proto: string
 }
+
+export interface ProxyNetworkConfig {
+  cidr: string
+  mapped_cidr?: string
+  allow?: string[]
+}
+
+// 添加代理网络行
+export const addProxyNetworkRow = (rows: ProxyNetworkConfig[]) => {
+  rows.push({ cidr: '' });
+};
+
+// 删除代理网络行
+export const removeProxyNetworkRow = (index: number, rows: ProxyNetworkConfig[]) => {
+  rows.splice(index, 1);
+};
 
 // 添加新行
 export const addRow = (rows: PortForwardConfig[]) => {

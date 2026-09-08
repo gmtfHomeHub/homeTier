@@ -62,7 +62,7 @@ pub async fn update_group_config(
 
     // 断开当前连接，使用新配置重新连接
     space_manager.disconnect(&id).await?;
-    space_manager.connect(&id).await?;
+    space_manager.connect(&id, None).await?;
 
     Ok(())
 }

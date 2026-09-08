@@ -348,7 +348,7 @@ Self {
     }
 
     /// 连接空间（通过 IPC 通知 daemon）
-    pub async fn connect(&self, space_id: &Uuid) -> Result<(), String> {
+    pub async fn connect(&self, space_id: &Uuid, _auto_proxy_cidrs: Option<Vec<String>>) -> Result<(), String> {
         crate::log_info!(format!("connect: 开始连接空间, space_id={}", space_id), &space_id.to_string());
 
         if !self.ipc_client.ping().await {
@@ -1065,7 +1065,7 @@ impl SpaceManager {
     }
 
     /// 连接空间（Mobile: 直接调用库）
-    pub async fn connect(&self, space_id: &Uuid) -> Result<(), String> {
+    pub async fn connect(&self, space_id: &Uuid, auto_proxy_cidrs: Option<Vec<String>>) -> Result<(), String> {
         let running = self.easytier.list_running();
         for running_id in &running {
             let _ = self.easytier.stop_network(running_id).await;
@@ -1079,7 +1079,7 @@ impl SpaceManager {
         // 而非当作 initial_config override。initial_config 的 override 逻辑只处理
         // peers(对象数组)/ipv4(字符串)，不处理 peer_urls(字符串数组)/virtual_ipv4，
         // 会导致 peer 和虚拟 IP 丢失。
-        let cfg = match self.db.get_space_config(&space_id.to_string())
+        let mut cfg = match self.db.get_space_config(&space_id.to_string())
             .ok()
             .flatten()
             .and_then(|json| crate::easytier::config::NetworkConfig::from_config_json(&json).ok())
@@ -1107,6 +1107,24 @@ impl SpaceManager {
                 }
             }
         };
+
+        // 兼容模式：自动探测 ∪ 用户配置 → 去重合并
+        if let Some(auto_cidrs) = auto_proxy_cidrs {
+            if !auto_cidrs.is_empty() {
+                use std::collections::HashSet;
+                let mut merged: HashSet<String> = cfg.proxy_networks.iter().map(|p| p.cidr.clone()).collect();
+                let before = merged.len();
+                for cidr in auto_cidrs {
+                    merged.insert(cidr);
+                }
+                let added = merged.len() - before;
+                if added > 0 {
+                    crate::log_info!(format!("connect: 自动探测合并 proxy_networks, 新增 {} 条: {:?}", added, merged), &space_id.to_string());
+                }
+                cfg.proxy_networks = merged.into_iter().map(|c| crate::easytier::config::ProxyNetworkConfig { cidr: c }).collect();
+                cfg.proxy_networks_auto = Some(true);
+            }
+        }
 
         // Emit VPN pending state for mobile
         self.emit_vpn_state(space_id, "pending-vpn", None).await;

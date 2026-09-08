@@ -152,6 +152,18 @@ class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity
         invoke.resolve(ret)
     }
 
+    // ==================== LAN 子网自动探测 ====================
+
+    @Command
+    fun detectLanSubnets(invoke: Invoke) {
+        activity.runOnUiThread {
+            val subnets = LanSubnetDetector.detect(activity)
+            val ret = JSObject()
+            ret.put("subnets", subnets)
+            invoke.resolve(ret)
+        }
+    }
+
     // ==================== 屏幕共享（MediaProjection） ====================
 
     /** 弹出 MediaProjection 权限对话框（系统"开始录制屏幕？"） */

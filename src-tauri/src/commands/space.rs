@@ -101,14 +101,26 @@ pub async fn parse_share_data(data: String) -> Result<ShareInfo, String> {
     crate::space::share::decode_share_binary(&bytes)
 }
 
+#[cfg(any(target_os = "android", target_os = "ios"))]
+#[tauri::command]
+pub async fn detect_lan_subnets(
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<String>, String> {
+    // 通过 Tauri 插件调用 Android/iOS 原生探测
+    // 注意：实际调用在前端通过 invoke("plugin:hometiervpnservice|detect_lan_subnets") 完成
+    // 此命令仅作为类型占位，前端直接调用插件
+    Err("请在前端直接调用插件: invoke(\"plugin:hometiervpnservice|detect_lan_subnets\")".into())
+}
+
 #[tauri::command]
 pub async fn connect_space(
     space_id: String,
+    auto_proxy_cidrs: Option<Vec<String>>,
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<(), String> {
     let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
-    crate::log_info!(format!("连接空间: {}", space_id));
-    space_manager.connect(&id).await
+    crate::log_info!(format!("连接空间: {}, auto_proxy_cidrs: {:?}", space_id, auto_proxy_cidrs));
+    space_manager.connect(&id, auto_proxy_cidrs).await
 }
 
 #[tauri::command]
