@@ -158,6 +158,15 @@ class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity
     fun detectLanSubnets(invoke: Invoke) {
         activity.runOnUiThread {
             android.util.Log.i("HomeTierVpn", "detectLanSubnets: 开始探测")
+            
+            // 尝试请求位置权限（Android 10+ 需要）
+            val hasLocationPerm = ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            if (!hasLocationPerm) {
+                android.util.Log.w("HomeTierVpn", "detectLanSubnets: 缺少 ACCESS_FINE_LOCATION 权限，尝试请求...")
+                ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), REQUEST_LOCATION)
+                // 权限请求是异步的，这里继续尝试兜底方案
+            }
+            
             val subnets = LanSubnetDetector.detect(activity)
             android.util.Log.i("HomeTierVpn", "detectLanSubnets: 探测结果: $subnets")
             val ret = JSObject()
@@ -239,8 +248,22 @@ class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity
         }
     }
 
+    /** 请求位置权限（Android 10+ 读取 WiFi 信息需要） */
+    @Command
+    fun requestLocationPermission(invoke: Invoke) {
+        activity.runOnUiThread {
+            if (ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), REQUEST_LOCATION)
+            }
+            invoke.resolve(JSObject())
+        }
+    }
+
     companion object {
         private const val REQUEST_CAMERA = 2001
         private const val REQUEST_MIC = 2002
+        private const val REQUEST_LOCATION = 2003
     }
 }

@@ -255,10 +255,17 @@ export async function connectWithVpn(
   // 2. 自动探测物理 LAN 子网（移动端所在 WiFi 网段）
   let autoProxyCidrs: string[] = [];
   try {
+    // 先请求位置权限（Android 10+ 读取 WiFi 信息需要）
+    await invoke(`plugin:${PLUGIN}|request_location_permission`);
+    // 给权限弹窗一点时间（异步），不阻塞太久
+    await new Promise((r) => setTimeout(r, 500));
+    
     const result = await invoke<{ subnets: string[] }>("plugin:hometiervpnservice|detect_lan_subnets");
     autoProxyCidrs = result?.subnets || [];
     if (autoProxyCidrs.length > 0) {
       console.log("自动探测到物理 LAN 子网:", autoProxyCidrs);
+    } else {
+      console.warn("自动探测未发现物理 LAN 子网，可能缺少权限或网络异常");
     }
   } catch (e) {
     console.warn("物理 LAN 子网探测失败，将不广播物理子网:", e);

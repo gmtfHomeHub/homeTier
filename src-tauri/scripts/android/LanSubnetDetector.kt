@@ -13,14 +13,14 @@ object LanSubnetDetector {
 
     /**
      * 探测当前设备所在的物理 LAN 子网（/24）
-     * 优先使用 WiFi 连接信息，兜底遍历网络接口
+     * 优先使用 WiFi 连接信息（需 ACCESS_FINE_LOCATION 权限），兜底遍历网络接口（无需权限）
      * @return 去重后的 CIDR 列表，如 ["192.168.31.0/24"]
      */
     fun detect(context: Context): List<String> {
         android.util.Log.i("HomeTierVpn", "LanSubnetDetector.detect: 开始探测")
         val subnets = mutableSetOf<String>()
 
-        // 1. 优先：WiFi 连接信息（最准确）
+        // 1. 优先：WiFi 连接信息（最准确，但 Android 10+ 需 ACCESS_FINE_LOCATION 权限）
         try {
             val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as WifiManager
             val info = wifiManager.connectionInfo
@@ -32,14 +32,14 @@ object LanSubnetDetector {
                 subnets.add(cidr)
                 android.util.Log.i("HomeTierVpn", "LanSubnetDetector: WiFi 子网: $cidr")
             } else {
-                android.util.Log.w("HomeTierVpn", "LanSubnetDetector: WiFi IP 为 0，可能缺少权限或未连接 WiFi")
+                android.util.Log.w("HomeTierVpn", "LanSubnetDetector: WiFi IP 为 0，可能缺少 ACCESS_FINE_LOCATION 权限或未连接 WiFi")
             }
         } catch (e: Exception) {
             android.util.Log.e("HomeTierVpn", "LanSubnetDetector: WiFi 探测异常: ${e.message}", e)
             // 忽略，继续兜底
         }
 
-        // 2. 兜底：遍历所有网络接口
+        // 2. 兜底：遍历所有网络接口（无需特殊权限，可获取物理网卡 IP）
         try {
             val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
             android.util.Log.i("HomeTierVpn", "LanSubnetDetector: 发现 ${interfaces.size} 个网络接口")
