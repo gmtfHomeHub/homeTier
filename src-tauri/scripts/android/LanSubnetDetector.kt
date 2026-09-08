@@ -13,43 +13,28 @@ object LanSubnetDetector {
 
     /**
      * 探测当前设备所在的物理 LAN 子网（/24）
-     * 优先使用 WiFi 连接信息（需 ACCESS_FINE_LOCATION 权限），兜底遍历网络接口（无需权限）
+     * 主方法：NetworkInterface 枚举（无需任何运行时权限）
+     * 备方法：WifiManager.connectionInfo（需 ACCESS_FINE_LOCATION）
      * @return 去重后的 CIDR 列表，如 ["192.168.31.0/24"]
      */
     fun detect(context: Context): List<String> {
         android.util.Log.i("HomeTierVpn", "LanSubnetDetector.detect: 开始探测")
         val subnets = mutableSetOf<String>()
 
-        // 1. 优先：WiFi 连接信息（最准确，但 Android 10+ 需 ACCESS_FINE_LOCATION 权限）
-        try {
-            val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            val info = wifiManager.connectionInfo
-            val ip = info.ipAddress
-            val ssid = info.ssid
-            android.util.Log.i("HomeTierVpn", "LanSubnetDetector: WiFi info - ip=$ip, ssid=$ssid")
-            if (ip != 0) {
-                val cidr = intToCidr(ip, 24)
-                subnets.add(cidr)
-                android.util.Log.i("HomeTierVpn", "LanSubnetDetector: WiFi 子网: $cidr")
-            } else {
-                android.util.Log.w("HomeTierVpn", "LanSubnetDetector: WiFi IP 为 0，可能缺少 ACCESS_FINE_LOCATION 权限或未连接 WiFi")
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("HomeTierVpn", "LanSubnetDetector: WiFi 探测异常: ${e.message}", e)
-            // 忽略，继续兜底
-        }
-
-        // 2. 兜底：遍历所有网络接口（无需特殊权限，可获取物理网卡 IP）
+        // 主方法：遍历所有网络接口（无需权限，可获取物理网卡 IP）
+        // 这是最可靠的方法，因为 NetworkInterface.getNetworkInterfaces() 不需要任何运行时权限
         try {
             val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
             android.util.Log.i("HomeTierVpn", "LanSubnetDetector: 发现 ${interfaces.size} 个网络接口")
             for (ni in interfaces) {
-                android.util.Log.d("HomeTierVpn", "LanSubnetDetector: 接口 ${ni.name} - isUp=${ni.isUp}, isLoopback=${ni.isLoopback}")
-                if (!ni.isUp || ni.isLoopback || isVirtualInterface(ni.name)) continue
+                val isVirtual = isVirtualInterface(ni.name)
+                android.util.Log.d("HomeTierVpn", "LanSubnetDetector: 接口 ${ni.name} - isUp=${ni.isUp}, isLoopback=${ni.isLoopback}, isVirtual=$isVirtual")
+                if (!ni.isUp || ni.isLoopback || isVirtual) continue
                 val addresses = Collections.list(ni.inetAddresses)
                 for (addr in addresses) {
                     if (addr !is Inet4Address) continue
                     val host = addr.hostAddress
+                    android.util.Log.d("HomeTierVpn", "LanSubnetDetector: 接口 ${ni.name} IP: $host")
                     if (isSiteLocalIpv4(host)) {
                         val cidr = ipToCidr(host, 24)
                         subnets.add(cidr)
@@ -59,7 +44,23 @@ object LanSubnetDetector {
             }
         } catch (e: Exception) {
             android.util.Log.e("HomeTierVpn", "LanSubnetDetector: 接口枚举异常: ${e.message}", e)
-            // 忽略
+        }
+
+        // 备方法：WiFi 连接信息（Android 10+ 需 ACCESS_FINE_LOCATION 权限）
+        // 仅作为补充，因为很多设备/系统上即使有权限也可能返回 0
+        try {
+            val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val info = wifiManager.connectionInfo
+            val ip = info.ipAddress
+            android.util.Log.i("HomeTierVpn", "LanSubnetDetector: WiFi info - ip=$ip")
+            if (ip != 0) {
+                val cidr = intToCidr(ip, 24)
+                subnets.add(cidr)
+                android.util.Log.i("HomeTierVpn", "LanSubnetDetector: WiFi 子网: $cidr")
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("HomeTierVpn", "LanSubnetDetector: WiFi 探测异常: ${e.message}")
+            // 忽略，NetworkInterface 方法已足够
         }
 
         val result = subnets.toList()

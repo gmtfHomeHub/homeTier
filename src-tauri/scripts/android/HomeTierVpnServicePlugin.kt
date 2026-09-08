@@ -158,15 +158,7 @@ class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity
     fun detectLanSubnets(invoke: Invoke) {
         activity.runOnUiThread {
             android.util.Log.i("HomeTierVpn", "detectLanSubnets: 开始探测")
-            
-            // 尝试请求位置权限（Android 10+ 需要）
-            val hasLocationPerm = ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            if (!hasLocationPerm) {
-                android.util.Log.w("HomeTierVpn", "detectLanSubnets: 缺少 ACCESS_FINE_LOCATION 权限，尝试请求...")
-                ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), REQUEST_LOCATION)
-                // 权限请求是异步的，这里继续尝试兜底方案
-            }
-            
+            // NetworkInterface 枚举不需任何运行时权限，直接调用即可
             val subnets = LanSubnetDetector.detect(activity)
             android.util.Log.i("HomeTierVpn", "detectLanSubnets: 探测结果: $subnets")
             val ret = JSObject()

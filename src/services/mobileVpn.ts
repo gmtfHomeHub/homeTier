@@ -253,22 +253,20 @@ export async function connectWithVpn(
   }
 
   // 2. 自动探测物理 LAN 子网（移动端所在 WiFi 网段）
+  // NetworkInterface 枚举无需任何运行时权限，不应因权限问题失败
   let autoProxyCidrs: string[] = [];
   try {
-    // 先请求位置权限（Android 10+ 读取 WiFi 信息需要）
-    await invoke(`plugin:${PLUGIN}|request_location_permission`);
-    // 给权限弹窗一点时间（异步），不阻塞太久
-    await new Promise((r) => setTimeout(r, 500));
-    
-    const result = await invoke<{ subnets: string[] }>("plugin:hometiervpnservice|detect_lan_subnets");
+    const result = await invoke<{ subnets: string[] }>(`plugin:${PLUGIN}|detect_lan_subnets`);
     autoProxyCidrs = result?.subnets || [];
     if (autoProxyCidrs.length > 0) {
       console.log("自动探测到物理 LAN 子网:", autoProxyCidrs);
     } else {
-      console.warn("自动探测未发现物理 LAN 子网，可能缺少权限或网络异常");
+      console.warn("自动探测未发现物理 LAN 子网（接口枚举为空）");
     }
   } catch (e) {
-    console.warn("物理 LAN 子网探测失败，将不广播物理子网:", e);
+    // 不可静默：记录错误到控制台，避免被吞掉
+    const msg = String(e);
+    console.error("物理 LAN 子网探测 invoke 失败:", msg);
   }
 
   // 3. Start EasyTier network first (it waits for the tun fd)
