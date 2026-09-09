@@ -159,6 +159,19 @@ impl Daemon {
             }
             crate::log_debug!("[Daemon] config_dir 清理完成");
 
+            // Windows: 清理残留的 easytier-core.exe 孤儿进程（避免占用虚拟网卡/端口导致新进程启动失败）
+            #[cfg(target_os = "windows")]
+            {
+                crate::log_info!("[Daemon] 清理残留 easytier-core.exe 进程...");
+                let _ = tokio::process::Command::new("taskkill")
+                    .args(["/F", "/IM", "easytier-core.exe"])
+                    .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                    .output()
+                    .await;
+                // 给系统一点时间释放虚拟网卡和端口
+                tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+            }
+
             let binary = match easytier.downloader.ensure_binary().await {
                 Ok(b) => b,
                 Err(e) => {
@@ -188,6 +201,48 @@ impl Daemon {
                             crate::log_error!(format!("[Daemon] easytier-daemon.log 末尾:\n{}",
                                 if content.len() > 2000 { &content[content.len()-2000..] } else { &content }));
                         }
+                    }
+                }
+            }
+        });
+
+        // 启动 mesh_routes 监控任务：自动将对端通告的子网同步到本地 proxy_cidrs
+        // 使桌面端无需手动配置 proxy_cidrs 即可访问对端物理局域网
+        let easytier_monitor = self.easytier.clone();
+        let shutdown_monitor = self.shutdown_tx.subscribe();
+        tokio::spawn(async move {
+            let mut last_routes: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut shutdown_rx = shutdown_monitor;
+            loop {
+                tokio::select! {
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {
+                        // 获取当前运行的空间
+                        let running = easytier_monitor.list_running();
+                        if running.is_empty() {
+                            continue;
+                        }
+                        // 当前仅支持单空间，取第一个
+                        let space_id = running[0];
+                        match easytier_monitor.get_mesh_routes(&space_id).await {
+                            Some(routes) if !routes.is_empty() => {
+                                let current: std::collections::HashSet<String> = routes.into_iter().collect();
+                                if current != last_routes {
+                                    crate::log_info!(format!("[Daemon] mesh_routes 变化，更新 proxy_cidrs: {:?}", current));
+                                    last_routes = current.clone();
+                                    // 通过 patch_config 追加到 easytier-core
+                                    let patch = serde_json::json!({
+                                        "proxy_cidrs": current.into_iter().collect::<Vec<_>>()
+                                    });
+                                    if let Err(e) = easytier_monitor.patch_config(&space_id, &patch).await {
+                                        crate::log_warn!(format!("[Daemon] 更新 proxy_cidrs 失败: {}", e));
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ = shutdown_rx.recv() => {
+                        break;
                     }
                 }
             }

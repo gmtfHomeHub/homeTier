@@ -119,6 +119,7 @@ impl EasyTierManager {
                 cfg.peers.iter().map(|p| p.uri.clone()).collect()
             },
             proxy_cidrs: cfg.effective_proxy_cidrs(),
+            enable_manual_routes: Some(cfg.enable_manual_routes),
             routes: cfg.routes.clone(),
             exit_nodes: cfg.exit_nodes.clone(),
             port_forwards: Vec::new(),
