@@ -5,7 +5,7 @@ import type { Space } from "../types";
 import { SpaceStatus } from "../enum";
 import i18n from "../i18n";
 import { isMobile } from "../utils/platform";
-import { connectWithVpn, disconnectWithVpn, getVpnStatus } from "../services/mobileVpn";
+import { connectWithVpn, disconnectWithVpn, getVpnStatus, resolveVirtualIpForConnect } from "../services/mobileVpn";
 
 interface SpaceStore {
   spaces: Space[];
@@ -153,15 +153,14 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
 
     if (mobile) {
       try {
-        // 移动端：prepareVpn -> connectSpace -> startVpn (事件驱动 setTunFd)
+        // 移动端：解析本机静态虚拟 IP（VpnService 接口地址必须等于节点身份 IP）
+        // -> prepareVpn -> connectSpace -> startVpn (事件驱动 setTunFd)
         const space = get().spaces.find((s) => s.id === spaceId);
         if (!space) throw new Error("Space not found");
 
-        // 空串/null/非法 IPv4 均回退默认 IP，防止传空给 startVpn 的 ipv4Addr 触发 "Invalid IP addr string"
-        const ipv4Regex = /^\d{1,3}(\.\d{1,3}){3}$/;
-        const virtualIp = space.virtual_ip && space.virtual_ip.trim() && ipv4Regex.test(space.virtual_ip.trim())
-          ? space.virtual_ip.trim()
-          : "10.144.144.1";
+        // 配置为 DHCP/无静态 IP 时会自动分配并写回配置（dhcp=false），保证 VPN
+        // 接口地址与 EasyTier 节点身份一致，杜绝 mesh L3 回包黑洞；不再使用 .1 兜底。
+        const virtualIp = await resolveVirtualIpForConnect(space);
         const errorMsg = await connectWithVpn(spaceId, space.name, virtualIp);
         if (errorMsg) {
           throw new Error(errorMsg);

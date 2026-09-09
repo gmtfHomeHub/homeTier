@@ -42,6 +42,12 @@ Frontend (`src/types/index.ts`) and backend (`src-tauri/src/types.rs`) define pa
 - Android/iOS stubs exist; voice and screen-share have placeholder implementations and may be incomplete.
 - `tauri.conf.json` identifier: `com.hometier.app`, version `0.1.0`, window 1000×700 (min 800×600).
 
+## 项目注意事项
+
+- **GUI 与 daemon 是两个独立进程，日志互不可见**：应用内日志面板默认只含 GUI 进程日志；daemon（root）侧日志要用面板切到 **source=daemon**（走 IPC `GetLogs`），或直接看 root 进程 stdout 被重定向的 `~/Library/Application Support/com.hometier.app/daemon.log`。验证 daemon 侧改动（如 `daemon/peer_routes.rs`、`build_proto_config`）必须看这两处，只看应用日志会误判“代码没跑”。同时注意 daemon 由 GUI 的 `current_exe` 经 osascript/UAC 提权拉起 —— 改完 Rust 后必须确认重新编译并新拉起 daemon（旧进程仍占默认 IPC 端口时会换端口或连到旧进程）。
+- **跨 /24 虚拟 IP 直连需要每端“对称回程路由”**：A 有到 B 虚拟 IP 的路由不够，B 的内核还必须有回到 A 虚拟网段的路由，否则 B 的应答走物理默认网关被公网丢弃，表现为 ping/curl 全部**超时**（不是“无路由”）。`daemon/peer_routes.rs` 维护的「对端 /32」只含远端、**不含本机**（本机加自己 /32 是自环路由，无意义且会失败）；要混合网段互通，每个节点都得跑含此同步的构建，或统一空间网段到同一 /24。子网代理（proxy_cidrs）是 easytier 的 L4 NAT 通道，应答沿隧道连接回流，不依赖对端 OS 回程路由，所以跨网段更可靠。
+- **移动端 VpnService 接口 IP 必须等于 EasyTier 节点身份 IP**：两者不一致会导致 mesh L3 回包黑洞（本机回包从物理网卡/默认路由被物理邻居 ARP 劫走）。Android VpnService 必须在实例建立前定死接口地址，不支持“DHCP 先建 tun 后定址”，移动端一律走静态 IP；分配 IP 时避开 `10.144.144.1`（空间默认网段 10.144.144.0/24 内多节点易冲突，VpnService 兜底默认已改为 `.10`，前端兜底禁止用 `.1`）。
+
 ## ⛔ Forbidden: easytier_lib read-only
 **绝对不允许编辑、修改、创建或删除 `src-tauri/resources/easytier_lib/` 下的任何文件。** 该目录是 vendored 的第三方 EasyTier 库源码，必须保持与上游一致。如果发现编译错误（如 edition 版本不匹配），只允许修改其 `Cargo.toml` 中的 `edition` / `rust-version` 字段以匹配上游要求，不允许改动任何 `.rs` 源文件、`build.rs`、或其他配置。遇到 easytier_lib 相关编译问题时，应先查上游仓库确认正确配置。
 

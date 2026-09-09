@@ -91,7 +91,7 @@ class HomeTierVpnService : VpnService() {
 
     private fun createVpnInterface(args: Bundle?): ParcelFileDescriptor {
         val mtu = args?.getInt(MTU) ?: 1500
-        val ipv4Addr = args?.getString(IPV4_ADDR) ?: "10.144.144.1/24"
+        val ipv4Addr = args?.getString(IPV4_ADDR) ?: "10.144.144.10/24"
         val dns = args?.getString(DNS)
         val routes = args?.getStringArray(ROUTES) ?: emptyArray()
         val disallowedApplications = args?.getStringArray(DISALLOWED_APPLICATIONS) ?: emptyArray()
@@ -101,7 +101,7 @@ class HomeTierVpnService : VpnService() {
             ipParts[0] to (ipParts[1].toIntOrNull() ?: 24)
         } else {
             Log.w("HomeTierVpn", "Invalid IP addr string: '$ipv4Addr', falling back to default")
-            "10.144.144.1" to 24
+            "10.144.144.10" to 24
         }
 
         fun base(): Builder = Builder()

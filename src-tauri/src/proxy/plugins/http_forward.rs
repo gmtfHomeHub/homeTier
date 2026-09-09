@@ -402,7 +402,7 @@ impl HttpForwardPlugin {
         }
 
         // 重试配置
-        const MAX_RETRIES: u32 = 5;
+        const MAX_RETRIES: u32 = 2;
         const RETRY_BASE_MS: u64 = 2000;
         let mut attempt: u32 = 0;
         let mut req_builder_opt = Some(req_builder);
@@ -620,8 +620,8 @@ let body_bytes = BodyExt::collect(req.into_body())
 
         emit_progress("fetching", None);
         // 重试循环：仅对连接类错误（超时/连接失败/请求失败）重试
-        // 增加重试次数和延迟，等待 EasyTier mesh 路由建立（可能需 10-20s）
-        const MAX_RETRIES: u32 = 5;
+        // 短暂等待 mesh 路由就绪；2 次后快速失败回 502 + 进度事件，避免长时间假性加载
+        const MAX_RETRIES: u32 = 2;
         const RETRY_BASE_MS: u64 = 2000;
         let mut attempt: u32 = 0;
         let mut req_builder_opt = Some(req_builder);

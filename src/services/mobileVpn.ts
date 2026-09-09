@@ -2,14 +2,14 @@
 import { isTauri } from "../utils/api";
 import { isMobile } from "../utils/platform";
 import * as api from "../utils/api";
-import { listen, emit } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import type { Space } from "../types";
 
 // The Tauri plugin name is derived from HomeTierVpnServicePlugin -> "hometiervpnservice"
 const PLUGIN = "hometiervpnservice";
 
-let meshRoutesUnlisten: (() => void) | null = null;
-const currentMeshRoutes: Set<string> = new Set();
+const IPV4_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
 
 export interface VpnConfig {
   spaceId: string;
@@ -220,13 +220,93 @@ export async function getVpnStatus(): Promise<{
   }
 }
 
+function isValidIpv4(s: string | undefined | null): boolean {
+  if (!s) return false;
+  const trimmed = s.trim();
+  if (!IPV4_RE.test(trimmed)) return false;
+  const octets = trimmed.split(".").map(Number);
+  return octets.every((o) => o >= 0 && o <= 255);
+}
+
+/**
+ * 解析移动端本机虚拟 IP（VPN 接口地址必须等于 EasyTier 节点身份 IP，否则 mesh
+ * L3 回包黑洞）。规则：
+ * 1. 空间配置为静态 IP（dhcp=false 且 virtual_ipv4 合法）→ 直接使用；
+ * 2. 否则（DHCP 模式或无 IP）→ 分配一个确定性 IP 并写回配置（dhcp=false），
+ *    保证下次连接一致，且 VPN 接口地址与节点身份一致。
+ *
+ * Android VpnService 必须在 establish() 前定死接口地址，因此移动端不支持 DHCP。
+ */
+export async function resolveVirtualIpForConnect(space: Space): Promise<string> {
+  let cfg: Record<string, unknown> | null = null;
+  try {
+    cfg = space.config_json ? (JSON.parse(space.config_json) as Record<string, unknown>) : null;
+  } catch {
+    cfg = null;
+  }
+
+  const rawIp =
+    cfg && typeof cfg.virtual_ipv4 === "string" && cfg.virtual_ipv4.trim()
+      ? (cfg.virtual_ipv4 as string)
+      : cfg && typeof cfg.ipv4 === "string"
+        ? (cfg.ipv4 as string)
+        : "";
+  const plainIp = rawIp.split("/")[0].trim();
+
+  // 配置里已有合法 IP（无论 dhcp 标记）→ 以它为准（to_easytier_config 在 IP 存在时
+  // 也会强制 dhcp=false，节点身份即此 IP）；顺带把 dhcp 标记纠正落库。
+  if (isValidIpv4(plainIp)) {
+    if (cfg && cfg.dhcp !== false) {
+      try {
+        const newCfg: Record<string, unknown> = { ...cfg, dhcp: false };
+        await api.updateSpaceConfig(space.id, JSON.stringify(newCfg));
+      } catch (e) {
+        console.error("纠正 dhcp 标记失败（不影响本次连接）:", e);
+      }
+    }
+    return plainIp;
+  }
+
+  // 无静态 IP（DHCP 或从未配置）→ 分配确定性 IP 并写回（仅当已有合法 config_json，
+  // 避免用残缺对象覆盖完整配置）。Android VpnService 必须先于 DHCP 定址，移动端只能静态。
+  const baseParts = isValidIpv4(plainIp) ? plainIp.split(".") : ["10", "144", "144"];
+  let h = 0;
+  for (const ch of space.id) {
+    h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  }
+  const allocated = `${baseParts.slice(0, 3).join(".")}.${(h % 250) + 2}`;
+
+  if (cfg) {
+    try {
+      const newCfg: Record<string, unknown> = { ...cfg, dhcp: false, virtual_ipv4: allocated };
+      if (typeof newCfg.ipv4 === "string") {
+        newCfg.ipv4 = allocated;
+      }
+      await api.updateSpaceConfig(space.id, JSON.stringify(newCfg));
+      console.log(`已为本机分配静态虚拟 IP: ${allocated}（已写回空间配置）`);
+    } catch (e) {
+      console.error("写回静态虚拟 IP 失败（本次仍按该 IP 连接）:", e);
+    }
+  }
+  return allocated;
+}
+
+let meshRoutesUnlisten: (() => void) | null = null;
+
 /**
  * Connect to a space with VPN on mobile.
- * Flow: prepare VPN -> detect LAN subnets -> start easytier network -> start VPN -> get fd -> inject fd.
- * Fast path: wait for virtual_ip only, then return success.
- * Background: mesh_routes_updated event triggers VPN rebuild with new routes.
  *
- * @returns null on success; a non-null string describing the failure reason on failure
+ * 时序（修复要点）：
+ * 1. prepare VPN；
+ * 2. 探测本机物理 LAN 子网（排除集，防止 VPN 捕获本地直连流量）；
+ * 3. 【提前】注册 mesh_routes_updated 监听（首事件不再丢失）；
+ * 4. connectSpace 启动 EasyTier 实例；
+ * 5. 先以最小路由（虚拟子网）建立 VPN 并注入 fd —— mesh 只有拿到 tun fd 才能组网；
+ * 6. 组网后拉取一次 get_mesh_routes 与事件缓冲合并，若路由集合有变化则
+ *    仅重建一次 VPN（整条 VpnService 以新路由重建 + 注入新 fd，EasyTier 支持新 fd 重新绑 NICI）；
+ * 7. 之后路由变化（peer 加入/宣告代理子网）同样走重建，集合不变时不动作。
+ *
+ * @returns null 表示成功；否则返回失败原因
  */
 export async function connectWithVpn(
   spaceId: string,
@@ -252,28 +332,152 @@ export async function connectWithVpn(
     return "VPN 授权被拒绝或失败";
   }
 
-  // 2. 自动探测物理 LAN 子网（移动端所在 WiFi 网段）
-  // NetworkInterface 枚举无需任何运行时权限，不应因权限问题失败
-  let autoProxyCidrs: string[] = [];
+  // 2. 自动探测物理 LAN 子网（本机直连可达网段，始终不进 VPN 路由）
+  const localSubnets: string[] = [];
   try {
     const result = await invoke<{ subnets: string[] }>(`plugin:${PLUGIN}|detect_lan_subnets`);
-    autoProxyCidrs = result?.subnets || [];
-    if (autoProxyCidrs.length > 0) {
-      console.log("自动探测到物理 LAN 子网:", autoProxyCidrs);
+    const found = result?.subnets || [];
+    for (const s of found) {
+      if (!localSubnets.includes(s)) localSubnets.push(s);
+    }
+    if (localSubnets.length > 0) {
+      console.log("自动探测到物理 LAN 子网:", localSubnets);
     } else {
       console.warn("自动探测未发现物理 LAN 子网（接口枚举为空）");
     }
   } catch (e) {
-    // 不可静默：记录错误到控制台，避免被吞掉
     const msg = String(e);
     console.error("物理 LAN 子网探测 invoke 失败:", msg);
   }
 
-  // 3. Start EasyTier network first (it waits for the tun fd)
+  const virtualIpClean = virtualIp.split("/")[0].trim();
+  const virtualIpSubnet = `${virtualIpClean.split(".").slice(0, 3).join(".")}.0/24`;
+  const ipv4Ok = isValidIpv4(virtualIpClean);
+  if (!ipv4Ok) {
+    return `本机虚拟 IP 非法: ${virtualIp}`;
+  }
+
+  // 3. 【提前】注册 mesh_routes_updated，首事件不再因监听晚到而丢失
+  const currentMeshRoutes: Set<string> = new Set();
+  // peer 虚拟 IP（/32）：mesh 中每个节点可属不同网段，仅路由本机 /24 无法覆盖；
+  // 每次重建前刷新一次，保证新加入/离开节点都能进/出 VPN 路由。
+  let peer32s: Set<string> = new Set();
+  let vpnStarted = false; // 初始 VPN 建立前，mesh 事件只记录、不触发重建
+  let rebuildBusy = false;
+  let rebuildQueued = false;
+  let appliedRoutes: Set<string> | null = null;
+
+  const refreshPeer32s = async (): Promise<void> => {
+    try {
+      const peers = await api.getSpacePeers(spaceId);
+      const next = new Set<string>();
+      for (const p of peers || []) {
+        const ip = p?.virtual_ip?.split("/")[0]?.trim();
+        if (isValidIpv4(ip)) next.add(`${ip}/32`);
+      }
+      peer32s = next;
+    } catch (e) {
+      console.error("getSpacePeers 刷新 peer /32 失败:", e);
+    }
+  };
+
+  const desiredRoutes = (): Set<string> => {
+    const desired = new Set<string>([virtualIpSubnet]);
+    for (const r of currentMeshRoutes) {
+      desired.add(r);
+    }
+    for (const r of peer32s) {
+      desired.add(r);
+    }
+    // 本机物理接口可达网段绝不被 VPN 捕获（本地直连优先）
+    for (const local of localSubnets) {
+      desired.delete(local);
+    }
+    return desired;
+  };
+  const setsEqual = (a: Set<string>, b: Set<string>) =>
+    a.size === b.size && Array.from(a).every((x) => b.has(x));
+
+  /** 仅当路由集合发生变化时，整条重建 VpnService（新 fd 注入由 tun-ready 双保险完成） */
+  const rebuildVpn = async (): Promise<void> => {
+    if (!vpnStarted) return; // 初始 VPN 尚未建立，事件只进缓冲
+    if (rebuildBusy) {
+      rebuildQueued = true;
+      return;
+    }
+    rebuildBusy = true;
+    try {
+      while (true) {
+        rebuildQueued = false;
+        await refreshPeer32s();
+        const desired = desiredRoutes();
+        if (appliedRoutes && setsEqual(appliedRoutes, desired)) {
+          return; // 集合无变化，不动 VPN
+        }
+        console.log(
+          `VPN 路由更新重建: ${Array.from(desired).join(", ")}` +
+            (localSubnets.length > 0 ? `（排除本地: ${localSubnets.join(", ")}）` : ""),
+        );
+        await stopVpn();
+        const { fd, error } = await startVpn({
+          spaceId,
+          networkName,
+          virtualIp: virtualIpClean,
+          virtualIpCidr: 24,
+          mtu: 1500,
+          routes: Array.from(desired),
+          excludedApps: [],
+          dnsServers: [],
+        });
+        if (fd === null) {
+          console.error("VPN 路由更新重建失败:", error);
+          appliedRoutes = null;
+          return;
+        }
+        appliedRoutes = desired;
+        if (!rebuildQueued) return;
+      }
+    } finally {
+      rebuildBusy = false;
+    }
+  };
+
+  // 3a. 注册监听（必须在 connectSpace 之前，保证首帧事件被记录）
+  if (meshRoutesUnlisten) {
+    meshRoutesUnlisten();
+    meshRoutesUnlisten = null;
+  }
+  meshRoutesUnlisten = await listen<{ spaceId: string; routes: string[] }>(
+    "mesh_routes_updated",
+    async (event) => {
+      const { spaceId: sid, routes } = event.payload;
+      if (sid !== spaceId) return;
+      const next = new Set(routes || []);
+      const changed =
+        next.size !== currentMeshRoutes.size ||
+        Array.from(next).some((x) => !currentMeshRoutes.has(x));
+      if (changed) {
+        currentMeshRoutes.clear();
+        for (const r of next) currentMeshRoutes.add(r);
+        console.log(`收到 mesh 路由更新事件: ${(routes || []).join(", ")}`);
+        await rebuildVpn();
+      }
+    },
+  );
+
+  // 失败路径统一清理监听
+  const cleanupListener = () => {
+    if (meshRoutesUnlisten) {
+      meshRoutesUnlisten();
+      meshRoutesUnlisten = null;
+    }
+  };
+
+  // 4. Start EasyTier network first (it waits for the tun fd)
   let connectErr: string | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      await api.connectSpace(spaceId, autoProxyCidrs);
+      await api.connectSpace(spaceId, localSubnets);
       connectErr = null;
       break;
     } catch (e) {
@@ -285,15 +489,15 @@ export async function connectWithVpn(
     }
   }
   if (connectErr) {
+    cleanupListener();
     return `连接空间失败: ${connectErr}`;
   }
 
-  // 4. Start VPN service and get fd (仅虚拟 IP 子网路由)
-  const virtualIpSubnet = `${virtualIp.split(".").slice(0, 3).join(".")}.0/24`;
+  // 5. 先建立最小 VPN（仅虚拟 IP 子网），拿到 tun fd 供 EasyTier 组网
   const { fd, error } = await startVpn({
     spaceId,
     networkName,
-    virtualIp,
+    virtualIp: virtualIpClean,
     virtualIpCidr: 24,
     mtu: 1500,
     routes: [virtualIpSubnet],
@@ -304,10 +508,13 @@ export async function connectWithVpn(
   if (fd === null) {
     console.error("Failed to get TUN fd:", error);
     await stopVpn();
+    cleanupListener();
     return error || "VPN 连接失败（未获取到 TUN 接口）";
   }
+  vpnStarted = true;
+  appliedRoutes = new Set([virtualIpSubnet]);
 
-  // 5. 等待 EasyTier 分配虚拟 IP（最多 10s）
+  // 6. 等待 EasyTier 分配/上报虚拟 IP（最多 10s）
   const pollStart = Date.now();
   const POLL_MS = 500;
   const MAX_POLL = 10_000;
@@ -320,64 +527,26 @@ export async function connectWithVpn(
     await new Promise((r) => setTimeout(r, POLL_MS));
   }
 
-  // 6. 等待 2s 让 TUN 设备完成初始化
+  // 7. 等待 TUN 就绪 + mesh 路由首轮采集（poll 前 10s 每 500ms 快扫）
   await new Promise((r) => setTimeout(r, 2000));
 
-  // 7. 清理旧监听并启动 mesh routes 事件监听（后台自动重建 VPN）
-  if (meshRoutesUnlisten) {
-    meshRoutesUnlisten();
-    meshRoutesUnlisten = null;
-  }
-  currentMeshRoutes.clear();
-
-  // 缓存物理 LAN 子网，用于 VPN 重建时排除
-  const physicalLanSubnet = autoProxyCidrs[0] || "";
-
-  meshRoutesUnlisten = await listen<{ spaceId: string; routes: string[] }>(
-    "mesh_routes_updated",
-    async (event) => {
-      const { spaceId: sid, routes } = event.payload;
-      if (sid !== spaceId) return;
-
-      // 检查是否有新路由需要添加
-      let hasNewRoutes = false;
-      for (const r of routes) {
-        if (!currentMeshRoutes.has(r)) {
-          hasNewRoutes = true;
-          currentMeshRoutes.add(r);
-        }
-      }
-
-      if (hasNewRoutes) {
-        console.log(`收到 mesh 路由更新事件: ${routes.join(", ")}`);
-        // 重建完整路由列表并重启 VPN
-        const allRoutesList = new Set<string>();
-        allRoutesList.add(virtualIpSubnet);
-        for (const r of currentMeshRoutes) {
-          allRoutesList.add(r);
-        }
-        // 排除物理 LAN 子网（直连不走 VPN）
-        if (physicalLanSubnet) {
-          allRoutesList.delete(physicalLanSubnet);
-        }
-        console.log(`VPN 路由动态更新: 共 ${allRoutesList.size} 条路由 (排除物理 LAN: ${physicalLanSubnet || "无"})`);
-        await stopVpn();
-        const { fd: fd3, error: err3 } = await startVpn({
-          spaceId,
-          networkName,
-          virtualIp,
-          virtualIpCidr: 24,
-          mtu: 1500,
-          routes: Array.from(allRoutesList),
-          excludedApps: [],
-          dnsServers: [],
-        });
-        if (fd3 === null) {
-          console.error("VPN 动态路由更新失败:", err3);
-        }
-      }
+  // 8. 兜底回放：直接拉一次当前 mesh 路由，与事件缓冲对齐后做最终一次路由收敛。
+  //    修复「首个非空事件在监听注册前发出而永久丢失」的时序缺陷。
+  try {
+    const current = await api.getMeshRoutes(spaceId);
+    const next = new Set(current || []);
+    const changed =
+      next.size !== currentMeshRoutes.size ||
+      Array.from(next).some((x) => !currentMeshRoutes.has(x));
+    if (changed) {
+      currentMeshRoutes.clear();
+      for (const r of next) currentMeshRoutes.add(r);
+      console.log(`回放当前 mesh 路由: ${(current || []).join(", ")}`);
     }
-  );
+  } catch (e) {
+    console.error("getMeshRoutes 回放失败:", e);
+  }
+  await rebuildVpn();
 
   return null;
 }
@@ -397,7 +566,6 @@ export async function disconnectWithVpn(spaceId: string): Promise<boolean> {
       meshRoutesUnlisten();
       meshRoutesUnlisten = null;
     }
-    currentMeshRoutes.clear();
 
     await api.disconnectSpace(spaceId);
     await stopVpn();

@@ -118,7 +118,7 @@ impl EasyTierManager {
             } else {
                 cfg.peers.iter().map(|p| p.uri.clone()).collect()
             },
-            proxy_cidrs: cfg.proxy_networks.iter().map(|p| p.cidr.clone()).collect(),
+            proxy_cidrs: cfg.effective_proxy_cidrs(),
             routes: cfg.routes.clone(),
             exit_nodes: cfg.exit_nodes.clone(),
             port_forwards: Vec::new(),
@@ -1334,6 +1334,7 @@ mod launcher_internal {
         // 首次快速轮询（500ms），前 10s (20次) 每 500ms 快速轮询，后续每 2 秒轮询一次
         let mut fast_poll_count = 0;
         let mut last_mesh_routes: Vec<String> = Vec::new();
+        crate::log_info!(format!("poll_instance_status: 开始轮询, instance_id={}", instance_id), &instance_id.to_string());
 
         loop {
             if fast_poll_count < 20 { // 前 10s (20 * 500ms) 快速轮询
@@ -1467,6 +1468,11 @@ mod launcher_internal {
                     let is_first_non_empty = last_mesh_routes.is_empty() && !mesh_routes.is_empty();
                     if mesh_routes != last_mesh_routes || is_first_non_empty {
                         last_mesh_routes = mesh_routes.clone();
+                        crate::log_info!(format!(
+                            "poll_instance_status: 发送 mesh_routes_updated ({} 条): {}",
+                            mesh_routes.len(),
+                            mesh_routes.join(", ")
+                        ), &instance_id.to_string());
                         if let Some(ref handle) = app_handle {
                             let payload = serde_json::json!({
                                 "spaceId": instance_id.to_string(),
