@@ -86,6 +86,19 @@ impl Clone for SpaceManager {
     }
 }
 
+/// 规范化空间网段（S1）：按 space_id 哈希在空间默认网段 10.144.144.0/24 内取一个
+/// 确定性主机号（2..251，避开 .1 网关）。同一节点每次连接得到同一 IP；不同节点
+/// space_id 不同 → 主机号不同，避免冲突。桌面/移动共用此 IP，统一到同一 /24，
+/// 消除桌面 easytier dhcp 子网与移动端 10.144.144 假设的分叉（跨 /24 直连根因）。
+fn canonical_virtual_ipv4(space_id: &Uuid) -> String {
+    let mut h: u64 = 0;
+    for &b in space_id.as_bytes() {
+        h = h.wrapping_mul(31).wrapping_add(b as u64);
+    }
+    let host = (h % 250) as u32 + 2; // 2..251
+    format!("10.144.144.{}", host)
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl SpaceManager {
     pub fn new(
@@ -122,7 +135,7 @@ Self {
         let prefix =
             crate::config::get_str(crate::config::KEY_RELAY_NETWORK_PREFIX, crate::config::DEFAULT_RELAY_NETWORK_PREFIX);
         let network_name = format!("{}{}", prefix, name);
-        let space = Space {
+        let mut space = Space {
             id: space_id,
             name,
             description,
@@ -152,6 +165,21 @@ Self {
         };
         self.db.insert_space(&row)?;
         self.db.add_member(&space_id.to_string(), &owner_uuid, &space.name, true)?;
+
+        // S1: 创建即落库 10.144.144.0/24 内的确定性静态虚拟 IP（dhcp=false），使桌面/移动
+        // 统一到同一 /24，避免桌面 easytier dhcp 子网与移动端 10.144.144 假设分叉。
+        let config = NetworkConfig {
+            network_name: space.network_name.clone(),
+            network_secret: space.network_secret.clone(),
+            dhcp: false,
+            virtual_ipv4: canonical_virtual_ipv4(&space.id),
+            ..Default::default()
+        };
+        let config_json = serde_json::to_string(&config)
+            .map_err(|e| format!("序列化配置失败: {}", e))?;
+        self.db.update_space_config(&space.id.to_string(), &config_json)?;
+        space.config_json = Some(config_json);
+
         self.spaces.write().await.push(space.clone());
 
         crate::log_info!(format!("创建空间: {} (id={}, owner={})", space.name, space.id, owner_uuid), &space.id.to_string());
@@ -193,6 +221,12 @@ Self {
                 config_json: None,
         };
         self.db.insert_space(&row)?;
+
+        // S1: 加入方一律在 10.144.144.0/24 内按本节点 space_id 哈希取自己的静态虚拟 IP
+        // （dhcp=false），忽略分享链接可能携带的对端主机 IP，避免继承冲突；与桌面 dhcp 分叉解耦。
+        let mut config = config;
+        config.dhcp = false;
+        config.virtual_ipv4 = canonical_virtual_ipv4(&space.id);
 
         // 完整配置 json 落库（默认值已由后端 serde(default) 补全）
         let config_json = serde_json::to_string(&config)
@@ -852,7 +886,7 @@ impl SpaceManager {
             crate::config::get_str(crate::config::KEY_RELAY_NETWORK_PREFIX, crate::config::DEFAULT_RELAY_NETWORK_PREFIX);
         let network_name = format!("{}{}", prefix, name);
 
-        let space = Space {
+        let mut space = Space {
             id: space_id,
             name,
             description,
@@ -882,6 +916,21 @@ impl SpaceManager {
         };
         self.db.insert_space(&row)?;
         self.db.add_member(&space_id.to_string(), &owner_uuid, &space.name, true)?;
+
+        // S1: 创建即落库 10.144.144.0/24 内的确定性静态虚拟 IP（dhcp=false），使桌面/移动
+        // 统一到同一 /24，避免桌面 easytier dhcp 子网与移动端 10.144.144 假设分叉。
+        let config = NetworkConfig {
+            network_name: space.network_name.clone(),
+            network_secret: space.network_secret.clone(),
+            dhcp: false,
+            virtual_ipv4: canonical_virtual_ipv4(&space.id),
+            ..Default::default()
+        };
+        let config_json = serde_json::to_string(&config)
+            .map_err(|e| format!("序列化配置失败: {}", e))?;
+        self.db.update_space_config(&space.id.to_string(), &config_json)?;
+        space.config_json = Some(config_json);
+
         self.spaces.write().await.push(space.clone());
         crate::log_info!(format!("创建空间: {} (id={}, owner={})", space.name, space.id, owner_uuid), &space.id.to_string());
         Ok(space)
@@ -922,6 +971,12 @@ impl SpaceManager {
                 config_json: None,
         };
         self.db.insert_space(&row)?;
+
+        // S1: 加入方一律在 10.144.144.0/24 内按本节点 space_id 哈希取自己的静态虚拟 IP
+        // （dhcp=false），忽略分享链接可能携带的对端主机 IP，避免继承冲突；与桌面 dhcp 分叉解耦。
+        let mut config = config;
+        config.dhcp = false;
+        config.virtual_ipv4 = canonical_virtual_ipv4(&space.id);
 
         // 完整配置 json 落库（默认值已由后端 serde(default) 补全）
         let config_json = serde_json::to_string(&config)

@@ -268,6 +268,21 @@ impl NetworkConfig {
                 out.push(c.to_string());
             }
         }
+
+        // S2: 自动把本机虚拟网段（virtual_ipv4/network_length 的网络地址）加入
+        // proxy_cidrs，使对端（含 stock easytier-2.6.4 节点）经 run_proxy_cidrs_route_updater
+        // 自动添加到本网段的 OS 路由 → stock→homeTier 方向自动可达（B 机制）。
+        // 已验证安全：本网段内对端（homeTier↔homeTier）经 get_peer_id_by_ipv4 走 mesh 转发，
+        // 不触发 L4 子网代理；同 /24 对端添加自身已连接网段仅 EEXIST（trace，无副作用）。
+        if !self.virtual_ipv4.is_empty() && self.network_length > 0 && self.network_length <= 32 {
+            let inet_str = format!("{}/{}", self.virtual_ipv4, self.network_length);
+            if let Ok(inet) = inet_str.parse::<cidr::Ipv4Inet>() {
+                let own_cidr = inet.network().to_string();
+                if seen.insert(own_cidr.clone()) {
+                    out.push(own_cidr);
+                }
+            }
+        }
         out
     }
 

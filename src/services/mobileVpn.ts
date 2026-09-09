@@ -359,36 +359,21 @@ export async function connectWithVpn(
 
   // 3. 【提前】注册 mesh_routes_updated，首事件不再因监听晚到而丢失
   const currentMeshRoutes: Set<string> = new Set();
-  // peer 虚拟 IP（/32）：mesh 中每个节点可属不同网段，仅路由本机 /24 无法覆盖；
-  // 每次重建前刷新一次，保证新加入/离开节点都能进/出 VPN 路由。
-  let peer32s: Set<string> = new Set();
+  // S2: 已废弃 peer32s（每对端 /32），改用 proxy_cidrs 模型 (currentMeshRoutes)。
+  // 移动端 VPN 路由 = 本机虚拟子网 + 对端宣告的代理 CIDR（/24），无需精确 /32。
   let vpnStarted = false; // 初始 VPN 建立前，mesh 事件只记录、不触发重建
   let rebuildBusy = false;
   let rebuildQueued = false;
   let appliedRoutes: Set<string> | null = null;
 
-  const refreshPeer32s = async (): Promise<void> => {
-    try {
-      const peers = await api.getSpacePeers(spaceId);
-      const next = new Set<string>();
-      for (const p of peers || []) {
-        const ip = p?.virtual_ip?.split("/")[0]?.trim();
-        if (isValidIpv4(ip)) next.add(`${ip}/32`);
-      }
-      peer32s = next;
-    } catch (e) {
-      console.error("getSpacePeers 刷新 peer /32 失败:", e);
-    }
-  };
+
 
   const desiredRoutes = (): Set<string> => {
     const desired = new Set<string>([virtualIpSubnet]);
     for (const r of currentMeshRoutes) {
       desired.add(r);
     }
-    for (const r of peer32s) {
-      desired.add(r);
-    }
+    // S2: 已移除 peer32s（每对端 /32），对端代理 CIDR（/24）已在 currentMeshRoutes 中。
     // 本机物理接口可达网段绝不被 VPN 捕获（本地直连优先）
     for (const local of localSubnets) {
       desired.delete(local);
@@ -409,7 +394,6 @@ export async function connectWithVpn(
     try {
       while (true) {
         rebuildQueued = false;
-        await refreshPeer32s();
         const desired = desiredRoutes();
         if (appliedRoutes && setsEqual(appliedRoutes, desired)) {
           return; // 集合无变化，不动 VPN

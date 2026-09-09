@@ -1,6 +1,5 @@
 pub mod client;
 pub mod ipc;
-pub mod peer_routes;
 
 
 use std::path::PathBuf;
@@ -14,7 +13,6 @@ pub struct Daemon {
     status: Arc<RwLock<ipc::DaemonStatus>>,
     easytier: Arc<EasyTierManager>,
     easytier_process: Arc<tokio::sync::Mutex<Option<crate::easytier::EasyTierProcess>>>,
-    peer_routes: Arc<peer_routes::PeerRouteSync>,
     rpc_port: u16,
     shutdown_tx: broadcast::Sender<()>,
     data_dir: PathBuf,
@@ -37,7 +35,6 @@ impl Daemon {
 
         let easytier = Arc::new(EasyTierManager::new(easytier_dir, data_dir.clone(), resource_dir.as_deref()));
         let easytier_process = Arc::new(tokio::sync::Mutex::new(None));
-        let peer_routes = Arc::new(peer_routes::PeerRouteSync::new(easytier.clone()));
         let (shutdown_tx, _) = broadcast::channel(1);
 
         let status = ipc::DaemonStatus {
@@ -52,7 +49,6 @@ impl Daemon {
             status: Arc::new(RwLock::new(status)),
             easytier,
             easytier_process,
-            peer_routes,
             rpc_port: ipc::default_rpc_port(),
             shutdown_tx,
             data_dir,
@@ -206,48 +202,6 @@ impl Daemon {
             }
         });
 
-        // 启动 mesh_routes 监控任务：自动将对端通告的子网同步到本地 proxy_cidrs
-        // 使桌面端无需手动配置 proxy_cidrs 即可访问对端物理局域网
-        let easytier_monitor = self.easytier.clone();
-        let shutdown_monitor = self.shutdown_tx.subscribe();
-        tokio::spawn(async move {
-            let mut last_routes: std::collections::HashSet<String> = std::collections::HashSet::new();
-            let mut shutdown_rx = shutdown_monitor;
-            loop {
-                tokio::select! {
-                    _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {
-                        // 获取当前运行的空间
-                        let running = easytier_monitor.list_running();
-                        if running.is_empty() {
-                            continue;
-                        }
-                        // 当前仅支持单空间，取第一个
-                        let space_id = running[0];
-                        match easytier_monitor.get_mesh_routes(&space_id).await {
-                            Some(routes) if !routes.is_empty() => {
-                                let current: std::collections::HashSet<String> = routes.into_iter().collect();
-                                if current != last_routes {
-                                    crate::log_info!(format!("[Daemon] mesh_routes 变化，更新 proxy_cidrs: {:?}", current));
-                                    last_routes = current.clone();
-                                    // 通过 patch_config 追加到 easytier-core
-                                    let patch = serde_json::json!({
-                                        "proxy_cidrs": current.into_iter().collect::<Vec<_>>()
-                                    });
-                                    if let Err(e) = easytier_monitor.patch_config(&space_id, &patch).await {
-                                        crate::log_warn!(format!("[Daemon] 更新 proxy_cidrs 失败: {}", e));
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    _ = shutdown_rx.recv() => {
-                        break;
-                    }
-                }
-            }
-        });
-
         // 监听 ctrl_c / SIGTERM 信号（S1 清理通过 SIGTERM 终止残留 daemon，需优雅退出）
         let mut shutdown_rx = self.shutdown_tx.subscribe();
         let shutdown_tx = self.shutdown_tx.clone();
@@ -301,15 +255,13 @@ impl Daemon {
                     crate::log_debug!(format!("[Daemon] 新连接: {}", peer_addr));
                     let status = self.status.clone();
                     let easytier = self.easytier.clone();
-                    let peer_routes = self.peer_routes.clone();
                     let shutdown_tx = self.shutdown_tx.clone();
                     tokio::spawn(async move {
-                        Self::handle_connection(stream, status, easytier, peer_routes, shutdown_tx).await;
+                        Self::handle_connection(stream, status, easytier, shutdown_tx).await;
                     });
                 }
                 _ = shutdown_rx.recv() => {
                     crate::log_info!("[Daemon] 收到关闭信号，停止所有实例");
-                    self.peer_routes.stop().await;
                     self.stop_all().await;
                     self.stop_easytier().await;
                     let _ = std::fs::remove_file(self.data_dir.join("daemon_state.json"));
@@ -328,7 +280,6 @@ impl Daemon {
         mut stream: tokio::net::TcpStream,
         status: Arc<RwLock<ipc::DaemonStatus>>,
         easytier: Arc<EasyTierManager>,
-        peer_routes: Arc<peer_routes::PeerRouteSync>,
         shutdown_tx: broadcast::Sender<()>,
     ) {
         use tokio::io::AsyncReadExt;
@@ -364,7 +315,7 @@ impl Daemon {
             };
 
             // 处理请求
-            let resp = Self::handle_request(req, &status, &easytier, &peer_routes, &shutdown_tx).await;
+            let resp = Self::handle_request(req, &status, &easytier, &shutdown_tx).await;
 
             // 发送响应
             Self::send_response(&mut stream, &resp).await;
@@ -376,7 +327,6 @@ impl Daemon {
         req: ipc::IpcRequest,
         status: &Arc<RwLock<ipc::DaemonStatus>>,
         easytier: &Arc<EasyTierManager>,
-        peer_routes: &Arc<peer_routes::PeerRouteSync>,
         shutdown_tx: &broadcast::Sender<()>,
     ) -> ipc::IpcResponse {
         match req {
@@ -421,8 +371,6 @@ impl Daemon {
                 match easytier.start_network(&network_config, instance_id, None).await {
                     Ok(id) => {
                         crate::log_info!(format!("[Daemon] ConnectSpace: easytier.start_network 成功, id={}", id));
-                        // 启动对端 /32 自动路由（桌面跨网段无代理访问的关键）
-                        peer_routes.start(id).await;
                         let mut s = status.write().await;
                         if !s.connected_spaces.contains(&space_id) {
                             s.connected_spaces.push(space_id);
@@ -441,7 +389,6 @@ impl Daemon {
                     Ok(id) => {
                         match easytier.stop_network(&id).await {
                             Ok(_) => {
-                                peer_routes.stop().await;
                                 let mut s = status.write().await;
                                 s.connected_spaces.retain(|id| id != &space_id);
                                 ipc::IpcResponse::Ok { data: None }

@@ -189,6 +189,9 @@ class HomeTierTunnelProvider: NEPacketTunnelProvider {
                 response["error"] = extractError(errPtr)
             }
 
+        case "rebuild_routes":
+            applyNetworkSettings(completionHandler: { _ in })
+
         default:
             response["error"] = "Unknown action: \(action)"
         }

@@ -300,6 +300,10 @@ export async function getMeshRoutes(spaceId: string): Promise<string[]> {
   return invoke<string[]>("get_mesh_routes", { spaceId });
 }
 
+export async function patchSpaceConfig(spaceId: string, patch: Record<string, unknown>): Promise<void> {
+  return invoke("patch_space_config", { spaceId, patch });
+}
+
 export async function addApp(
   spaceId: string,
   name: string,
