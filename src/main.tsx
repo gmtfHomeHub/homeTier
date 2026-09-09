@@ -26,6 +26,7 @@ function Root() {
       </React.StrictMode>
       <Toaster
         position={isMobile ? "top-center" : "top-right"}
+        containerStyle={{ zIndex: 99999 }}
         toastOptions={{
           style: {
             ...(isMobile

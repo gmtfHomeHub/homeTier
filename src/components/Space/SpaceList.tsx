@@ -252,22 +252,20 @@ export function SpaceList() {
                 >
                   <Settings size={16} />
                 </Button>
-                {space.owner_id && (
-                  <Button
-                    onClick={handleStopProp(() =>
-                      setDeleteTarget({
-                        id: space.id,
-                        name: space.name,
-                      }),
-                    )}
-                    variant="ghost"
-                    color="red"
-                    size="2"
-                    title={t("space.deleteSpace")}
-                  >
-                    <Trash2 size={16} />
-                  </Button>
-                )}
+                <Button
+                  onClick={handleStopProp(() =>
+                    setDeleteTarget({
+                      id: space.id,
+                      name: space.name,
+                    }),
+                  )}
+                  variant="ghost"
+                  color="red"
+                  size="2"
+                  title={t("space.deleteSpace")}
+                >
+                  <Trash2 size={16} />
+                </Button>
               </Flex>
             </Grid>
           </div>

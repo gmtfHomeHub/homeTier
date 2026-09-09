@@ -30,7 +30,8 @@ export function SpaceDetail() {
   const [deleting, setDeleting] = useState(false);
 
   const space = spaces.find((s) => s.id === id);
-  const isOwner = !!space?.owner_id;
+  // 取消所有者权限限制：默认放开（不再按 space.owner_id 判断）
+  const isOwner = true;
   const isRunning = space?.status === SpaceStatus.CED;
 
   const handleDelete = async () => {

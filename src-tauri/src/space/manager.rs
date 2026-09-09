@@ -168,13 +168,18 @@ Self {
 
         // S1: 创建即落库 10.144.144.0/24 内的确定性静态虚拟 IP（dhcp=false），使桌面/移动
         // 统一到同一 /24，避免桌面 easytier dhcp 子网与移动端 10.144.144 假设分叉。
-        let config = NetworkConfig {
-            network_name: space.network_name.clone(),
-            network_secret: space.network_secret.clone(),
-            dhcp: false,
-            virtual_ipv4: canonical_virtual_ipv4(&space.id),
-            ..Default::default()
+        // 配置继承：默认值 ← 系统级 easytier 配置（SettingsPage 可编辑）← create 特定字段，
+        // create 字段（dhcp/virtual_ipv4/name/secret）最后覆盖，保证不被系统配置污染。
+        let mut config = match self.db.get_user_config()?.and_then(|j| {
+            serde_json::from_str::<NetworkConfig>(&j).ok()
+        }) {
+            Some(sc) => sc,
+            None => NetworkConfig::default(),
         };
+        config.network_name = space.network_name.clone();
+        config.network_secret = space.network_secret.clone();
+        config.dhcp = false;
+        config.virtual_ipv4 = canonical_virtual_ipv4(&space.id);
         let config_json = serde_json::to_string(&config)
             .map_err(|e| format!("序列化配置失败: {}", e))?;
         self.db.update_space_config(&space.id.to_string(), &config_json)?;
@@ -813,13 +818,10 @@ Self {
 
     /// 校验是否为空间创建者
     pub async fn check_owner(&self, space_id: &str) -> Result<(), String> {
-        let caller_id = self.db.get_user_id()?.unwrap_or_default();
+        // 取消所有者权限限制：仅保留空间存在性校验，不限制 owner
         let spaces = self.spaces.read().await;
-        let space = spaces.iter().find(|s| s.id.to_string() == *space_id)
+        let _ = spaces.iter().find(|s| s.id.to_string() == *space_id)
             .ok_or_else(|| "空间不存在".to_string())?;
-        if space.owner_id.as_deref() != Some(caller_id.as_str()) {
-            return Err("无权限：仅空间创建者可执行此操作".to_string());
-        }
         Ok(())
     }
 
@@ -919,13 +921,18 @@ impl SpaceManager {
 
         // S1: 创建即落库 10.144.144.0/24 内的确定性静态虚拟 IP（dhcp=false），使桌面/移动
         // 统一到同一 /24，避免桌面 easytier dhcp 子网与移动端 10.144.144 假设分叉。
-        let config = NetworkConfig {
-            network_name: space.network_name.clone(),
-            network_secret: space.network_secret.clone(),
-            dhcp: false,
-            virtual_ipv4: canonical_virtual_ipv4(&space.id),
-            ..Default::default()
+        // 配置继承：默认值 ← 系统级 easytier 配置（SettingsPage 可编辑）← create 特定字段，
+        // create 字段（dhcp/virtual_ipv4/name/secret）最后覆盖，保证不被系统配置污染。
+        let mut config = match self.db.get_user_config()?.and_then(|j| {
+            serde_json::from_str::<NetworkConfig>(&j).ok()
+        }) {
+            Some(sc) => sc,
+            None => NetworkConfig::default(),
         };
+        config.network_name = space.network_name.clone();
+        config.network_secret = space.network_secret.clone();
+        config.dhcp = false;
+        config.virtual_ipv4 = canonical_virtual_ipv4(&space.id);
         let config_json = serde_json::to_string(&config)
             .map_err(|e| format!("序列化配置失败: {}", e))?;
         self.db.update_space_config(&space.id.to_string(), &config_json)?;
@@ -1227,13 +1234,10 @@ impl SpaceManager {
 
     /// 校验是否为空间创建者
     pub async fn check_owner(&self, space_id: &str) -> Result<(), String> {
-        let caller_id = self.db.get_user_id()?.unwrap_or_default();
+        // 取消所有者权限限制：仅保留空间存在性校验，不限制 owner
         let spaces = self.spaces.read().await;
-        let space = spaces.iter().find(|s| s.id.to_string() == *space_id)
+        let _ = spaces.iter().find(|s| s.id.to_string() == *space_id)
             .ok_or_else(|| "空间不存在".to_string())?;
-        if space.owner_id.as_deref() != Some(caller_id.as_str()) {
-            return Err("无权限：仅空间创建者可执行此操作".to_string());
-        }
         Ok(())
     }
 
