@@ -88,3 +88,10 @@ button:not([disabled]) {
 .gray.disabled {
   cursor: not-allowed;
 }
+
+/* Dialog 内容可滚动；移动端键盘弹起时 main.tsx 动态覆写 max-height 跟随可视区，
+   避免 portal 到 body 的 Dialog 不受 #root 上推影响导致输入框被遮挡 */
+[role="dialog"] {
+  max-height: 85vh;
+  overflow-y: auto;
+}

@@ -40,6 +40,13 @@ function Root() {
       // 键盘高度 = 内屏高 - 可视区高 - 顶部偏移；上推 #root 底部避开键盘
       const kb = window.innerHeight - vv.height - vv.offsetTop;
       root.style.bottom = `${Math.max(kb, 0)}px`;
+      // Dialog Content（portal 到 body，不受 #root 上推影响）：
+      // 高度跟随可视区，配合 [role=dialog] overflow-y:auto 使内部 scrollIntoView 生效，
+      // 避免弹窗内输入框被键盘遮挡
+      const vh = vv.height - vv.offsetTop;
+      document.querySelectorAll<HTMLElement>('[role="dialog"]').forEach((el) => {
+        el.style.maxHeight = `${Math.max(vh - 16, 200)}px`;
+      });
       scrollFocused();
     };
     const onFocusIn = (e: FocusEvent) => {
@@ -55,6 +62,9 @@ function Root() {
       vv.removeEventListener("resize", onResize);
       document.removeEventListener("focusin", onFocusIn);
       root.style.bottom = "";
+      document.querySelectorAll<HTMLElement>('[role="dialog"]').forEach((el) => {
+        el.style.maxHeight = "";
+      });
     };
   }, [isMobile]);
 

@@ -27,6 +27,8 @@ export function SettingsPage() {
     setSettingsTab,
     logEnabled,
     setLogEnabled: setStoreLogEnabled,
+    configEnabled,
+    setConfigEnabled: setStoreConfigEnabled,
     micShortcut: defMicShortcut,
     speakerShortcut: defSpeakerShortcut,
     setMicShortcut: storeSetMicShortcut,
@@ -54,10 +56,13 @@ export function SettingsPage() {
   }, [setStoreLogEnabled]);
 
   useEffect(() => {
+    if (!configEnabled && activeTab === SettingTabEnum.CONFIG) {
+      setActiveTab(SettingTabEnum.BASIC);
+    }
     if (!logEnabled && activeTab === SettingTabEnum.LOG) {
       setActiveTab(SettingTabEnum.BASIC);
     }
-  }, [logEnabled, activeTab, setActiveTab]);
+  }, [configEnabled, logEnabled, activeTab, setActiveTab]);
 
   useEffect(() => {
     if (activeTab === SettingTabEnum.ET) {
@@ -91,7 +96,7 @@ export function SettingsPage() {
   const tabs: { key: SettingTabEnum; label: string; icon: React.ReactNode }[] = [
     { key: SettingTabEnum.BASIC, label: t("settings.basic"), icon: <Palette size={16} /> },
     { key: SettingTabEnum.ET, label: t("settings.easytier"), icon: <Network size={16} /> },
-    { key: SettingTabEnum.CONFIG, label: t("settings.config"), icon: <FileCog size={16} /> },
+    ...(configEnabled ? [{ key: SettingTabEnum.CONFIG, label: t("settings.config"), icon: <FileCog size={16} /> }] : []),
     ...(logEnabled ? [{ key: SettingTabEnum.LOG, label: t("settings.logs"), icon: <Terminal size={16} /> }] : []),
   ];
 
@@ -220,6 +225,33 @@ export function SettingsPage() {
                       setStoreLogEnabled(val);
                       setLogEnabledApi(val).catch((e) => toastError(String(e)));
                     }}
+                  />
+                </Flex>
+              </Card>
+
+              {/* 显示配置开关 */}
+              <Card size="3">
+                <Flex align="center" justify="between" gap="3">
+                  <Flex align="center" gap="3">
+                    <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
+                      <FileCog size={18} />
+                    </span>
+                    <Flex direction="column">
+                      <Flex align="center" gap="2">
+                        <Text size="3" weight="medium">{t("settings.showConfig")}</Text>
+                        <Tip content={t("settings.showConfigHelp")}>
+                          <span className="inline-flex items-center cursor-pointer text-[var(--color-text-secondary)]">
+                            <HelpCircle size={14} />
+                          </span>
+                        </Tip>
+                      </Flex>
+                      <Text size="1" color="gray">{t("settings.showConfigDesc")}</Text>
+                    </Flex>
+                  </Flex>
+                  <Switch
+                    size="1"
+                    checked={configEnabled}
+                    onCheckedChange={(val) => setStoreConfigEnabled(val)}
                   />
                 </Flex>
               </Card>

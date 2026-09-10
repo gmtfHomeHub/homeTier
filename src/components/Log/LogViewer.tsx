@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useLayoutEffect, useMemo, typ
 import { useTranslation } from "react-i18next";
 import { queryLogs, queryDaemonLogs, getLogModules, clearLogsFiltered, exportLogs, isTauri } from "../../utils/api";
 import type { LogEntry } from "../../types";
-import { RefreshCw, Trash2, Filter, Search, Download, Copy, Clock } from "lucide-react";
+import { RefreshCw, Trash2, Filter, Search, Download, Copy, Clock, ChevronDown } from "lucide-react";
 import { Button, Select, Checkbox, Text, Flex, Badge, Dialog, DropdownMenu, ButtonProps } from "@radix-ui/themes";
 import { List, useDynamicRowHeight, type RowComponentProps } from "react-window";
 import { toastSuccess, toastError } from "../../utils/toast";
@@ -23,6 +23,14 @@ const LEVEL_COLORS: Record<string, ButtonProps["color"]> = {
   info: "gray",
   debug: "teal",
 };
+
+// 横向滚动：前四列固定宽（timestamp+level+category+module），message 列占剩余（容器宽），
+// 默认 scrollLeft=FIXED_WIDTH 使 message 可见，左滑显示四列
+const TS_COL = 96;
+const LV_COL = 56;
+const CAT_COL = 56;
+const MOD_COL = 56;
+const FIXED_WIDTH = TS_COL + LV_COL + CAT_COL + MOD_COL;
 
 const DEFAULT_ROW_HEIGHT = 26;
 
@@ -145,6 +153,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
   }, []);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const lastSeqRef = useRef(0);
+  const userScrolledRef = useRef(false);
   const fetchingRef = useRef(false);
   const [levelFilter, setLevelFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
@@ -159,6 +168,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
   const [exporting, setExporting] = useState(false);
   const [exportPath, setExportPath] = useState<string | null>(null);
   const [detailEntry, setDetailEntry] = useState<LogEntry | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [modules, setModules] = useState<string[]>([]);
   const { ref: containerRef, width, height } = useSize<HTMLDivElement>();
   const dynamicRowHeight = useDynamicRowHeight({ defaultRowHeight: DEFAULT_ROW_HEIGHT, key: "log-rows" });
@@ -304,6 +314,32 @@ export function LogViewer({ spaceId }: LogViewerProps) {
     return result;
   }, [logs, levelFilter, categoryFilter, moduleFilter, keyword]);
 
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (levelFilter !== "all") n++;
+    if (categoryFilter.length > 0) n++;
+    if (moduleFilter.length > 0) n++;
+    if (keyword) n++;
+    if (timeRange !== "all") n++;
+    return n;
+  }, [levelFilter, categoryFilter, moduleFilter, keyword, timeRange]);
+
+  const onScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    // 用户手动左滑偏离 message 区后不再自动重置；滚回右侧（scrollLeft≈FIXED_WIDTH）恢复跟随
+    userScrolledRef.current = Math.abs(el.scrollLeft - FIXED_WIDTH) > 2;
+  }, [containerRef]);
+
+  // 默认滚到最右（显示 message 列），用户手动左滑后不重置；新数据到来时若仍在右侧则保持
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el || width === 0) return;
+    if (!userScrolledRef.current) {
+      el.scrollLeft = FIXED_WIDTH;
+    }
+  }, [filtered.length, width, containerRef]);
+
   const rowKey = useCallback((index: number, data: { logs: LogEntry[] }) => {
     const entry = data.logs[index];
     return entry ? `${entry.seq}-${entry.module}-${index}` : String(index);
@@ -316,6 +352,22 @@ export function LogViewer({ spaceId }: LogViewerProps) {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
+      {/* 筛选折叠触发条 */}
+      <div
+        className="flex items-center gap-2 px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0 cursor-pointer hover:bg-[var(--color-accent)]/5"
+        onClick={() => setFilterOpen((o) => !o)}
+      >
+        <Filter size={14} className="text-[var(--color-text-secondary)]" />
+        <Text size="2" weight="medium">{t("log.filter")}</Text>
+        {activeFilterCount > 0 && (
+          <Badge size="1" color="blue" className="ml-1">{activeFilterCount}</Badge>
+        )}
+        <ChevronDown
+          size={14}
+          className={`ml-auto transition-transform ${filterOpen ? "rotate-180" : ""}`}
+        />
+      </div>
+      {filterOpen && (
       <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
         {isTauri() && !mobile && (
           <Select.Root size="1" value={source} onValueChange={(v) => setSource(v as "gui" | "daemon")}>
@@ -497,6 +549,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
           )}
         </Flex>
       </div>
+      )}
 
       <Dialog.Root open={!!detailEntry} onOpenChange={(o) => !o && setDetailEntry(null)}>
         <Dialog.Content className="max-w-lg">
@@ -551,7 +604,11 @@ export function LogViewer({ spaceId }: LogViewerProps) {
         </Dialog.Content>
       </Dialog.Root>
 
-      <div ref={containerRef} className="flex-1 min-h-0">
+      <div
+        ref={containerRef}
+        className="flex-1 min-h-0 overflow-x-auto"
+        onScroll={onScroll}
+      >
         {filtered.length === 0 ? (
           <div className="flex items-center justify-center h-full text-[var(--color-text-secondary)] p-4">
             {t("log.empty")}
@@ -565,7 +622,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
             rowHeight={dynamicRowHeight}
             rowKey={rowKey}
             overscanCount={8}
-            style={{ width, height }}
+            style={{ width: FIXED_WIDTH + width, height }}
           />
         )}
       </div>
