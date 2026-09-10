@@ -218,11 +218,12 @@ Self {
     pub async fn join(&self, config: NetworkConfig, name: Option<String>) -> Result<Space, String> {
         let network_name = config.network_name.clone();
         let network_secret = config.network_secret.clone();
+        let owner_uuid = self.db.get_user_id()?.unwrap_or_else(|| "local-user".to_string());
         let mut space = Space {
             id: Uuid::new_v4(),
             name: name.clone().unwrap_or_else(|| network_name.clone()),
             description: None,
-            owner_id: None,
+            owner_id: Some(owner_uuid.clone()),
             network_name: network_name,
             network_secret: network_secret.clone(),
             created_at: chrono::Local::now(),
@@ -237,7 +238,7 @@ Self {
         let row = SpaceRow {
             id: space.id.to_string(),
             name: space.name.clone(),
-            owner_id: None,
+            owner_id: space.owner_id.clone(),
             network_name: space.network_name.clone(),
             network_secret: space.network_secret.clone(),
             description: None,
@@ -248,11 +249,13 @@ Self {
         };
         self.db.insert_space(&row)?;
 
-        // S1: 加入方一律在 10.144.144.0/24 内按本节点 space_id 哈希取自己的静态虚拟 IP
-        // （dhcp=false），忽略分享链接可能携带的对端主机 IP，避免继承冲突；与桌面 dhcp 分叉解耦。
+        // S1: 接收方一律 dhcp=false 静态虚拟 IP。若分享链接携带 virtual_ipv4（非空）则沿用，
+        // 否则按本节点 space_id 哈希在 10.144.144.0/24 内取 canonical IP；own_cidr 由 sync_proxy_cidrs 跟随。
         let mut config = config;
         config.dhcp = false;
-        config.virtual_ipv4 = canonical_virtual_ipv4(&space.id);
+        if config.virtual_ipv4.is_empty() {
+            config.virtual_ipv4 = canonical_virtual_ipv4(&space.id);
+        }
         sync_proxy_cidrs(&mut config);
 
         // 完整配置 json 落库（默认值已由后端 serde(default) 补全）
@@ -972,11 +975,12 @@ impl SpaceManager {
     pub async fn join(&self, config: NetworkConfig, name: Option<String>) -> Result<Space, String> {
         let network_name = config.network_name.clone();
         let network_secret = config.network_secret.clone();
+        let owner_uuid = self.db.get_user_id()?.unwrap_or_else(|| "local-user".to_string());
         let mut space = Space {
             id: Uuid::new_v4(),
             name: name.clone().unwrap_or_else(|| network_name.clone()),
             description: None,
-            owner_id: None,
+            owner_id: Some(owner_uuid.clone()),
             network_name: network_name,
             network_secret: network_secret.clone(),
             created_at: chrono::Local::now(),
@@ -991,7 +995,7 @@ impl SpaceManager {
         let row = SpaceRow {
             id: space.id.to_string(),
             name: space.name.clone(),
-            owner_id: None,
+            owner_id: space.owner_id.clone(),
             network_name: space.network_name.clone(),
             network_secret: space.network_secret.clone(),
             description: None,
@@ -1002,11 +1006,13 @@ impl SpaceManager {
         };
         self.db.insert_space(&row)?;
 
-        // S1: 加入方一律在 10.144.144.0/24 内按本节点 space_id 哈希取自己的静态虚拟 IP
-        // （dhcp=false），忽略分享链接可能携带的对端主机 IP，避免继承冲突；与桌面 dhcp 分叉解耦。
+        // S1: 接收方一律 dhcp=false 静态虚拟 IP。若分享链接携带 virtual_ipv4（非空）则沿用，
+        // 否则按本节点 space_id 哈希在 10.144.144.0/24 内取 canonical IP；own_cidr 由 sync_proxy_cidrs 跟随。
         let mut config = config;
         config.dhcp = false;
-        config.virtual_ipv4 = canonical_virtual_ipv4(&space.id);
+        if config.virtual_ipv4.is_empty() {
+            config.virtual_ipv4 = canonical_virtual_ipv4(&space.id);
+        }
         sync_proxy_cidrs(&mut config);
 
         // 完整配置 json 落库（默认值已由后端 serde(default) 补全）

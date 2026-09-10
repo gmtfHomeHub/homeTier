@@ -21,24 +21,40 @@ if ("serviceWorker" in navigator) {
 function Root() {
   const isMobile = useIsMobile();
 
-  // 移动端软键盘弹起时，自动滚动聚焦的输入框到可见区，避免被键盘遮挡
+  // 移动端软键盘：visualViewport 缩小时动态上推 #root 底部，使其跟随可视区；
+  // 聚焦输入框时滚动到可见区中心，避免被键盘遮挡
   useEffect(() => {
     if (!isMobile) return;
-    const handler = (e: FocusEvent) => {
-      const t = e.target as HTMLElement;
-      if (
-        t.tagName === "INPUT" ||
-        t.tagName === "TEXTAREA" ||
-        t.isContentEditable
-      ) {
-        setTimeout(
-          () => t.scrollIntoView({ block: "center", behavior: "smooth" }),
-          300
-        );
+    const root = document.getElementById("root");
+    const vv = window.visualViewport;
+    if (!root || !vv) return;
+
+    const scrollFocused = () => {
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) {
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
       }
     };
-    document.addEventListener("focusin", handler);
-    return () => document.removeEventListener("focusin", handler);
+    const onResize = () => {
+      // 键盘高度 = 内屏高 - 可视区高 - 顶部偏移；上推 #root 底部避开键盘
+      const kb = window.innerHeight - vv.height - vv.offsetTop;
+      root.style.bottom = `${Math.max(kb, 0)}px`;
+      scrollFocused();
+    };
+    const onFocusIn = (e: FocusEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) {
+        setTimeout(scrollFocused, 300);
+      }
+    };
+    vv.addEventListener("resize", onResize);
+    document.addEventListener("focusin", onFocusIn);
+    onResize();
+    return () => {
+      vv.removeEventListener("resize", onResize);
+      document.removeEventListener("focusin", onFocusIn);
+      root.style.bottom = "";
+    };
   }, [isMobile]);
 
   return (

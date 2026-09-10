@@ -22,7 +22,6 @@ export function JoinSpaceDialog({ initialShare, onClose }: JoinSpaceDialogProps)
     initialShare ?? null
   );
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [pastedLink, setPastedLink] = useState("");
   const joinSpace = useSpaceStore((s) => s.joinSpace);
 
@@ -44,7 +43,6 @@ export function JoinSpaceDialog({ initialShare, onClose }: JoinSpaceDialogProps)
     e.preventDefault();
     if (!networkName.trim() || !networkSecret.trim()) return;
     setLoading(true);
-    setError(null);
     try {
       await joinSpace(
         JSON.stringify({
@@ -54,7 +52,6 @@ export function JoinSpaceDialog({ initialShare, onClose }: JoinSpaceDialogProps)
       );
       onClose();
     } catch (e) {
-      setError(String(e));
       toastError(String(e));
     } finally {
       setLoading(false);
@@ -64,12 +61,10 @@ export function JoinSpaceDialog({ initialShare, onClose }: JoinSpaceDialogProps)
   const handleConfirmShare = async () => {
     if (!pendingShare) return;
     setLoading(true);
-    setError(null);
     try {
       await joinSpace(buildConfigJson(pendingShare), pendingShare.name);
       onClose();
     } catch (e) {
-      setError(String(e));
       toastError(String(e));
     } finally {
       setLoading(false);
@@ -131,9 +126,6 @@ export function JoinSpaceDialog({ initialShare, onClose }: JoinSpaceDialogProps)
                 </div>
               </div>
             </div>
-            {error && (
-              <p className="text-xs text-[var(--color-danger)]">{error}</p>
-            )}
             <Flex justify="end" gap="2" pt="2">
               <Button
                 type="button"
@@ -219,9 +211,6 @@ export function JoinSpaceDialog({ initialShare, onClose }: JoinSpaceDialogProps)
                 </Button>
               </div>
             </div>
-            {error && (
-              <p className="text-xs text-[var(--color-danger)]">{error}</p>
-            )}
             <Flex justify="end" gap="2" pt="2">
               <Button type="button" onClick={onClose} variant="outline" size="2">
                 {t("common.cancel")}
