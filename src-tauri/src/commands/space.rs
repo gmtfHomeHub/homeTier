@@ -21,7 +21,13 @@ pub async fn update_space_config(
     config_json: String,
     db: State<'_, Arc<Database>>,
 ) -> Result<(), String> {
-    db.update_space_config(&space_id, &config_json)
+    // 落库前去重 proxy_cidrs（trim + 保留首次 + own_cidr 首位），修复重复 CIDR
+    let mut config = serde_json::from_str::<crate::easytier::config::NetworkConfig>(&config_json)
+        .map_err(|e| format!("配置 json 解析失败: {}", e))?;
+    config.dedupe_proxy_cidrs();
+    let cleaned = serde_json::to_string(&config)
+        .map_err(|e| format!("配置 json 序列化失败: {}", e))?;
+    db.update_space_config(&space_id, &cleaned)
 }
 
 #[tauri::command]

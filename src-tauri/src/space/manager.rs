@@ -99,24 +99,10 @@ fn canonical_virtual_ipv4(space_id: &Uuid) -> String {
     format!("10.144.144.{}", host)
 }
 
-/// 计算本机虚拟网段 CIDR（如 10.144.144.10/24 -> 10.144.144.0/24）
-fn own_virtual_cidr(virtual_ipv4: &str, network_length: u8) -> Option<String> {
-    if virtual_ipv4.is_empty() || network_length == 0 || network_length > 32 {
-        return None;
-    }
-    format!("{}/{}", virtual_ipv4, network_length)
-        .parse::<cidr::Ipv4Inet>()
-        .ok()
-        .map(|i| i.network().to_string())
-}
-
-/// 联动 proxy_cidrs：virtual_ipv4 存在时去重添加对应 /24 到首位；不存在时跳过
-/// （create/join 时 virtual_ipv4 总为 canonical 非空；运行时 effective_proxy_cidrs 仍作兜底去重）
+/// 联动 proxy_cidrs：整体去重 + own_cidr（virtual_ipv4 网络地址）置首位
+/// （create/join 落库前调用；运行时 effective_proxy_cidrs 仍作兜底去重）
 fn sync_proxy_cidrs(config: &mut NetworkConfig) {
-    if let Some(cidr) = own_virtual_cidr(&config.virtual_ipv4, config.network_length) {
-        config.proxy_cidrs.retain(|c| c.trim() != cidr);
-        config.proxy_cidrs.insert(0, cidr);
-    }
+    config.dedupe_proxy_cidrs();
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

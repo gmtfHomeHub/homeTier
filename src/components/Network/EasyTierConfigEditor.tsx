@@ -68,9 +68,16 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
     const newV4 = patch.virtual_ipv4 ?? value.virtual_ipv4 ?? '';
     const newLen = patch.network_length ?? value.network_length ?? 24;
     const newC = computeNetworkCidr(newV4, newLen);
-    let proxy_cidrs = [...(value.proxy_cidrs ?? [])];
-    if (ownCidr) proxy_cidrs = proxy_cidrs.filter(c => c.trim() !== ownCidr);
-    if (newC) proxy_cidrs = [...proxy_cidrs, newC];
+    // 整体去重（trim + 保留首次出现），own_cidr 变化时移除旧派生项再添加新派生项
+    const seen = new Set<string>();
+    const proxy_cidrs = (value.proxy_cidrs ?? [])
+      .map(c => c.trim())
+      .filter((c) => {
+        if (!c || seen.has(c)) return false;
+        seen.add(c);
+        return true;
+      });
+    if (newC && !seen.has(newC)) proxy_cidrs.push(newC);
     return { ...patch, proxy_cidrs };
   };
 

@@ -286,6 +286,25 @@ impl NetworkConfig {
         out
     }
 
+    /// 去重 proxy_cidrs：trim + HashSet 保留首次出现；own_cidr（virtual_ipv4/network_length
+    /// 网络地址）置首位。供所有落库路径（update_space_config / HTTP handler / create / join）
+    /// 统一调用，避免 config_json 出现重复 CIDR。
+    pub fn dedupe_proxy_cidrs(&mut self) {
+        let mut seen = std::collections::HashSet::new();
+        self.proxy_cidrs.retain(|c| {
+            let t = c.trim().to_string();
+            !t.is_empty() && seen.insert(t)
+        });
+        if !self.virtual_ipv4.is_empty() && self.network_length > 0 && self.network_length <= 32 {
+            let inet_str = format!("{}/{}", self.virtual_ipv4, self.network_length);
+            if let Ok(inet) = inet_str.parse::<cidr::Ipv4Inet>() {
+                let own_cidr = inet.network().to_string();
+                self.proxy_cidrs.retain(|c| c.trim() != own_cidr);
+                self.proxy_cidrs.insert(0, own_cidr);
+            }
+        }
+    }
+
     pub fn to_easytier_config(&self) -> Result<easytier::common::config::TomlConfigLoader, String> {
         use easytier::common::config::ConfigLoader;
         use easytier::common::config::NetworkIdentity;

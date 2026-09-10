@@ -325,6 +325,26 @@ async fn update_space_config_handler(
     if config_json.is_empty() {
         return (StatusCode::BAD_REQUEST, "缺少 config_json").into_response();
     }
+    // 落库前去重 proxy_cidrs（与 Tauri command update_space_config 一致），修复重复 CIDR
+    let mut config =
+        match serde_json::from_str::<crate::easytier::config::NetworkConfig>(&config_json) {
+            Ok(c) => c,
+            Err(e) => {
+                return (StatusCode::BAD_REQUEST, format!("配置 json 解析失败: {}", e))
+                    .into_response()
+            }
+        };
+    config.dedupe_proxy_cidrs();
+    let config_json = match serde_json::to_string(&config) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("配置 json 序列化失败: {}", e),
+            )
+                .into_response()
+        }
+    };
     match state.db.update_space_config(&space_id, &config_json) {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
