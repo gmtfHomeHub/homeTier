@@ -169,26 +169,24 @@ export function SpaceList() {
             }}
             className="bg-[var(--color-surface)] rounded-xl p-5 border border-[var(--color-border)] hover:shadow-md transition-shadow cursor-pointer"
           >
-            <Flex align="start" justify="between" className="mb-3">
-              <div className="flex flex-col gap-1 min-w-0 flex-1">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className={`w-3 h-3 rounded-full ${
-                      space.status === "connected"
-                        ? "bg-[var(--color-success)]"
-                        : space.status === "connecting"
-                          ? "bg-yellow-400 animate-pulse"
-                          : "bg-[var(--color-text-secondary)]"
-                    }`}
-                  />
-                  <h3 className="font-semibold truncate">{space.name}</h3>
-                </div>
+            <Flex align="center" justify="between" className="mb-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0 flex-1">
+                <div
+                  className={`w-3 h-3 rounded-full shrink-0 ${
+                    space.status === "connected"
+                      ? "bg-[var(--color-success)]"
+                      : space.status === "connecting"
+                        ? "bg-yellow-400 animate-pulse"
+                        : "bg-[var(--color-text-secondary)]"
+                  }`}
+                />
+                <h3 className="font-semibold truncate min-w-0 flex-1">{space.name}</h3>
                 {getSpaceIp(space) && (
                   <Badge
                     color="gray"
                     variant="soft"
                     size="1"
-                    className="font-mono max-w-full truncate"
+                    className="font-mono max-w-full truncate shrink-0"
                     title={getSpaceIp(space) || ""}
                   >
                     {getSpaceIp(space)}
