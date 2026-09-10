@@ -57,7 +57,8 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, o
   const sessionStartRef = useRef(Date.now());
   const proxyKey = parseProxyKey(proxyUrl);
 
-  // refreshNonce 变化时启动新加载会话并重载 iframe（不再用 URL nonce 参数）
+  // refreshNonce 变化 → 外层已通过 key 重建本组件（iframe 全新加载），
+  // 这里只重置会话状态 + loading，并兜底强制解除遮罩防止永久白屏/黑屏
   const reloadTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => {
     if (refreshNonce > 0) {
@@ -67,13 +68,13 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, o
       retriedRef.current = false;
       setLoading(true);
       setStage("connecting");
-      iframeRef.current?.contentWindow?.location.reload();
-      // 兜底：5s 内未触发 onLoad（如 iframe 白屏/跨域阻塞），强制显示 loading 避免黑屏
+      // 兜底：8s 内未触发 onLoad（iframe 白屏/跨域阻塞）时强制解除遮罩，避免永久白屏/黑屏
       reloadTimeoutRef.current = setTimeout(() => {
-        if (!loadedRef.current && loading) {
+        if (!loadedRef.current) {
           setStage("slow");
+          setLoading(false);
         }
-      }, 5000);
+      }, 8000);
     }
     return () => {
       if (reloadTimeoutRef.current) clearTimeout(reloadTimeoutRef.current);
@@ -101,7 +102,15 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, o
             loadedRef.current = false;
             setLoading(true);
             setStage("connecting");
-            iframeRef.current?.contentWindow?.location.reload();
+            // src 重设触发重载（比 contentWindow.location.reload 稳健，避免跨源 SecurityError）
+            const iframe = iframeRef.current;
+            if (iframe) {
+              try {
+                iframe.src = iframe.src;
+              } catch {
+                // 极端情况忽略，由 loading 兜底解除
+              }
+            }
           }, 2000);
         } else {
           // 非可重试错误或已重试过：显示错误状态

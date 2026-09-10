@@ -75,21 +75,26 @@ export function AppWorkspace() {
     [activeKey]
   );
 
-  // 设备模式切换：同步后端（UA 注入/移动仿真）并整体刷新以重新注入脚本
-  const handleToggleDevice = useCallback(async () => {
+  // 设备模式切换：本地先行 + 后端异步同步（UA 注入/移动仿真）；所有打开标签一起重建 iframe
+  const handleToggleDevice = useCallback(() => {
     const next = deviceMode === "desktop" ? "mobile" : "desktop";
-    try {
-      await api.setDeviceMode(next);
-    } catch {
-      // 后端失败仍切换本地展示
-    }
     setDeviceMode(next);
-    // 仅重载当前活跃标签
-    if (activeKey) {
-      setRefreshNonce((m) => ({ ...m, [activeKey]: (m[activeKey] ?? 0) + 1 }));
+    void api.setDeviceMode(next).catch(() => {
+      // 后端失败仍切换本地展示
+    });
+    // 所有打开标签一起重载（key 含 refreshNonce 触发 iframe 重建），避免非活跃标签错位
+    const keys = openApps.map((t) => t.key);
+    if (keys.length > 0) {
+      setRefreshNonce((m) => {
+        const n = { ...m };
+        keys.forEach((k) => {
+          n[k] = (n[k] ?? 0) + 1;
+        });
+        return n;
+      });
     }
     setNavStates({});
-  }, [deviceMode, setDeviceMode, activeKey]);
+  }, [deviceMode, setDeviceMode, openApps]);
 
   // 监听后端下载完成事件，提示文件保存位置（替代轮询，避免误报）
   useEffect(() => {
@@ -246,7 +251,7 @@ export function AppWorkspace() {
             >
               {showFrame ? (
                 <ProxyFrame
-                  key={tab.key}
+                  key={`${tab.key}:${refreshNonce[tab.key] ?? 0}`}
                   tabKey={tab.key}
                   proxyUrl={displayUrl}
                   name={tab.app.name}
