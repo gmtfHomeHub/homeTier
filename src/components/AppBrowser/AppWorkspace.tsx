@@ -14,7 +14,7 @@ import {
 import { Button, Badge, TextField } from "@radix-ui/themes";
 import { listen } from "@tauri-apps/api/event";
 import { useAppTabsStore } from "../../stores/appTabsStore";
-import { open } from "@tauri-apps/plugin-shell";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import * as api from "../../utils/api";
 import { toastInfo } from "../../utils/toast";
 import { ProxyFrame, ProxyErrorFallback, sendFrameNavCmd, type FrameNavState } from "./ProxyFrame";
@@ -52,7 +52,7 @@ export function AppWorkspace() {
   const handleOpenInBrowser = useCallback(async () => {
     if (!activeTab) return;
     try {
-      await open(activeTab.appUrl);
+      await openUrl(activeTab.appUrl);
     } catch {
       window.open(activeTab.appUrl, "_blank");
     }

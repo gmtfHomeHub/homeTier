@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type TouchEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ShieldAlert, Loader2 } from "lucide-react";
 import { Button, Flex, Text, Card } from "@radix-ui/themes";
@@ -46,10 +46,87 @@ function parseProxyKey(proxyUrl: string): string {
   return m?.[1] ?? "";
 }
 
+/** 缩放比例夹紧 [0.2, 2.0] */
+const clampZoom = (v: number) => Math.max(0.2, Math.min(2.0, v));
+
+/** 双指欧氏距离（ArrayLike 兼容 React.TouchList） */
+const touchDist = (touches: ArrayLike<{ clientX: number; clientY: number }>) => {
+  const a = touches[0];
+  const b = touches[1];
+  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+};
+
+/** 限制 offset 使 viewport 不完全飞出容器（可 pan 到边缘，居中时固定） */
+const clampOffset = (x: number, y: number, s: number, vw: number, vh: number, cw: number, ch: number) => {
+  const sw = vw * s;
+  const sh = vh * s;
+  const minX = Math.min(cw - sw, 0);
+  const maxX = Math.max(cw - sw, 0);
+  const minY = Math.min(ch - sh, 0);
+  const maxY = Math.max(ch - sh, 0);
+  return { x: Math.max(minX, Math.min(maxX, x)), y: Math.max(minY, Math.min(maxY, y)) };
+};
+
 export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, onError, onNavState }: ProxyFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { ref: containerRef, width: cw, height: ch } = useContainerSize<HTMLDivElement>();
   const { t } = useTranslation();
+
+  // 电脑模式缩放/拖拽：desktop 默认 50%，支持 pinch + drag + Ctrl+滚轮；mobile 保持自适应
+  const isDesktop = deviceMode === "desktop";
+  const viewport = DEVICE_VIEWPORTS[deviceMode];
+  const [zoomScale, setZoomScale] = useState(0.5);
+  const [zoomOffset, setZoomOffset] = useState({ x: 0, y: 0 });
+  const touchRef = useRef<{ mode: "none" | "drag" | "pinch"; startDist: number; startScale: number; startOffset: { x: number; y: number }; startTouch: { x: number; y: number } }>({ mode: "none", startDist: 0, startScale: 0.5, startOffset: { x: 0, y: 0 }, startTouch: { x: 0, y: 0 } });
+
+  const onTouchStart = (e: TouchEvent<HTMLDivElement>) => {
+    if (!isDesktop) return;
+    const ts = e.touches;
+    if (ts.length === 1) {
+      touchRef.current = { mode: "drag", startDist: 0, startScale: zoomScale, startOffset: { ...zoomOffset }, startTouch: { x: ts[0].clientX, y: ts[0].clientY } };
+    } else if (ts.length >= 2) {
+      touchRef.current = { mode: "pinch", startDist: touchDist(ts), startScale: zoomScale, startOffset: { ...zoomOffset }, startTouch: { x: 0, y: 0 } };
+    }
+  };
+  const onTouchMove = (e: TouchEvent<HTMLDivElement>) => {
+    if (!isDesktop) return;
+    const st = touchRef.current;
+    if (st.mode === "none") return;
+    e.preventDefault();
+    const ts = e.touches;
+    if (st.mode === "drag" && ts.length >= 1) {
+      const dx = ts[0].clientX - st.startTouch.x;
+      const dy = ts[0].clientY - st.startTouch.y;
+      setZoomOffset(clampOffset(st.startOffset.x + dx, st.startOffset.y + dy, zoomScale, viewport.w, viewport.h, cw, ch));
+    } else if (st.mode === "pinch" && ts.length >= 2) {
+      const ratio = st.startDist > 0 ? touchDist(ts) / st.startDist : 1;
+      setZoomScale(clampZoom(st.startScale * ratio));
+    }
+  };
+  const onTouchEnd = (e: TouchEvent<HTMLDivElement>) => {
+    if (!isDesktop) return;
+    const st = touchRef.current;
+    if (e.touches.length === 0) {
+      touchRef.current = { ...st, mode: "none" };
+    } else if (e.touches.length === 1 && st.mode === "pinch") {
+      touchRef.current = { mode: "drag", startDist: 0, startScale: zoomScale, startOffset: { ...zoomOffset }, startTouch: { x: e.touches[0].clientX, y: e.touches[0].clientY } };
+    }
+  };
+
+  // 桌面端 Ctrl+滚轮缩放（wheel 需 non-passive 才能 preventDefault）
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (!isDesktop || !e.ctrlKey) return;
+      e.preventDefault();
+      const delta = -e.deltaY * 0.0015;
+      setZoomScale((s) => clampZoom(s * (1 + delta)));
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [isDesktop, containerRef]);
+
   const [loading, setLoading] = useState(true);
   const [stage, setStage] = useState("connecting");
   const loadedRef = useRef(false);
@@ -142,10 +219,11 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, o
     return () => window.removeEventListener("message", handler);
   }, [onNavState, proxyUrl]);
 
-  const viewport = DEVICE_VIEWPORTS[deviceMode];
-  const scale = cw > 0 && ch > 0 ? Math.min(cw / viewport.w, ch / viewport.h) : 1;
-  const offsetX = (cw - viewport.w * scale) / 2;
-  const offsetY = (ch - viewport.h * scale) / 2;
+  // desktop 用手势 state（zoomScale/zoomOffset）；mobile 用自适应计算
+  const adaptiveScale = cw > 0 && ch > 0 ? Math.min(cw / viewport.w, ch / viewport.h) : 1;
+  const scale = isDesktop ? zoomScale : adaptiveScale;
+  const offsetX = isDesktop ? zoomOffset.x : (cw - viewport.w * adaptiveScale) / 2;
+  const offsetY = isDesktop ? zoomOffset.y : (ch - viewport.h * adaptiveScale) / 2;
 
   const STAGE_TEXT: Record<string, string> = {
     connecting: t("common.proxyLoadingConnecting"),
@@ -157,7 +235,14 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, o
   };
 
   return (
-    <div ref={containerRef} className="absolute inset-0 overflow-hidden bg-white">
+    <div
+      ref={containerRef}
+      className="absolute inset-0 overflow-hidden bg-white"
+      style={{ touchAction: isDesktop ? "none" : undefined }}
+      onTouchStart={isDesktop ? onTouchStart : undefined}
+      onTouchMove={isDesktop ? onTouchMove : undefined}
+      onTouchEnd={isDesktop ? onTouchEnd : undefined}
+    >
       {loading && !loadedRef.current && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-white/85 backdrop-blur-sm">
           <Loader2 size={32} className="animate-spin text-[var(--color-primary)]" />
@@ -169,11 +254,11 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, o
       <div
         style={{
           position: "absolute",
-          left: offsetX,
-          top: offsetY,
+          left: 0,
+          top: 0,
           width: viewport.w,
           height: viewport.h,
-          transform: `scale(${scale})`,
+          transform: `translate(${offsetX}px, ${offsetY}px) scale(${scale})`,
           transformOrigin: "top left",
         }}
       >

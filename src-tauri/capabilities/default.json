@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "shell:allow-open",
+    "opener:default",
     "process:default",
     "clipboard-manager:default",
     "global-shortcut:allow-register",
