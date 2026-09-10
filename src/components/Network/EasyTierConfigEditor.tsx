@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { NetworkConfig, PortForwardConfig } from "../../types/network";
 import { DEFAULT_NETWORK_CONFIG, addRow, removeRow, computeNetworkCidr } from "../../types/network";
-import { Button, TextField, Checkbox, Text, Select, Flex } from "@radix-ui/themes";
+import { Button, TextField, Checkbox, Text, Select, Flex , Grid } from "@radix-ui/themes";
 import { CollapsibleSection } from "../Common/CollapsibleSection";
 import { Eye, EyeOff, Trash2, Globe } from "lucide-react";
 
@@ -96,12 +96,12 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
 
       {/* Panel 1: Basic Settings (always open) */}
       <div className="border border-[var(--color-border)] rounded-lg">
-        <div className="flex items-center gap-2 p-4 border-b border-[var(--color-border)]">
+        <Flex align="center" gap="2" className="p-4 border-b border-[var(--color-border)]">
           <Globe size={16} />
           <Text size="2" weight="medium">{t("network.basicSettings")}</Text>
-        </div>
+        </Flex>
         <div className="p-4 space-y-3">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Grid columns={{ initial: "1", sm: "2" }} gap="3">
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("settings.networkName")}</label>
               <TextField.Root size="1" value={strVal("network_name")}
@@ -119,9 +119,9 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                 </TextField.Slot>
               </TextField.Root>
             </div>
-          </div>
+          </Grid>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Grid columns={{ initial: "1", sm: "2" }} gap="3">
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("network.virtualIpv4")}</label>
               <TextField.Root size="1" value={strVal("virtual_ipv4")}
@@ -138,7 +138,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                 value={String(value.network_length ?? 24)}
                 onChange={e => set(syncProxyCidrs({ network_length: parseInt(e.target.value) || 24 }))} />
             </div>
-          </div>
+          </Grid>
 
           <Text as="label" size="1" className="flex items-center gap-2">
             <Checkbox checked={boolVal("dhcp")}
@@ -270,7 +270,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           </div>
 
           {/* Routes & Exit Nodes */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Grid columns={{ initial: "1", sm: "2" }} gap="3">
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("network.routes")}</label>
               <TextField.Root size="1"
@@ -285,10 +285,10 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                 onChange={e => set({ exit_nodes: e.target.value ? e.target.value.split(",").map(s => s.trim()) : [] })}
                 placeholder={t("network.commaSeparated")} />
             </div>
-          </div>
+          </Grid>
 
           {/* Dev Name, MTU, Instance Recv Bps Limit */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Grid columns={{ initial: "1", sm: "3" }} gap="3">
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("network.devName")}</label>
               <TextField.Root size="1" value={strVal("dev_name")}
@@ -309,7 +309,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                 onChange={e => set({ instance_recv_bps_limit: e.target.value ? parseInt(e.target.value) : null })}
                 placeholder={t("network.unlimited")} />
             </div>
-          </div>
+          </Grid>
 
           {/* Relay Network Whitelist */}
           <div className={FIELD_CLASS}>
@@ -321,7 +321,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           </div>
 
           {/* SOCKS5 */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Grid columns={{ initial: "1", sm: "2" }} gap="3">
             <div className={FIELD_CLASS}>
               <Text as="label" size="1" className="flex items-center gap-2">
                 <Checkbox checked={boolVal("enable_socks5")}
@@ -334,7 +334,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                   onChange={e => set({ socks5_port: parseInt(e.target.value) || 1080 })} />
               )}
             </div>
-          </div>
+          </Grid>
 
           {/* Boolean flags grid */}
           <div className="pt-2">

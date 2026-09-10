@@ -83,7 +83,7 @@ export function AppFormDialog({ app, spaceId, existingCategories, open, onClose,
   return (
     <Dialog.Root open={open} onOpenChange={(open) => { if (!open) onClose(); }}>
       <Dialog.Content className="w-full max-w-[calc(100vw-24px)] sm:w-[520px]">
-        <div className="flex items-center justify-between mb-4">
+        <Flex align="center" justify="between" className="mb-4">
           <Dialog.Title className="m-0 text-lg font-semibold">
             {isEditing ? t("appNav.editApp") : t("appNav.addApp")}
           </Dialog.Title>
@@ -92,10 +92,10 @@ export function AppFormDialog({ app, spaceId, existingCategories, open, onClose,
               <X size={20} />
             </Button>
           </Dialog.Close>
-        </div>
+        </Flex>
 
         {/* 应用预览 */}
-        <div className="flex justify-center mb-6">
+        <Flex justify="center" className="mb-6">
           <div className="w-[70px] h-[70px] rounded-xl bg-[var(--color-border)] flex items-center justify-center overflow-hidden">
             {icon ? (
               <Icon icon={icon} width={48} height={48} />
@@ -103,7 +103,7 @@ export function AppFormDialog({ app, spaceId, existingCategories, open, onClose,
               <div className="w-10 h-10 rounded-lg bg-[var(--color-text-secondary)]/10" />
             )}
           </div>
-        </div>
+        </Flex>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* 名称 */}

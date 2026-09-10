@@ -11,7 +11,7 @@ import { applyGlobalShortcuts } from "../../services/shortcuts";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { NetworkConfig } from "../../types/network";
 import { useTranslation } from "react-i18next";
-import { Tabs, Button, Flex, Text, Switch, Card, Select } from "@radix-ui/themes";
+import { Tabs, Button, Flex, Text, Switch, Card, Select , Grid } from "@radix-ui/themes";
 import Tip from "../Common/Tip";
 import { SettingTabEnum, LanguageEnum, ThemeEnum } from "../../enum";
 import { toastSuccess, toastError } from "../../utils/toast";
@@ -181,14 +181,14 @@ export function SettingsPage() {
 
               {/* EasyTier 引擎 / 当前应用（左右两栏） */}
               <Card size="3">
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Grid columns={{ initial: "1", md: "2" }} gap="4">
                   <div className="border-r border-[var(--color-border)] md:pr-4" style={{ borderRightStyle: 'solid'}}>
                     <EasyTierVersionManager />
                   </div>
                   <div>
                     <AppVersionManager />
                   </div>
-                </div>
+                </Grid>
               </Card>
               </div>
 

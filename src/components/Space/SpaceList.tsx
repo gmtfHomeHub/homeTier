@@ -154,7 +154,7 @@ export function SpaceList() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <Grid columns={{ initial: "1", md: "2", lg: "3" }} gap="4">
         {spaces.map((space) => (
           <div
             key={space.id}
@@ -169,8 +169,8 @@ export function SpaceList() {
             }}
             className="bg-[var(--color-surface)] rounded-xl p-5 border border-[var(--color-border)] hover:shadow-md transition-shadow cursor-pointer"
           >
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
+            <Flex align="center" justify="between" className="mb-3">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
                 <div
                   className={`w-3 h-3 rounded-full ${
                     space.status === "connected"
@@ -202,7 +202,7 @@ export function SpaceList() {
                   connected={space.status === "connected"}
                 />
               </div>
-            </div>
+            </Flex>
             <Grid columns={{ initial: "1", sm: "2" }} gap="3">
               <Flex>
                 {space.status === "connected" ? (
@@ -270,7 +270,7 @@ export function SpaceList() {
             </Grid>
           </div>
         ))}
-      </div>
+      </Grid>
 
       <ConfirmDialog
         open={deleteTarget !== null}
@@ -287,7 +287,7 @@ export function SpaceList() {
       {configTarget && configSpace && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-[var(--color-surface)] rounded-xl w-full max-w-[calc(100vw-24px)] sm:w-[640px] max-h-[80vh] flex flex-col shadow-xl">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
+            <Flex align="center" justify="between" className="px-6 py-4 border-b border-[var(--color-border)]">
               <h2 className="text-lg font-semibold">
                 {t("space.spaceConfigTitle", { name: configSpace.name })}
               </h2>
@@ -298,7 +298,7 @@ export function SpaceList() {
               >
                 <X size={20} />
               </Button>
-            </div>
+            </Flex>
             <div className="flex-1 p-6 overflow-y-auto">
               <EasyTierConfigEditor
                 value={spaceConfig}

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import { createPortal } from "react-dom";
 import App from "./App";
@@ -20,6 +20,27 @@ if ("serviceWorker" in navigator) {
 
 function Root() {
   const isMobile = useIsMobile();
+
+  // 移动端软键盘弹起时，自动滚动聚焦的输入框到可见区，避免被键盘遮挡
+  useEffect(() => {
+    if (!isMobile) return;
+    const handler = (e: FocusEvent) => {
+      const t = e.target as HTMLElement;
+      if (
+        t.tagName === "INPUT" ||
+        t.tagName === "TEXTAREA" ||
+        t.isContentEditable
+      ) {
+        setTimeout(
+          () => t.scrollIntoView({ block: "center", behavior: "smooth" }),
+          300
+        );
+      }
+    };
+    document.addEventListener("focusin", handler);
+    return () => document.removeEventListener("focusin", handler);
+  }, [isMobile]);
+
   return (
     <>
       <React.StrictMode>

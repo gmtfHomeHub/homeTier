@@ -143,9 +143,9 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12 text-[var(--color-text-secondary)]">
+      <Flex align="center" justify="center" className="py-12 text-[var(--color-text-secondary)]">
         {t("common.loading")}
-      </div>
+      </Flex>
     );
   }
 
@@ -193,14 +193,16 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
         emptyText={t("appNav.noApps")}
       />
 
-      <AppFormDialog
-        app={editApp}
-        spaceId={space.id}
-        existingCategories={existingCategories}
-        open={showForm}
-        onClose={() => setShowForm(false)}
-        onSubmit={handleFormSubmit}
-      />
+      {showForm && (
+        <AppFormDialog
+          app={editApp}
+          spaceId={space.id}
+          existingCategories={existingCategories}
+          open={true}
+          onClose={() => setShowForm(false)}
+          onSubmit={handleFormSubmit}
+        />
+      )}
 
       {shareApp && (
         <ShareAppDialog
