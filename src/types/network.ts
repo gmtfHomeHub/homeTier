@@ -284,3 +284,15 @@ export const addRow = (rows: PortForwardConfig[]) => {
 export const removeRow = (index: number, rows: PortForwardConfig[]) => {
   rows.splice(index, 1);
 };
+
+// 计算指定 IPv4 + 网络长度对应的网络地址 CIDR（如 10.144.144.10/24 -> 10.144.144.0/24），
+// 无效输入返回 null。用于 virtual_ipv4 与 proxy_cidrs 的联动（派生项不可编辑/删除）。
+export function computeNetworkCidr(ip: string, networkLength: number): string | null {
+  const parts = (ip ?? '').trim().split('.').map(Number);
+  if (parts.length !== 4 || parts.some(p => !Number.isInteger(p) || p < 0 || p > 255)) return null;
+  if (!Number.isInteger(networkLength) || networkLength <= 0 || networkLength > 32) return null;
+  const ipInt = ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+  const mask = networkLength === 32 ? 0xFFFFFFFF : (0xFFFFFFFF << (32 - networkLength)) >>> 0;
+  const net = (ipInt & mask) >>> 0;
+  return `${(net >>> 24) & 0xFF}.${(net >>> 16) & 0xFF}.${(net >>> 8) & 0xFF}.${net & 0xFF}/${networkLength}`;
+}

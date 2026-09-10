@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { NetworkConfig, PortForwardConfig } from "../../types/network";
-import { DEFAULT_NETWORK_CONFIG, addRow, removeRow } from "../../types/network";
+import { DEFAULT_NETWORK_CONFIG, addRow, removeRow, computeNetworkCidr } from "../../types/network";
 import { Button, TextField, Checkbox, Text, Select, Flex } from "@radix-ui/themes";
 import { CollapsibleSection } from "../Common/CollapsibleSection";
 import { Eye, EyeOff, Trash2, Globe } from "lucide-react";
@@ -60,6 +60,20 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
 
   const set = (patch: Partial<NetworkConfig>) => onChange({ ...value, ...patch });
 
+  // 本机虚拟网段派生 CIDR（用于 proxy_cidrs 渲染时标记不可编辑/删除的派生项）
+  const ownCidr = computeNetworkCidr(value.virtual_ipv4 ?? '', value.network_length ?? 24);
+
+  // virtual_ipv4 / network_length 变化时联动 proxy_cidrs：移除旧派生项，添加新派生项
+  const syncProxyCidrs = (patch: Partial<NetworkConfig>): Partial<NetworkConfig> => {
+    const newV4 = patch.virtual_ipv4 ?? value.virtual_ipv4 ?? '';
+    const newLen = patch.network_length ?? value.network_length ?? 24;
+    const newC = computeNetworkCidr(newV4, newLen);
+    let proxy_cidrs = [...(value.proxy_cidrs ?? [])];
+    if (ownCidr) proxy_cidrs = proxy_cidrs.filter(c => c.trim() !== ownCidr);
+    if (newC) proxy_cidrs = [...proxy_cidrs, newC];
+    return { ...patch, proxy_cidrs };
+  };
+
   const boolVal = (key: keyof NetworkConfig): boolean =>
     value[key] === true;
 
@@ -113,8 +127,8 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
               <TextField.Root size="1" value={strVal("virtual_ipv4")}
                 onChange={e => {
                   const ip = e.target.value;
-                  // 静态 IP 与 DHCP 互斥：输入 IP 时自动关闭 dhcp
-                  set({ virtual_ipv4: ip, ...(ip.trim() ? { dhcp: false } : {}) });
+                  // 静态 IP 与 DHCP 互斥：输入 IP 时自动关闭 dhcp；联动 proxy_cidrs 派生项
+                  set(syncProxyCidrs({ virtual_ipv4: ip, ...(ip.trim() ? { dhcp: false } : {}) }));
                 }}
                 placeholder="10.0.0.1" />
             </div>
@@ -122,7 +136,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
               <label className={LABEL_CLASS}>{t("network.networkLength")}</label>
               <TextField.Root size="1" type="number"
                 value={String(value.network_length ?? 24)}
-                onChange={e => set({ network_length: parseInt(e.target.value) || 24 })} />
+                onChange={e => set(syncProxyCidrs({ network_length: parseInt(e.target.value) || 24 }))} />
             </div>
           </div>
 
@@ -226,21 +240,26 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           {/* Proxy CIDRs */}
           <div className={FIELD_CLASS}>
             <label className={LABEL_CLASS}>{t("network.subnetProxy")}</label>
-            {(value.proxy_cidrs ?? []).map((cidr, i) => (
-              <Flex gap="2" align="center" key={i}>
-                <TextField.Root size="1" className="flex-1" value={cidr}
-                  onChange={e => {
-                    const list = [...(value.proxy_cidrs ?? [])];
-                    list[i] = e.target.value;
-                    set({ proxy_cidrs: list });
-                  }}
-                  placeholder="10.0.0.0/24" />
-                <Button variant="ghost" color="red" size="1" onClick={() => {
-                  const list = (value.proxy_cidrs ?? []).filter((_, j) => j !== i);
-                  set({ proxy_cidrs: list.length ? list : [] });
-                }}>×</Button>
-              </Flex>
-            ))}
+            {(value.proxy_cidrs ?? []).map((cidr, i) => {
+              const isDerived = !!ownCidr && cidr.trim() === ownCidr;
+              return (
+                <Flex gap="2" align="center" key={i}>
+                  <TextField.Root size="1" className="flex-1" value={cidr}
+                    disabled={isDerived}
+                    onChange={e => {
+                      const list = [...(value.proxy_cidrs ?? [])];
+                      list[i] = e.target.value;
+                      set({ proxy_cidrs: list });
+                    }}
+                    placeholder="10.0.0.0/24" />
+                  <Button variant="ghost" color="red" size="1" disabled={isDerived}
+                    onClick={() => {
+                      const list = (value.proxy_cidrs ?? []).filter((_, j) => j !== i);
+                      set({ proxy_cidrs: list.length ? list : [] });
+                    }}>×</Button>
+                </Flex>
+              );
+            })}
 
             <Flex justify="center" className="mt-2">
               <Button variant="ghost" color="blue" size="1"

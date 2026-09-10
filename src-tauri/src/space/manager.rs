@@ -99,6 +99,26 @@ fn canonical_virtual_ipv4(space_id: &Uuid) -> String {
     format!("10.144.144.{}", host)
 }
 
+/// 计算本机虚拟网段 CIDR（如 10.144.144.10/24 -> 10.144.144.0/24）
+fn own_virtual_cidr(virtual_ipv4: &str, network_length: u8) -> Option<String> {
+    if virtual_ipv4.is_empty() || network_length == 0 || network_length > 32 {
+        return None;
+    }
+    format!("{}/{}", virtual_ipv4, network_length)
+        .parse::<cidr::Ipv4Inet>()
+        .ok()
+        .map(|i| i.network().to_string())
+}
+
+/// 联动 proxy_cidrs：virtual_ipv4 存在时去重添加对应 /24 到首位；不存在时跳过
+/// （create/join 时 virtual_ipv4 总为 canonical 非空；运行时 effective_proxy_cidrs 仍作兜底去重）
+fn sync_proxy_cidrs(config: &mut NetworkConfig) {
+    if let Some(cidr) = own_virtual_cidr(&config.virtual_ipv4, config.network_length) {
+        config.proxy_cidrs.retain(|c| c.trim() != cidr);
+        config.proxy_cidrs.insert(0, cidr);
+    }
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl SpaceManager {
     pub fn new(
@@ -180,6 +200,7 @@ Self {
         config.network_secret = space.network_secret.clone();
         config.dhcp = false;
         config.virtual_ipv4 = canonical_virtual_ipv4(&space.id);
+        sync_proxy_cidrs(&mut config);
         let config_json = serde_json::to_string(&config)
             .map_err(|e| format!("序列化配置失败: {}", e))?;
         self.db.update_space_config(&space.id.to_string(), &config_json)?;
@@ -232,6 +253,7 @@ Self {
         let mut config = config;
         config.dhcp = false;
         config.virtual_ipv4 = canonical_virtual_ipv4(&space.id);
+        sync_proxy_cidrs(&mut config);
 
         // 完整配置 json 落库（默认值已由后端 serde(default) 补全）
         let config_json = serde_json::to_string(&config)
@@ -933,6 +955,7 @@ impl SpaceManager {
         config.network_secret = space.network_secret.clone();
         config.dhcp = false;
         config.virtual_ipv4 = canonical_virtual_ipv4(&space.id);
+        sync_proxy_cidrs(&mut config);
         let config_json = serde_json::to_string(&config)
             .map_err(|e| format!("序列化配置失败: {}", e))?;
         self.db.update_space_config(&space.id.to_string(), &config_json)?;
@@ -984,6 +1007,7 @@ impl SpaceManager {
         let mut config = config;
         config.dhcp = false;
         config.virtual_ipv4 = canonical_virtual_ipv4(&space.id);
+        sync_proxy_cidrs(&mut config);
 
         // 完整配置 json 落库（默认值已由后端 serde(default) 补全）
         let config_json = serde_json::to_string(&config)
