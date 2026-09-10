@@ -14,7 +14,6 @@ pub fn get_daemon_error_reason(ready_state: State<'_, DaemonReadyState>) -> Opti
 
 #[tauri::command]
 pub async fn get_daemon_logs(level: Option<String>) -> Result<Vec<crate::log::LogEntry>, String> {
-    crate::log_debug!("获取守护进程日志");
     let client = IpcClient::get_global();
     match client.get_logs(level.as_deref(), None, None).await {
         Ok(IpcResponse::Ok { data }) => {
@@ -40,7 +39,6 @@ pub async fn query_daemon_logs(
     after_ts: Option<String>,
     limit: Option<usize>,
 ) -> Result<Vec<crate::log::LogEntry>, String> {
-    crate::log_debug!("查询守护进程日志");
     let client = IpcClient::get_global();
     let logs: Vec<crate::log::LogEntry> = match client.get_logs(None, None, None).await {
         Ok(IpcResponse::Ok { data }) => match data {

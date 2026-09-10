@@ -133,7 +133,7 @@ export function SettingsPage() {
 
           {/* 内容区 */}
           <Tabs.Content value="basic" forceMount className="data-[state=inactive]:hidden data-[state=active]:flex-1 min-h-0 overflow-y-auto">
-            <div className="flex flex-col max-w-4xl gap-4 p-4 mx-auto md:flex-row md:items-start">
+            <div className="flex flex-col max-w-4xl gap-4 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] mx-auto md:flex-row md:items-start">
               {/* 左列 */}
               <div className="flex flex-col flex-1 min-w-0 gap-4">
               {/* 主题 */}
@@ -187,7 +187,7 @@ export function SettingsPage() {
               {/* EasyTier 引擎 / 当前应用（左右两栏） */}
               <Card size="3">
                 <Grid columns={{ initial: "1", md: "2" }} gap="4">
-                  <div className="border-r border-[var(--color-border)] md:pr-4" style={{ borderRightStyle: 'solid'}}>
+                  <div className="border-b md:border-b-0 md:border-r border-[var(--color-border)] pb-4 md:pb-0 md:pr-4">
                     <EasyTierVersionManager />
                   </div>
                   <div>

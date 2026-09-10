@@ -132,6 +132,10 @@ export function SpaceList() {
             </Button>
           </DropdownMenu.Trigger>
           <DropdownMenu.Content>
+            <DropdownMenu.Item onClick={() => setScanOpen(true)}>
+              <ScanLine size={16} />
+              {t("space.scan")}
+            </DropdownMenu.Item>
             <DropdownMenu.Item onClick={() => setShowCreate(true)}>
               <Plus size={16} />
               {t("space.create")}
@@ -139,10 +143,6 @@ export function SpaceList() {
             <DropdownMenu.Item onClick={() => setShowJoin(true)}>
               <LogIn size={16} />
               {t("space.join")}
-            </DropdownMenu.Item>
-            <DropdownMenu.Item onClick={() => setScanOpen(true)}>
-              <ScanLine size={16} />
-              {t("space.scan")}
             </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Root>

@@ -24,7 +24,6 @@ pub async fn get_port_forward_rules(
     space_id: String,
     db: State<'_, Arc<Database>>,
 ) -> Result<Vec<PortForwardRule>, String> {
-    crate::log_debug!(format!("获取端口转发规则: space_id={}", space_id));
     let rows = db.get_port_forward_rules(&space_id)?;
     Ok(rows.into_iter().map(row_to_rule).collect())
 }

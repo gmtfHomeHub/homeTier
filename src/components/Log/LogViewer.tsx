@@ -342,7 +342,7 @@ export function LogViewer({ spaceId }: LogViewerProps) {
 
   const rowKey = useCallback((index: number, data: { logs: LogEntry[] }) => {
     const entry = data.logs[index];
-    return entry ? `${entry.seq}-${entry.module}-${index}` : String(index);
+    return entry ? `${entry.seq}-${entry.module}` : String(index);
   }, []);
 
   const rowProps = useMemo(() => ({ logs: filtered, onRowClick: setDetailEntry, keyword }), [filtered, keyword]);

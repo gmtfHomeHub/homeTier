@@ -41,11 +41,19 @@ function Root() {
       const kb = window.innerHeight - vv.height - vv.offsetTop;
       root.style.bottom = `${Math.max(kb, 0)}px`;
       // Dialog Content（portal 到 body，不受 #root 上推影响）：
-      // 高度跟随可视区，配合 [role=dialog] overflow-y:auto 使内部 scrollIntoView 生效，
-      // 避免弹窗内输入框被键盘遮挡
+      // 键盘弹起时贴可视区顶部（取消 Radix 默认 Y 居中 transform），高度跟随可视区，
+      // 配合 [role=dialog] overflow-y:auto 使内部 scrollIntoView 能滚到输入框；
+      // 无键盘时复位居中（交还 Radix 默认 top/transform）
       const vh = vv.height - vv.offsetTop;
       document.querySelectorAll<HTMLElement>('[role="dialog"]').forEach((el) => {
         el.style.maxHeight = `${Math.max(vh - 16, 200)}px`;
+        if (kb > 0) {
+          el.style.top = `${vv.offsetTop}px`;
+          el.style.transform = "translate(-50%, 0)";
+        } else {
+          el.style.top = "";
+          el.style.transform = "";
+        }
       });
       scrollFocused();
     };
@@ -64,6 +72,8 @@ function Root() {
       root.style.bottom = "";
       document.querySelectorAll<HTMLElement>('[role="dialog"]').forEach((el) => {
         el.style.maxHeight = "";
+        el.style.top = "";
+        el.style.transform = "";
       });
     };
   }, [isMobile]);
