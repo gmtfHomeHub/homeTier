@@ -3,7 +3,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeft,
-  MessageSquare,
   MoreHorizontal,
   Terminal,
   Trash2,
@@ -27,7 +26,7 @@ export function SpaceDetail() {
   const { logEnabled } = useSettingsStore();
   const { disconnectingId, connect, disconnect } = useSpaceConnect();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [, setDeleting] = useState(false);
 
   const space = spaces.find((s) => s.id === id);
   // 取消所有者权限限制：默认放开（不再按 space.owner_id 判断）

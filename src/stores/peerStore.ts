@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { getSpacePeers, getNetworkStats } from "../utils/api";
-import type { PeerInfo, NetworkStats } from "../types";
+import type { PeerInfo } from "../types";
 
 interface NetworkStatsState {
   rx_bytes: number;
@@ -74,17 +74,20 @@ export const usePeerStore = create<PeerStore>((set, get) => ({
     if (handle) {
       clearInterval(handle);
       set((state) => {
-        const { [spaceId]: removed, ...rest } = state.pollHandles;
-        return { pollHandles: rest };
+        const pollHandles = { ...state.pollHandles };
+        delete pollHandles[spaceId];
+        return { pollHandles };
       });
     }
   },
 
   clearPeers: (spaceId: string) => {
     set((state) => {
-      const { [spaceId]: removedPeers, ...peersRest } = state.peers;
-      const { [spaceId]: removedStats, ...statsRest } = state.stats;
-      return { peers: peersRest, stats: statsRest };
+      const peers = { ...state.peers };
+      const stats = { ...state.stats };
+      delete peers[spaceId];
+      delete stats[spaceId];
+      return { peers, stats };
     });
   },
 }));

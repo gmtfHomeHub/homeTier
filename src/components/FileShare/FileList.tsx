@@ -42,6 +42,7 @@ export function FileList() {
     if (id) {
       loadFiles();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const loadFiles = async () => {

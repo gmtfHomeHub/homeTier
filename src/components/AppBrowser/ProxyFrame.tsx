@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+/* eslint-disable react-refresh/only-export-components */
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ShieldAlert, Loader2 } from "lucide-react";
 import { Button, Flex, Text, Card } from "@radix-ui/themes";
@@ -45,7 +46,7 @@ function parseProxyKey(proxyUrl: string): string {
   return m?.[1] ?? "";
 }
 
-export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, onOpenBrowser, onBack, onError, onNavState }: ProxyFrameProps) {
+export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, onError, onNavState }: ProxyFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { ref: containerRef, width: cw, height: ch } = useContainerSize<HTMLDivElement>();
   const { t } = useTranslation();
@@ -55,6 +56,7 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, o
   const retriedRef = useRef(false);
   const loadSessionRef = useRef(0);
   const sessionStartRef = useRef(Date.now());
+  const [retryNonce, setRetryNonce] = useState(0);
   const proxyKey = parseProxyKey(proxyUrl);
 
   // refreshNonce 变化 → 外层已通过 key 重建本组件（iframe 全新加载），
@@ -102,15 +104,8 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, o
             loadedRef.current = false;
             setLoading(true);
             setStage("connecting");
-            // src 重设触发重载（比 contentWindow.location.reload 稳健，避免跨源 SecurityError）
-            const iframe = iframeRef.current;
-            if (iframe) {
-              try {
-                iframe.src = iframe.src;
-              } catch {
-                // 极端情况忽略，由 loading 兜底解除
-              }
-            }
+            // iframe key 递增强制重建重载（无跨源访问、无自赋值 lint 问题）
+            setRetryNonce((n) => n + 1);
           }, 2000);
         } else {
           // 非可重试错误或已重试过：显示错误状态
@@ -183,6 +178,7 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, o
         }}
       >
         <iframe
+          key={retryNonce}
           ref={iframeRef}
           id={`ht-frame-${tabKey}`}
           src={proxyUrl}

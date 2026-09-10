@@ -5,10 +5,10 @@ import { useSpaceStore } from "../../stores/spaceStore";
 import { setActiveChatSpace } from "../../services/realtime";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
-import { ArrowLeft, Mic, Monitor, FileUp, MoreHorizontal } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Button, DropdownMenu } from "@radix-ui/themes";
+import { Button } from "@radix-ui/themes";
 import { View } from "../Common/PageView";
 
 export function ChatView() {
@@ -26,7 +26,7 @@ export function ChatView() {
     if (id) {
       loadMessages(id);
     }
-  }, [id]);
+  }, [id, loadMessages]);
 
   useEffect(() => {
     setActiveChatSpace(id || null);

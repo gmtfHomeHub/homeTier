@@ -13,9 +13,6 @@ import type {
   PortForwardRule,
   ShareInfo,
   ParseQrResult,
-  AppImport,
-  AddAppPayload,
-  PeerTarget,
   ImportAddAppsResult,
   SendFileResult,
   FileTransferProgress,
@@ -449,8 +446,8 @@ export async function sendFile(
 export async function receiveFile(
   spaceId: string,
   fileId: string,
-  savePath?: string,
-  password?: string
+  _savePath?: string,
+  _password?: string
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/file/${spaceId}/download/${fileId}`, {
     credentials: "include",

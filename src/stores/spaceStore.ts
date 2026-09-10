@@ -93,7 +93,7 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
       const spaces = await api.listSpaces();
       set({ spaces });
       syncTrayMenu(spaces);
-    } catch (e) {
+    } catch {
       // silently ignore
     }
   },

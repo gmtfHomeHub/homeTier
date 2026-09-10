@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, X, Share2, Wifi, Users, Copy, HelpCircle } from "lucide-react";
+import { Check, X, Wifi, Copy, HelpCircle } from "lucide-react";
 import { Button, TextField, Flex, Text, Badge, ScrollArea, Box } from "@radix-ui/themes";
 import Tip from "../Common/Tip";
 import { toastSuccess, toastError } from "../../utils/toast";
@@ -19,12 +19,6 @@ function filterPeers(peers: PeerInfo[]): PeerInfo[] {
   return peers.filter(
     (p) => !p.is_local && !p.hostname?.startsWith("PublicServer_")
   );
-}
-
-function peerDisplayName(peer: PeerInfo): string {
-  const name = peer.hostname?.replace(/^PublicServer_/, "") ?? `Peer #${peer.peer_id}`;
-  const ip = peer.virtual_ip ? ` ${peer.virtual_ip}` : "";
-  return `${name}${ip}`;
 }
 
 export function AppShareDialog({ space, onClose }: AppShareDialogProps) {

@@ -18,8 +18,6 @@ interface AppNavPageProps {
   isOwner: boolean;
 }
 
-const SYSTEM_GROUP_KEY = "__system__";
-
 function toNavApp(app: SpaceApp): NavApp {
   return { id: app.id, name: app.name, icon: app.icon, description: app.description, system: false };
 }

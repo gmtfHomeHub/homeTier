@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Card, Text, Flex, Grid } from "@radix-ui/themes";
 import { useTranslation } from "react-i18next";
 import { Signal, Wifi, Activity, Users } from "lucide-react";
-import type { PeerInfo } from "../../types";
 import { PeerTableDialog } from "./peerTableDialog";
 import { usePeerStore } from "../../stores/peerStore";
 

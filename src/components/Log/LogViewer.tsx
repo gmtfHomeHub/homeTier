@@ -242,10 +242,10 @@ export function LogViewer({ spaceId }: LogViewerProps) {
     try {
       await writeText(text);
       toastSuccess(t("log.copiedToClipboard"));
-    } catch (e) {
+    } catch {
       toastError(t("log.copyFailed"));
     }
-  }, []);
+  }, [t]);
 
   const handleClear = useCallback(async () => {
     if (clearing) return;

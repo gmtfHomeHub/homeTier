@@ -1,4 +1,4 @@
-import { registerSignalHandler as registerRawSignalHandler, type RawChatMessage } from "./realtime";
+import { registerSignalHandler as registerRawSignalHandler } from "./realtime";
 import { useSpaceStore } from "../stores/spaceStore";
 import { sendSignal as sendSignalApi } from "../utils/api";
 

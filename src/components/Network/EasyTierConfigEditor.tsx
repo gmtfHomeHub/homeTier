@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { NetworkConfig, PortForwardConfig } from "../../types/network";
-import { DEFAULT_NETWORK_CONFIG, addRow, removeRow, computeNetworkCidr } from "../../types/network";
+import { addRow, removeRow, computeNetworkCidr } from "../../types/network";
 import { Button, TextField, Checkbox, Text, Select, Flex , Grid } from "@radix-ui/themes";
 import { CollapsibleSection } from "../Common/CollapsibleSection";
 import { Eye, EyeOff, Trash2, Globe } from "lucide-react";

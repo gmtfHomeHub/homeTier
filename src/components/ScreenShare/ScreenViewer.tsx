@@ -26,7 +26,6 @@ export function ScreenViewer() {
 
   const isSharing = useScreenStore((s) => s.isSharing);
   const sourceName = useScreenStore((s) => s.sourceName);
-  const quality = useScreenStore((s) => s.quality);
   const viewerCount = useScreenStore((s) => s.viewerCount);
 
   const watching = useScreenStore((s) => s.watching);

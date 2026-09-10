@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { LogViewer } from "../Log/LogViewer";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { EasyTierVersionManager } from "./EasyTierVersionManager";
@@ -44,10 +44,10 @@ export function SettingsPage() {
     return () => { alive = false; };
   }, []);
 
-  const setActiveTab = (tab: SettingTabEnum) => {
+  const setActiveTab = useCallback((tab: SettingTabEnum) => {
     // setActiveTab(tab);
     setSettingsTab(tab);
-  };
+  }, [setSettingsTab]);
 
   useEffect(() => {
     getLogEnabled().then((val) => setStoreLogEnabled(val)).catch(() => {});
@@ -57,7 +57,7 @@ export function SettingsPage() {
     if (!logEnabled && activeTab === SettingTabEnum.LOG) {
       setActiveTab(SettingTabEnum.BASIC);
     }
-  }, [logEnabled, activeTab]);
+  }, [logEnabled, activeTab, setActiveTab]);
 
   useEffect(() => {
     if (activeTab === SettingTabEnum.ET) {

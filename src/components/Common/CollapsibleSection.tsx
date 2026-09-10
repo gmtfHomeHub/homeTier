@@ -1,6 +1,5 @@
 import React, { useState } from "react";
-import { Flex, Text, Card } from "@radix-ui/themes";
-import { ChevronDown } from "lucide-react";
+import { Text } from "@radix-ui/themes";
 
 interface CollapsibleSectionProps {
   title: string;

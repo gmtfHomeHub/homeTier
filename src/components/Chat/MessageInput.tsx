@@ -9,7 +9,7 @@ interface MessageInputProps {
   disabled: boolean;
 }
 
-export function MessageInput({ spaceId, onSend, disabled }: MessageInputProps) {
+export function MessageInput({ onSend, disabled }: MessageInputProps) {
   const { t } = useTranslation();
   const [text, setText] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);

@@ -23,12 +23,6 @@ function handlePressed(shortcut: string): void {
   }
 }
 
-function toHandler(shortcut: string): (event: { state: string }) => void {
-  return (event) => {
-    if (event.state === "Pressed") handlePressed(shortcut);
-  };
-}
-
 export async function applyGlobalShortcuts(): Promise<void> {
   // Web 模式无全局快捷键插件，仅保留页面内快捷入口
   if (!isTauri()) return;
