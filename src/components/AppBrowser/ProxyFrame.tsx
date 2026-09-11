@@ -289,21 +289,21 @@ export const ProxyFrame = forwardRef<ProxyFrameHandle, ProxyFrameProps>(function
           const dy = c.y - st.startCenter.y;
           zoomRef.current.scale = newScale;
           zoomRef.current.offset = clampOffset(st.startOffset.x + dx, st.startOffset.y + dy, newScale, viewport.w, viewport.h, cw, ch);
-          scheduleApply();
+          applyTransform();
         } else if (td.type === "touchmove" && ts.length === 1 && st.mode === "drag") {
           const dx = ts[0].clientX - st.startTouch.x;
           const dy = ts[0].clientY - st.startTouch.y;
           zoomRef.current.offset = clampOffset(st.startOffset.x + dx, st.startOffset.y + dy, st.startScale, viewport.w, viewport.h, cw, ch);
-          scheduleApply();
+          applyTransform();
         } else if (td.type === "touchend") {
           if (st.mode !== "none") touchRef.current = { ...st, mode: "none" };
-          flushApply();
+          applyTransform();
         }
       }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [onNavState, proxyUrl, enableZoom, viewport, cw, ch, scheduleApply, flushApply]);
+  }, [onNavState, proxyUrl, enableZoom, viewport, cw, ch, applyTransform]);
 
   // 订阅流：transform 由 useLayoutEffect + applyTransform 控制（React 不写 style.transform，
   // re-render 不覆盖 DOM）；enableZoom 用 zoomRef（手势值），否则自适应（桌面端原生 desktop 100%）
