@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { X, Search } from "lucide-react";
 import { Button, TextField, Select, Flex, Text, Dialog } from "@radix-ui/themes";
@@ -37,6 +37,35 @@ export function AppFormDialog({ app, spaceId, existingCategories, open, onClose,
   const [port, setPort] = useState(app?.port ?? "");
   const [pathname, setPathname] = useState(app?.pathname ?? "");
   const [saving, setSaving] = useState(false);
+
+  // 软键盘弹起时调整 Dialog 位置贴顶，防止输入框被遮挡
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const apply = () => {
+      const el = contentRef.current;
+      if (!el) return;
+      const kb = window.innerHeight - vv.height - vv.offsetTop;
+      if (kb > 0) {
+        el.style.top = `${vv.offsetTop}px`;
+        el.style.transform = "translate(-50%, 0)";
+        el.style.maxHeight = `${vv.height - 16}px`;
+      } else {
+        el.style.top = "";
+        el.style.transform = "";
+        el.style.maxHeight = "";
+      }
+    };
+    apply();
+    vv.addEventListener("resize", apply);
+    vv.addEventListener("scroll", apply);
+    return () => {
+      vv.removeEventListener("resize", apply);
+      vv.removeEventListener("scroll", apply);
+    };
+  }, [open]);
 
   const urlPreview = `${protocol}//${hostname}${port ? `:${port}` : ""}${pathname ? `/${pathname.replace(/^\//, "")}` : ""}`;
 
@@ -82,7 +111,7 @@ export function AppFormDialog({ app, spaceId, existingCategories, open, onClose,
 
   return (
     <Dialog.Root open={open} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <Dialog.Content className="w-full max-w-[calc(100vw-24px)] sm:w-[520px]">
+      <Dialog.Content ref={contentRef} className="w-full max-w-[calc(100vw-24px)] sm:w-[520px]">
         <Flex align="center" justify="between" className="mb-4">
           <Dialog.Title className="m-0 text-lg font-semibold">
             {isEditing ? t("appNav.editApp") : t("appNav.addApp")}

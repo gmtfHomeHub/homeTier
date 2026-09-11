@@ -218,18 +218,20 @@ export function AppWorkspace() {
             </Button>
           </div>
         )}
-        <Button
-          onClick={handleToggleDevice}
-          variant="ghost"
-          size="2"
-          title={
-            deviceMode === "desktop"
-              ? t("common.switchToMobile")
-              : t("common.switchToDesktop")
-          }
-        >
-          {deviceMode === "desktop" ? <Smartphone size={16} /> : <Monitor size={16} />}
-        </Button>
+        {!mobilePlatform && (
+          <Button
+            onClick={handleToggleDevice}
+            variant="ghost"
+            size="2"
+            title={
+              deviceMode === "desktop"
+                ? t("common.switchToMobile")
+                : t("common.switchToDesktop")
+            }
+          >
+            {deviceMode === "desktop" ? <Smartphone size={16} /> : <Monitor size={16} />}
+          </Button>
+        )}
         <Button onClick={handleOpenInBrowser} variant="ghost" size="2" title={t("common.openInBrowser")}>
           <ExternalLink size={16} />
         </Button>
