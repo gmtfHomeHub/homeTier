@@ -227,17 +227,30 @@ function strip(){try{var a=document.querySelectorAll("[autofocus],input[autofocu
 if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",strip,false)}else{strip()}
 })()"#;
 
-/// 跨源 iframe 内两指手势桥：监听 touch 事件，仅两指转发 parent（pinch 缩放 + pan 平移）；
-/// 单指留给 iframe 页面原生交互（点击/滚动）。两指 touchmove preventDefault 阻止 iframe 默认手势。
+/// 跨源 iframe 内手势桥：监听 touch 事件转发 parent。
+/// - 两指：pinch 缩放 + pan 平移（center 位移），touchmove preventDefault 阻止 iframe 默认
+/// - 单指：threshold(8px) 区分 tap/drag——超阈值 preventDefault + 转发 pan 移动可视区；
+///   未超阈值不转发（iframe 原生 tap/滚动）；touchend 始终转发（parent reset mode）
 const TOUCH_BRIDGE_JS: &str = r#"
 ;(function(){
 if(window.__htTouch)return;window.__htTouch=1;
+var st=null,pan=false,TH=8;
+function pts(e){var ts=[],n=e.touches.length;for(var i=0;i<n;i++)ts.push({clientX:e.touches[i].clientX,clientY:e.touches[i].clientY});return ts}
+function post(type,ts){try{parent.postMessage({__ht_touch:{type:type,touches:ts}},"*")}catch(ex){}}
 function send(type,e){
   var n=e.touches.length;
-  if(n<2 && type!=="touchend") return;
-  if(n>=2 && type==="touchmove") e.preventDefault();
-  var ts=[];for(var i=0;i<n;i++)ts.push({clientX:e.touches[i].clientX,clientY:e.touches[i].clientY});
-  try{parent.postMessage({__ht_touch:{type:type,touches:ts}},"*")}catch(ex){}
+  if(n>=2){st=null;pan=false;if(type==="touchmove")e.preventDefault();post(type,pts(e));return}
+  if(n===1){
+    var t=e.touches[0];
+    if(type==="touchstart"){st={x:t.clientX,y:t.clientY};pan=false;post("touchstart",pts(e));return}
+    if(type==="touchmove"){
+      if(!st)return;
+      var dx=t.clientX-st.x,dy=t.clientY-st.y;
+      if(!pan&&Math.hypot(dx,dy)<TH)return;
+      pan=true;e.preventDefault();post("touchmove",pts(e));return;
+    }
+  }
+  if(type==="touchend"){st=null;pan=false;post("touchend",pts(e));}
 }
 ["touchstart","touchmove","touchend"].forEach(function(ev){
   window.addEventListener(ev,function(e){send(ev,e)},{passive:false});
