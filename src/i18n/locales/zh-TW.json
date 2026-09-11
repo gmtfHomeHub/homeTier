@@ -84,6 +84,9 @@
     "modeMobile": "手機模式",
     "switchToDesktop": "切換到電腦模式",
     "switchToMobile": "切換到手機模式",
+    "zoomIn": "放大",
+    "zoomOut": "縮小",
+    "resetZoom": "重置縮放",
     "done": "完成",
     "confirmDeleteAppMessage": "確定要刪除「{{name}}」嗎？",
     "initializing": "服務初始化中...",
@@ -206,9 +209,9 @@
     "notJoined": "未加入語音頻道"
   },
   "space": {
-    "create": "建立空間",
+    "create": "建立",
     "createSpace": "建立空間",
-    "join": "加入空間",
+    "join": "加入",
     "joinSpace": "加入空間",
     "leave": "離開空間",
     "delete": "刪除空間",

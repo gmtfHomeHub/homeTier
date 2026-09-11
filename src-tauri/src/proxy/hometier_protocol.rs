@@ -227,6 +227,23 @@ function strip(){try{var a=document.querySelectorAll("[autofocus],input[autofocu
 if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",strip,false)}else{strip()}
 })()"#;
 
+/// 跨源 iframe 内两指手势桥：监听 touch 事件，仅两指转发 parent（pinch 缩放 + pan 平移）；
+/// 单指留给 iframe 页面原生交互（点击/滚动）。两指 touchmove preventDefault 阻止 iframe 默认手势。
+const TOUCH_BRIDGE_JS: &str = r#"
+;(function(){
+if(window.__htTouch)return;window.__htTouch=1;
+function send(type,e){
+  var n=e.touches.length;
+  if(n<2 && type!=="touchend") return;
+  if(n>=2 && type==="touchmove") e.preventDefault();
+  var ts=[];for(var i=0;i<n;i++)ts.push({clientX:e.touches[i].clientX,clientY:e.touches[i].clientY});
+  try{parent.postMessage({__ht_touch:{type:type,touches:ts}},"*")}catch(ex){}
+}
+["touchstart","touchmove","touchend"].forEach(function(ev){
+  window.addEventListener(ev,function(e){send(ev,e)},{passive:false});
+});
+})()"#;
+
 /// 注入移动端 viewport meta（缺失时）
 fn inject_viewport_meta(html: &mut String) {
     let lower = html.to_lowercase();
@@ -301,6 +318,8 @@ if is_mobile {
     js_content.push_str(NAV_BRIDGE_JS);
     js_content.push_str("\n");
     js_content.push_str(AUTOFOCUS_JS);
+    js_content.push_str("\n");
+    js_content.push_str(TOUCH_BRIDGE_JS);
 
     debug_assert!(!regex::Regex::new(r"\}\)\s*\(\s*function")
             .unwrap()

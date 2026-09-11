@@ -84,6 +84,9 @@
     "modeMobile": "手机模式",
     "switchToDesktop": "切换到电脑模式",
     "switchToMobile": "切换到手机模式",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "resetZoom": "重置缩放",
     "done": "完成",
     "confirmDeleteAppMessage": "确定要删除「{{name}}」吗？",
     "initializing": "服务初始化中...",
@@ -206,9 +209,9 @@
     "notJoined": "未加入语音频道"
   },
   "space": {
-    "create": "创建空间",
+    "create": "创建",
     "createSpace": "创建空间",
-    "join": "加入空间",
+    "join": "加入",
     "joinSpace": "加入空间",
     "leave": "离开空间",
     "delete": "删除空间",

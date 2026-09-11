@@ -1,10 +1,10 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useEffect, useLayoutEffect, useRef, useState, type TouchEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type TouchEvent, forwardRef, useImperativeHandle } from "react";
 import { useTranslation } from "react-i18next";
 import { ShieldAlert, Loader2 } from "lucide-react";
 import { Button, Flex, Text, Card } from "@radix-ui/themes";
 import { listen } from "@tauri-apps/api/event";
-import { DEVICE_VIEWPORTS, type DeviceMode } from "../../utils/device";
+import { DEVICE_VIEWPORTS, useIsMobilePlatform, type DeviceMode } from "../../utils/device";
 import * as api from "../../utils/api";
 
 export interface FrameNavState {
@@ -56,6 +56,12 @@ const touchDist = (touches: ArrayLike<{ clientX: number; clientY: number }>) => 
   return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
 };
 
+/** 双指中心点（pinch 缩放 + pan 平移同时） */
+const touchCenter = (touches: ArrayLike<{ clientX: number; clientY: number }>) => ({
+  x: (touches[0].clientX + touches[1].clientX) / 2,
+  y: (touches[0].clientY + touches[1].clientY) / 2,
+});
+
 /** 限制 offset 使 viewport 不完全飞出容器（可 pan 到边缘，居中时固定） */
 const clampOffset = (x: number, y: number, s: number, vw: number, vh: number, cw: number, ch: number) => {
   const sw = vw * s;
@@ -67,29 +73,49 @@ const clampOffset = (x: number, y: number, s: number, vw: number, vh: number, cw
   return { x: Math.max(minX, Math.min(maxX, x)), y: Math.max(minY, Math.min(maxY, y)) };
 };
 
-export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, onError, onNavState }: ProxyFrameProps) {
+export interface ProxyFrameHandle {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  resetZoom: () => void;
+}
+
+export const ProxyFrame = forwardRef<ProxyFrameHandle, ProxyFrameProps>(function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, onError, onNavState }, ref) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { ref: containerRef, width: cw, height: ch } = useContainerSize<HTMLDivElement>();
   const { t } = useTranslation();
 
-  // 电脑模式缩放/拖拽：desktop 默认 50%，支持 pinch + drag + Ctrl+滚轮；mobile 保持自适应
+  // 缩放/拖拽：仅移动端平台 + desktop 模式启用 50% + 手势；
+  // 桌面端原生 desktop 自适应 100%，mobile 模式自适应
+  const mobilePlatform = useIsMobilePlatform();
   const isDesktop = deviceMode === "desktop";
+  const enableZoom = mobilePlatform && isDesktop;
   const viewport = DEVICE_VIEWPORTS[deviceMode];
   const [zoomScale, setZoomScale] = useState(0.5);
   const [zoomOffset, setZoomOffset] = useState({ x: 0, y: 0 });
-  const touchRef = useRef<{ mode: "none" | "drag" | "pinch"; startDist: number; startScale: number; startOffset: { x: number; y: number }; startTouch: { x: number; y: number } }>({ mode: "none", startDist: 0, startScale: 0.5, startOffset: { x: 0, y: 0 }, startTouch: { x: 0, y: 0 } });
+  const touchRef = useRef<{ mode: "none" | "drag" | "pinch"; startDist: number; startScale: number; startOffset: { x: number; y: number }; startTouch: { x: number; y: number }; startCenter: { x: number; y: number } }>({ mode: "none", startDist: 0, startScale: 0.5, startOffset: { x: 0, y: 0 }, startTouch: { x: 0, y: 0 }, startCenter: { x: 0, y: 0 } });
+  // latest zoom state ref，使 message handler 不依赖 zoomScale/zoomOffset deps（避免高频重绑）
+  const zoomStateRef = useRef({ scale: zoomScale, offset: zoomOffset });
+  useEffect(() => { zoomStateRef.current = { scale: zoomScale, offset: zoomOffset }; }, [zoomScale, zoomOffset]);
+
+  // 工具栏按钮命令（zoomIn/zoomOut/resetZoom）
+  useImperativeHandle(ref, () => ({
+    zoomIn: () => setZoomScale((s) => clampZoom(s + 0.1)),
+    zoomOut: () => setZoomScale((s) => clampZoom(s - 0.1)),
+    resetZoom: () => { setZoomScale(0.5); setZoomOffset({ x: 0, y: 0 }); },
+  }), []);
 
   const onTouchStart = (e: TouchEvent<HTMLDivElement>) => {
-    if (!isDesktop) return;
+    if (!enableZoom) return;
     const ts = e.touches;
+    const zs = zoomStateRef.current;
     if (ts.length === 1) {
-      touchRef.current = { mode: "drag", startDist: 0, startScale: zoomScale, startOffset: { ...zoomOffset }, startTouch: { x: ts[0].clientX, y: ts[0].clientY } };
+      touchRef.current = { mode: "drag", startDist: 0, startScale: zs.scale, startOffset: { ...zs.offset }, startTouch: { x: ts[0].clientX, y: ts[0].clientY }, startCenter: { x: 0, y: 0 } };
     } else if (ts.length >= 2) {
-      touchRef.current = { mode: "pinch", startDist: touchDist(ts), startScale: zoomScale, startOffset: { ...zoomOffset }, startTouch: { x: 0, y: 0 } };
+      touchRef.current = { mode: "pinch", startDist: touchDist(ts), startScale: zs.scale, startOffset: { ...zs.offset }, startTouch: { x: 0, y: 0 }, startCenter: touchCenter(ts) };
     }
   };
   const onTouchMove = (e: TouchEvent<HTMLDivElement>) => {
-    if (!isDesktop) return;
+    if (!enableZoom) return;
     const st = touchRef.current;
     if (st.mode === "none") return;
     e.preventDefault();
@@ -97,19 +123,25 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, o
     if (st.mode === "drag" && ts.length >= 1) {
       const dx = ts[0].clientX - st.startTouch.x;
       const dy = ts[0].clientY - st.startTouch.y;
-      setZoomOffset(clampOffset(st.startOffset.x + dx, st.startOffset.y + dy, zoomScale, viewport.w, viewport.h, cw, ch));
+      setZoomOffset(clampOffset(st.startOffset.x + dx, st.startOffset.y + dy, st.startScale, viewport.w, viewport.h, cw, ch));
     } else if (st.mode === "pinch" && ts.length >= 2) {
       const ratio = st.startDist > 0 ? touchDist(ts) / st.startDist : 1;
-      setZoomScale(clampZoom(st.startScale * ratio));
+      const newScale = clampZoom(st.startScale * ratio);
+      setZoomScale(newScale);
+      const c = touchCenter(ts);
+      const dx = c.x - st.startCenter.x;
+      const dy = c.y - st.startCenter.y;
+      setZoomOffset(clampOffset(st.startOffset.x + dx, st.startOffset.y + dy, newScale, viewport.w, viewport.h, cw, ch));
     }
   };
   const onTouchEnd = (e: TouchEvent<HTMLDivElement>) => {
-    if (!isDesktop) return;
+    if (!enableZoom) return;
     const st = touchRef.current;
+    const zs = zoomStateRef.current;
     if (e.touches.length === 0) {
       touchRef.current = { ...st, mode: "none" };
     } else if (e.touches.length === 1 && st.mode === "pinch") {
-      touchRef.current = { mode: "drag", startDist: 0, startScale: zoomScale, startOffset: { ...zoomOffset }, startTouch: { x: e.touches[0].clientX, y: e.touches[0].clientY } };
+      touchRef.current = { mode: "drag", startDist: 0, startScale: zs.scale, startOffset: { ...zs.offset }, startTouch: { x: e.touches[0].clientX, y: e.touches[0].clientY }, startCenter: { x: 0, y: 0 } };
     }
   };
 
@@ -118,14 +150,14 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, o
     const el = containerRef.current;
     if (!el) return;
     const handler = (e: WheelEvent) => {
-      if (!isDesktop || !e.ctrlKey) return;
+      if (!enableZoom || !e.ctrlKey) return;
       e.preventDefault();
       const delta = -e.deltaY * 0.0015;
       setZoomScale((s) => clampZoom(s * (1 + delta)));
     };
     el.addEventListener("wheel", handler, { passive: false });
     return () => el.removeEventListener("wheel", handler);
-  }, [isDesktop, containerRef]);
+  }, [enableZoom, containerRef]);
 
   const [loading, setLoading] = useState(true);
   const [stage, setStage] = useState("connecting");
@@ -203,27 +235,49 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, o
     return () => clearTimeout(timer);
   }, [loading]);
 
-  // 监听注入脚本的导航状态上报（__ht_nav），桥接给工具栏
+  // 监听注入脚本上报：__ht_nav 导航状态 + __ht_touch iframe 内两指手势（pinch+pan）
   useLayoutEffect(() => {
     const handler = (e: MessageEvent) => {
       if (e.source !== iframeRef.current?.contentWindow) return;
       const d = e.data;
-      if (!d || !d.__ht_nav) return;
-      onNavState?.({
-        canBack: d.idx > 0,
-        canFwd: d.idx < d.len - 1,
-        url: typeof d.url === "string" ? d.url : proxyUrl,
-      });
+      if (!d) return;
+      if (d.__ht_nav) {
+        onNavState?.({
+          canBack: d.idx > 0,
+          canFwd: d.idx < d.len - 1,
+          url: typeof d.url === "string" ? d.url : proxyUrl,
+        });
+        return;
+      }
+      if (d.__ht_touch && enableZoom) {
+        const td = d.__ht_touch;
+        const st = touchRef.current;
+        const ts = td.touches as { clientX: number; clientY: number }[];
+        const zs = zoomStateRef.current;
+        if (td.type === "touchstart" && ts.length >= 2) {
+          touchRef.current = { mode: "pinch", startDist: touchDist(ts), startScale: zs.scale, startOffset: { ...zs.offset }, startTouch: { x: 0, y: 0 }, startCenter: touchCenter(ts) };
+        } else if (td.type === "touchmove" && ts.length >= 2 && st.mode === "pinch") {
+          const ratio = st.startDist > 0 ? touchDist(ts) / st.startDist : 1;
+          const newScale = clampZoom(st.startScale * ratio);
+          setZoomScale(newScale);
+          const c = touchCenter(ts);
+          const dx = c.x - st.startCenter.x;
+          const dy = c.y - st.startCenter.y;
+          setZoomOffset(clampOffset(st.startOffset.x + dx, st.startOffset.y + dy, newScale, viewport.w, viewport.h, cw, ch));
+        } else if (td.type === "touchend") {
+          if (st.mode === "pinch") touchRef.current = { ...st, mode: "none" };
+        }
+      }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [onNavState, proxyUrl]);
+  }, [onNavState, proxyUrl, enableZoom, viewport, cw, ch]);
 
-  // desktop 用手势 state（zoomScale/zoomOffset）；mobile 用自适应计算
+  // enableZoom（移动端+desktop）用手势 state；否则自适应（桌面端原生 desktop 100% 适应）
   const adaptiveScale = cw > 0 && ch > 0 ? Math.min(cw / viewport.w, ch / viewport.h) : 1;
-  const scale = isDesktop ? zoomScale : adaptiveScale;
-  const offsetX = isDesktop ? zoomOffset.x : (cw - viewport.w * adaptiveScale) / 2;
-  const offsetY = isDesktop ? zoomOffset.y : (ch - viewport.h * adaptiveScale) / 2;
+  const scale = enableZoom ? zoomScale : adaptiveScale;
+  const offsetX = enableZoom ? zoomOffset.x : (cw - viewport.w * adaptiveScale) / 2;
+  const offsetY = enableZoom ? zoomOffset.y : (ch - viewport.h * adaptiveScale) / 2;
 
   const STAGE_TEXT: Record<string, string> = {
     connecting: t("common.proxyLoadingConnecting"),
@@ -238,10 +292,10 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, o
     <div
       ref={containerRef}
       className="absolute inset-0 overflow-hidden bg-white"
-      style={{ touchAction: isDesktop ? "none" : undefined }}
-      onTouchStart={isDesktop ? onTouchStart : undefined}
-      onTouchMove={isDesktop ? onTouchMove : undefined}
-      onTouchEnd={isDesktop ? onTouchEnd : undefined}
+      style={{ touchAction: enableZoom ? "none" : undefined }}
+      onTouchStart={enableZoom ? onTouchStart : undefined}
+      onTouchMove={enableZoom ? onTouchMove : undefined}
+      onTouchEnd={enableZoom ? onTouchEnd : undefined}
     >
       {loading && !loadedRef.current && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-white/85 backdrop-blur-sm">
@@ -292,7 +346,7 @@ export function ProxyFrame({ tabKey, proxyUrl, name, deviceMode, refreshNonce, o
       </div>
     </div>
   );
-}
+});
 
 /** 向 iframe 内注入的导航桥发送命令 */
 export function sendFrameNavCmd(tabKey: string, cmd: "back" | "forward" | "go", url?: string) {

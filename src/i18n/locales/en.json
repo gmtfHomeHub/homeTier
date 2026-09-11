@@ -84,6 +84,9 @@
     "modeMobile": "Mobile Mode",
     "switchToDesktop": "Switch to desktop mode",
     "switchToMobile": "Switch to mobile mode",
+    "zoomIn": "Zoom In",
+    "zoomOut": "Zoom Out",
+    "resetZoom": "Reset Zoom",
     "done": "Done",
     "confirmDeleteAppMessage": "Delete \"{{name}}\"?",
     "initializing": "Initializing service...",
@@ -206,9 +209,9 @@
     "notJoined": "Not in a voice channel"
   },
   "space": {
-    "create": "Create Space",
+    "create": "Create",
     "createSpace": "Create Space",
-    "join": "Join Space",
+    "join": "Join",
     "joinSpace": "Join Space",
     "leave": "Leave Space",
     "delete": "Delete Space",

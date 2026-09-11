@@ -9,6 +9,7 @@
     "opener:default",
     "process:default",
     "clipboard-manager:default",
+    "clipboard-manager:allow-read-text",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "os:default",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -10,6 +10,8 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { Button, Badge, TextField } from "@radix-ui/themes";
 import { listen } from "@tauri-apps/api/event";
@@ -17,7 +19,8 @@ import { useAppTabsStore } from "../../stores/appTabsStore";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import * as api from "../../utils/api";
 import { toastInfo } from "../../utils/toast";
-import { ProxyFrame, ProxyErrorFallback, sendFrameNavCmd, type FrameNavState } from "./ProxyFrame";
+import { useIsMobilePlatform } from "../../utils/device";
+import { ProxyFrame, ProxyErrorFallback, sendFrameNavCmd, type FrameNavState, type ProxyFrameHandle } from "./ProxyFrame";
 
 export function AppWorkspace() {
   const { t } = useTranslation();
@@ -33,6 +36,9 @@ export function AppWorkspace() {
   const setDeviceMode = useAppTabsStore((s) => s.setDeviceMode);
   const [refreshNonce, setRefreshNonce] = useState<Record<string, number>>({});
   const [navStates, setNavStates] = useState<Record<string, FrameNavState>>({});
+  const frameRefs = useRef<Record<string, ProxyFrameHandle | null>>({});
+  const mobilePlatform = useIsMobilePlatform();
+  const enableZoom = mobilePlatform && deviceMode === "desktop";
 
   const activeTab = openApps.find((tab) => tab.key === activeKey) ?? null;
   const spaceId = activeTab?.spaceId ?? openApps[0]?.spaceId ?? null;
@@ -199,6 +205,19 @@ export function AppWorkspace() {
             </div>
           ))}
         </div>
+        {enableZoom && (
+          <div className="flex items-center gap-1">
+            <Button onClick={() => frameRefs.current[activeKey ?? ""]?.zoomOut()} variant="ghost" size="2" title={t("common.zoomOut")}>
+              <ZoomOut size={16} />
+            </Button>
+            <Button onClick={() => frameRefs.current[activeKey ?? ""]?.resetZoom()} variant="ghost" size="1" title={t("common.resetZoom")} className="px-2">
+              <span className="text-xs">{t("common.reset")}</span>
+            </Button>
+            <Button onClick={() => frameRefs.current[activeKey ?? ""]?.zoomIn()} variant="ghost" size="2" title={t("common.zoomIn")}>
+              <ZoomIn size={16} />
+            </Button>
+          </div>
+        )}
         <Button
           onClick={handleToggleDevice}
           variant="ghost"
@@ -252,6 +271,7 @@ export function AppWorkspace() {
               {showFrame ? (
                 <ProxyFrame
                   key={`${tab.key}:${refreshNonce[tab.key] ?? 0}`}
+                  ref={(el) => { frameRefs.current[tab.key] = el; }}
                   tabKey={tab.key}
                   proxyUrl={displayUrl}
                   name={tab.app.name}
