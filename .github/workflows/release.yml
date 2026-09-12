@@ -220,11 +220,11 @@ jobs:
             bundle: msi
             artifact: homeTier-x86_64.msi
             bin: windows-x86_64
-          - os: windows-11-arm
-            target: aarch64-pc-windows-msvc
-            bundle: msi
-            artifact: homeTier-arm64.msi
-            bin: windows-arm64
+          # ARM64 Windows (aarch64-pc-windows-msvc) 暂停：vswhom-sys（tauri-winres→
+          # embed-resource 链）编译 vswhom.cpp 时，SDK 10.0.26100.0 winnt.h 使用
+          # __load_acquire*/_CountOneBits64 内联，hosted windows-11-arm 的 ARM64 MSVC
+          # cl 14.44 不识别 → C3861。待 ARM64 工具链/SDK 对齐后启用；
+          # resources/bin/aarch64/* 与 Npcap SDK 步骤已就位可直接复用。
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -430,7 +430,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-build
         with:
-          rust-targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+          rust-targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
           cache-key: android-multi-arch
 
       - name: Free disk space
@@ -482,7 +482,6 @@ jobs:
           SYSROOT="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
           echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
           echo "BINDGEN_EXTRA_CLANG_ARGS_armv7_linux_androideabi=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
-          echo "BINDGEN_EXTRA_CLANG_ARGS_i686_linux_android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
           echo "BINDGEN_EXTRA_CLANG_ARGS_x86_64_linux_android=--sysroot=$SYSROOT" >> "$GITHUB_ENV"
           echo "[bindgen] NDK sysroot: $SYSROOT"
       - name: Init Android project
@@ -505,7 +504,7 @@ jobs:
       - name: Verify Android injection
         run: bash scripts/verify-android-injection.sh
       - name: Build APK
-        run: pnpm tauri android build --apk --target aarch64 --target armv7 --target i686 --target x86_64 ${{ inputs.debug_mode && '--debug' || '' }}
+        run: pnpm tauri android build --apk --target aarch64 --target armv7 --target x86_64 ${{ inputs.debug_mode && '--debug' || '' }}
       - name: Verify APK contents (native libs per ABI)
         run: |
           APK=$(find src-tauri/gen/android -maxdepth 8 -name "*.apk" | head -1)
