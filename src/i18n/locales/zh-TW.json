@@ -209,9 +209,9 @@
     "notJoined": "未加入語音頻道"
   },
   "space": {
-    "create": "建立",
+    "create": "建 立",
     "createSpace": "建立空間",
-    "join": "加入",
+    "join": "加 入",
     "joinSpace": "加入空間",
     "leave": "離開空間",
     "delete": "刪除空間",

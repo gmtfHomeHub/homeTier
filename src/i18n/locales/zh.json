@@ -209,9 +209,9 @@
     "notJoined": "未加入语音频道"
   },
   "space": {
-    "create": "创建",
+    "create": "创 建",
     "createSpace": "创建空间",
-    "join": "加入",
+    "join": "加 入",
     "joinSpace": "加入空间",
     "leave": "离开空间",
     "delete": "删除空间",
