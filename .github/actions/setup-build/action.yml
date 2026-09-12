@@ -1,5 +1,7 @@
 name: Setup Build Environment
-description: 公共构建环境准备（checkout/pnpm/node/rust/cache/easytier 下载/Linux 依赖安装）
+description: 公共构建环境准备（pnpm/node/rust/cache/easytier 下载/Linux 依赖安装）
+# 注意：本 action 不含 checkout——本地 composite action 无法用自身 step 引导加载，
+# 调用方必须先显式 `actions/checkout@v4`（见 release.yml 各 build job 第一步）。
 
 inputs:
   rust-targets:
@@ -22,8 +24,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@v4
-
     - uses: pnpm/action-setup@v4
       with:
         version: 9
