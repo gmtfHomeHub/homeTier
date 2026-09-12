@@ -9,3 +9,5 @@
 .vscode
 
 .cargo
+# 本地前端配置文件（模板见 .env.example）
+.env
