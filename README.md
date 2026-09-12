@@ -23,13 +23,17 @@
 - [Frontend–Backend Contract](#frontendbackend-contract)
 - [Directory Structure](#directory-structure)
 - [Feature Highlights](#feature-highlights)
+- [Platform Support & Known Limitations](#platform-support--known-limitations)
+- [CI/CD](#cicd)
+- [Development Conventions](#development-conventions)
+- [TODO / Roadmap](#todo--roadmap)
 - [Documentation](#documentation)
 
 ---
 
 ## Introduction
 
-**homeTier** is a cross-platform (Windows / macOS / Linux, with Android/iOS stubs) virtual LAN application built on the [EasyTier](https://github.com/EasyTier/EasyTier) networking kernel. It establishes encrypted P2P virtual networks ("spaces") among devices, on top of which it provides chat, voice, screen sharing, file transfer, LAN app browsing and distributed config storage.
+**homeTier** is a cross-platform virtual LAN application built on the [EasyTier](https://github.com/EasyTier/EasyTier) networking kernel. Desktop targets are Windows / macOS / Linux; Android and iOS are built as Tauri mobile apps. Android VPN connectivity works through the Kotlin `HomeTierVpnService` plugin, while iOS still lacks the host-app → NetworkExtension start bridge and mobile voice/screen media are not wired to the UI yet (see [Platform Support & Known Limitations](#platform-support--known-limitations) and [TODO / Roadmap](#todo--roadmap)). homeTier establishes encrypted P2P virtual networks ("spaces") among devices, on top of which it provides chat, voice, screen sharing, file transfer, LAN app browsing and distributed config storage.
 
 **Three runtime modes:**
 
@@ -50,7 +54,7 @@
 | Language | Rust 2021 edition (MSRV 1.75) |
 | Desktop framework | Tauri 2.x (plugins: shell / process / clipboard / global-shortcut / os / notification / dialog / single-instance) |
 | Async runtime | Tokio (full) |
-| Networking kernel | Built-in EasyTier 2.6.4 (`src-tauri/resources/easytier_lib/easytier`), features: `wireguard` `websocket` `tun` `socks5` `kcp` `quic` `zstd` |
+| Networking kernel | Built-in EasyTier 2.6.4 (`src-tauri/resources/easytier_lib/easytier`, vendored read-only) |
 | HTTP server | axum 0.8 (server mode REST API + WS) |
 | HTTP proxy | hyper 1.x + http-body-util (embedded iframe proxy) |
 | Database | SQLite (rusqlite bundled, auto-migration) |
@@ -64,11 +68,15 @@
 |---|---|
 | Framework | React 18 + TypeScript 5.5 (strict) |
 | Build | Vite 5 (dev port 1420, strictPort) |
-| State management | Zustand 4 (9 stores) |
+| State management | Zustand 4 (13 stores) |
 | Styling | Tailwind CSS 3 + Radix Themes 3 |
 | Routing | React Router 6 |
 | i18n | react-i18next (zh / zh-TW / en, default zh) |
 | Package manager | pnpm 9+ |
+
+> **EasyTier features**: there is no top-level Cargo feature switch for the desktop build. `src-tauri/Cargo.toml` only defines `[features] default = ["custom-protocol"]`; the `wireguard` / `websocket` / `tun` / `socks5` / `kcp` / `quic` / `zstd` features belong to the vendored `easytier` dependency and are enabled **only** for `android`/`ios` targets (mutually exclusive `target.'cfg(...)'` sections). Desktop uses the plain TCP/RPC layer.
+
+> **pnpm is mandatory**: the repo ships `pnpm-workspace.yaml` + `pnpm-lock.yaml`; always install with `pnpm install`. The root `package-lock.json` is stale and must not be used with npm.
 
 ---
 
@@ -94,13 +102,16 @@
 
 - **Space mutual exclusion**: Only one EasyTier network instance runs at a time; `SpaceManager::connect` disconnects the current connection first.
 - **Frontend–backend decoupling**: GUI and daemon communicate via `127.0.0.1:15889` length-prefixed JSON IPC; server mode embeds the daemon in-process, reusing the same IPC protocol.
+- **Split-process model**: the GUI runs unprivileged; the networking `daemon` is a separate root/administrator process started by the GUI — `osascript` on macOS, UAC elevation on Windows, `pkexec` on Linux. CLI flags (`src-tauri/src/main.rs:64-139`): `--daemon` (headless daemon), `--server` (single-process axum + embedded daemon), `--elevated` (marks an already-elevated GUI on Windows/Linux).
+- **Log-source split**: the log panel switches between `source=gui` and `source=daemon` (`src/components/Log/LogViewer.tsx`). Because the daemon is a separate process, its stdout/stderr are redirected to `{app_data_dir}/daemon.log` (`src-tauri/src/app/daemon.rs:166`) and daemon logs also travel back over IPC.
+- **`proxy_cidrs` model**: app-level per-peer `/32` routes are gone. `NetworkConfig::effective_proxy_cidrs` (`src-tauri/src/easytier/config.rs:257-303`) merges `proxy_cidrs` (new) / `proxy_networks` (legacy) and then automatically appends the local virtual network `virtual_ipv4/network_length`; the daemon installs OS routes for those CIDRs.
 
 ### Core Modules
 
 | Module | Responsibility |
 |---|---|
 | `app/` | Tauri lifecycle glue: `setup` (init DB/daemon/proxy/tray), `exit` cleanup, window visibility, elevation flags |
-| `commands/` | 80 `#[tauri::command]`s across 18 modules (space / network / chat / file / voice / screen / proxy / config / easytier / daemon / log / tray / signal etc.) |
+| `commands/` | 115 registered `#[tauri::command]`s across 24 modules (space / network / chat / file / voice / screen / proxy / config / easytier / daemon / log / tray / signal etc.); `src-tauri/src/commands/space.rs` also holds the JNI-only, unregistered `detect_lan_subnets` (116 `#[tauri::command]` attributes in total) |
 | `daemon/` | Headless daemon: TCP IPC server, easytier-core lifecycle management, GUI watchdog, graceful shutdown |
 | `space/` | Space orchestration: create/join/leave/connect/disconnect, peer discovery, chat/voice/screen/file server lifecycle, encrypted share links |
 | `easytier/` | EasyTier manager: RPC-driven `easytier-core` (desktop) or in-process launcher (mobile), TOML config generation, binary download/upgrade |
@@ -108,9 +119,9 @@
 | `voice/` `screen/` | WebRTC voice/screen sharing engine + signaling server (ports 18100+ / 18200) |
 | `file/` | P2P file transfer: zstd compression + optional AES encryption, streaming with progress, HTTP file server (19000 + space_id % 1000) |
 | `proxy/` | Embedded HTTP proxy (127.0.0.1 random port): CORS/iframe bypass/HTTPS tunnel/URL rewrite/WebSocket tunnel/`__proxy__` local HTTP proxy |
-| `server/` | Server mode: axum routes (`/api/cmd/*` ~60 routes), WebSocket, static assets (embedded dist), Cookie auth, TLS, event bus |
+| `server/` | Server mode: axum routes (`/api/cmd/*`, 68 routes including 2 WebSocket), static assets (embedded dist), Cookie auth, TLS, event bus |
 | `config_store/` | P2P distributed config store (TCP 9877): versioned files + checksums + dedup write queue |
-| `db/` | SQLite persistence (8 tables), auto-migration on startup |
+| `db/` | SQLite persistence (10 tables), auto-migration on startup |
 | `log/` | Unified logging system with `log_info!` / `log_warn!` / `log_error!` / `log_debug!` macros |
 | `crypto/` | AES-256-GCM + PBKDF2-HMAC-SHA256 (210k iterations), SHA-256, HMAC signing |
 | `platform/` | `PlatformAdapter` platform abstraction (config/log directories), machine ID |
@@ -121,8 +132,8 @@
 |---|---|---|---|
 | Frontend | Tauri WebView | None | Any browser (axum serves `dist/`) |
 | Daemon location | Separate subprocess (elevated on macOS) | Itself | In-process embedded |
-| Command interface | `invoke()` 80 commands | TCP IPC | REST `/api/cmd/*` + WS |
-| Realtime events | Tauri `listen("new_message")` | — | WS `/ws/events` + `/ws/signal/{spaceId}` |
+| Command interface | `invoke()` 115 commands | TCP IPC | REST `/api/cmd/*` + WS |
+| Realtime events | Tauri `listen("new_message")` | — | WS `/api/cmd/ws/events` + `/api/cmd/ws/signal/{space_id}` |
 | Logging | In-memory + forwarding | IPC WriteLog | JSON stdout + file + syslog |
 | Config | `{app_data_dir}/homeTier.conf` | `{data_dir}/homeTier.conf` | `{server-dir}/homeTier.conf` + `server.conf` |
 
@@ -144,8 +155,10 @@ Platform build toolchains (Tauri 2 official requirements): Windows needs VS Buil
 ### Development
 
 ```bash
-pnpm install                     # Install frontend dependencies
+pnpm install                     # Install frontend dependencies (pnpm only)
 pnpm tauri dev                   # Launch Tauri dev (Vite:1420 + Rust)
+pnpm lint                        # ESLint over src/
+pnpm lint:fix                    # ESLint with --fix
 ```
 
 Frontend-only debugging (no native window):
@@ -157,13 +170,34 @@ pnpm dev                         # Vite dev server on http://localhost:1420
 ### Build
 
 ```bash
-pnpm tauri build                 # Production build (tsc --noEmit && vite build + Rust release + platform installer)
+pnpm build                       # Frontend only: tsc --noEmit && vite build
+pnpm build:server                # Web/server-mode frontend bundle (same tsc + vite output)
+pnpm tauri build                 # Full desktop production build (tsc + vite + Rust release + installer)
 ```
+
+Per-platform packaging helpers (from `package.json`):
+
+```bash
+pnpm tauri:build:macos           # macOS aarch64 dmg
+pnpm tauri:build:macos:x86       # macOS x86_64 dmg
+pnpm tauri:build:windows         # Windows x86_64 msi
+pnpm tauri:build:linux           # Linux x86_64 deb
+pnpm tauri:build:linux:arm       # Linux aarch64 deb
+pnpm tauri:build:appimage        # Linux AppImage
+pnpm tauri:build:android         # Android APK (arm64 / armv7 / x86_64)
+pnpm tauri:build:docker          # Production build without bundling (used by the Docker image)
+```
+
+Mobile build helpers live in `scripts/`: `fix-android-mainactivity.sh`, `fix-android-build-gradle.sh`, `mobile-permissions.sh`, `verify-android-injection.sh`, `download-npcap-dlls.sh`.
+
+### Frontend Public Base
+
+`VITE_PUBLIC_BASE` (`.env.example:7`, consumed by `vite.config.ts:5-13`) sets Vite's `base` for subpath / reverse-proxy deployments and must match `SERVER_PUBLIC_BASE` in server mode. **It must stay `/` for every Tauri (desktop/mobile) build**, because Tauri loads `dist/` from the root path.
 
 ### Backend Type Check
 
 ```bash
-cd src-tauri && cargo check      # Requires local cc linker (Windows/macOS included)
+cd src-tauri && cargo check --all-targets   # Same check CI runs (requires local cc linker)
 ```
 
 > **Linux host without cc linker**: Use the project Docker dev container:
@@ -201,6 +235,8 @@ Server mode turns homeTier into a single-process web service: one process provid
 | `SERVER_CORS_ORIGIN` | `*` | Allowed CORS origins (credentials disabled when `*`) |
 | `SERVER_PROXY_PREFIX` | `/proxy` | Embedded proxy prefix |
 
+> `SERVER_BIND` / `SERVER_PORT` / `SERVER_STATIC_DIR` are runtime-generated defaults (`0.0.0.0` / `9339` / `./dist`). They are **not** keys in `homeTier.conf.example`, which only ships `DAEMON_IPC_PORT`, `EASYTIER_RPC_PORT`, `FILE_SERVER_PORT_BASE`, `DEFAULT_SPACE_IP`, `GITHUB_API`, `GITHUB_MIRROR`, `RELAY_NETWORK_PREFIX`, `LOG_ENABLED`.
+
 ### Docker Deployment
 
 The project root provides a `Dockerfile` (build stage: Node 22 + Rust, runtime: `debian:bookworm-slim`):
@@ -221,6 +257,7 @@ See `deploy/hometier-server.service`:
 
 ```bash
 install -d /opt/homeTier
+pnpm build:server                 # Produce dist/ before copying (server mode serves the web bundle)
 cp -r dist /opt/homeTier/dist
 cp homeTier.conf.example /opt/homeTier/homeTier.conf
 install -m 755 src-tauri/target/release/homeTier /opt/homeTier/homeTier
@@ -249,7 +286,7 @@ Application config is a `.env`-style `KEY=VALUE` file with hot-reload (2s mtime 
 
 ### Database
 
-SQLite file at `{app_data_dir}/homeTier.db` (server mode: `{server-dir}/homeTier.db`), auto-migrated on startup (`src-tauri/src/db/migrations.rs`), 8 tables:
+SQLite file at `{app_data_dir}/homeTier.db` (server mode: `{server-dir}/homeTier.db`), auto-migrated on startup (`src-tauri/src/db/migrations.rs`), 10 tables:
 
 | Table | Description |
 |---|---|
@@ -259,8 +296,10 @@ SQLite file at `{app_data_dir}/homeTier.db` (server mode: `{server-dir}/homeTier
 | `messages` | Chat messages (includes send status) |
 | `files` | File records |
 | `settings` | Key-value settings |
+| `proxy_cookies` | Cookie jar for the embedded app browser/proxy |
 | `space_apps` | In-space apps (for iframe browser) |
-| `acl_rules` / `port_forward_rules` | ACL rules / port forwarding rules |
+| `acl_rules` | ACL rules |
+| `port_forward_rules` | Port forwarding rules |
 
 ### Port Conventions
 
@@ -268,11 +307,12 @@ SQLite file at `{app_data_dir}/homeTier.db` (server mode: `{server-dir}/homeTier
 |---|---|
 | `15889` | daemon TCP IPC (configurable) |
 | `15888` | easytier-core RPC (configurable) |
-| `19000 + space_id % 1000` | File transfer HTTP server |
-| `18100 + space_id % 100` | Voice signaling server |
-| `18200` | Screen sharing signaling server |
 | `9877` | Distributed config store TCP (P2P) |
 | `9339` | Server mode HTTP (configurable) |
+| `19000 + space_id % 1000` | File transfer HTTP server |
+| `18100 + space_id % 1000` | Voice signaling server |
+| `18200 + space_id % 1000` | Screen sharing signaling server |
+| `127.0.0.1:<random>` | Embedded HTTP/HTTPS/WSS proxy (ephemeral per-process port) |
 
 ### Share Links
 
@@ -284,14 +324,14 @@ Format: `homeTier://join?v=1&d={base64url}`. Payload flow: ShareInfo **binary-en
 
 ### Tauri Commands (Desktop)
 
-- **80** `#[tauri::command]`s across 18 modules in `src-tauri/src/commands/`, registered in `src-tauri/src/lib.rs`.
-- Frontend unified wrapper at `src/utils/api.ts`: runtime detection of `__TAURI_INTERNALS__` auto-selects **Tauri `invoke()`** (`utils/api/tauri.ts`) or **REST/WS** (`utils/api/web.ts`) implementation — business code is agnostic.
-- Main command domains: space (14), config_store (8), file (6), util/app (5+5), voice/screen (4+4), proxy (4), ACL/port-forward (4+4), easytier (4), daemon/config (4+4), network/log (3+3), chat (2), tray/signal (1+1).
+- **115** registered `#[tauri::command]`s across 24 modules in `src-tauri/src/commands/`, registered in `src-tauri/src/lib.rs:53-198`. A 116th command attribute, `detect_lan_subnets` (`src-tauri/src/commands/space.rs`), is JNI-only and intentionally not registered.
+- Frontend unified wrapper at `src/utils/api.ts:14`: runtime detection of `__TAURI_INTERNALS__` selects the **Tauri `invoke()`** implementation (`src/utils/api/tauri.ts`, ~70 distinct `invoke(...)` targets) or the **REST/WS** implementation (`src/utils/api/web.ts`) — business code is agnostic.
+- Main command domains: space (15), mobile_voice (9), config_store (8), mobile_screen (8), app (8), log (7), file/proxy (6 each), daemon/util (5 each), config/easytier/network/ACL/port-forward/voice/screen (4 each), ios_vpn/chat/update_app (2 each), qr/signal/tray/mobile_vpn (1 each).
 
 ### Server Mode REST + WS
 
-- REST: `/api/cmd/*` (~60 routes: ping / space / chat / network / log / config / file / proxy / easytier / config-store etc.), JSON + cookie auth.
-- WebSocket: `/api/cmd/ws/events` (global event stream), `/api/cmd/ws/signal/{spaceId}` (WebRTC signaling relay).
+- REST: `/api/cmd/*` (68 routes: ping / space / chat / network / log / config / file / proxy / easytier / config-store etc.), JSON + cookie auth.
+- WebSocket: `/api/cmd/ws/events` (global event stream), `/api/cmd/ws/signal/{space_id}` (WebRTC signaling relay).
 - Event types (`server/event.rs`): SpaceCreated/Deleted/Updated, MemberJoined/Left, MessageSent, FileShared, ScreenShareStarted/Stopped, VoiceCallStarted/Stopped, PeerConnected/Disconnected, ConfigChanged, SystemLog.
 
 ### Frontend Events (Desktop)
@@ -317,24 +357,26 @@ Voice/screen sharing **signaling control plane reuses the chat message channel**
 homeTier/
 ├── src/                        # Frontend React/TS
 │   ├── components/             # UI organized by domain (Layout/Space/Chat/Voice/...)
-│   ├── stores/                 # Zustand (9 stores: space/settings/file/chat/voice/screen/appTabs/...)
-│   ├── services/               # realtime / signal / voice / screen / shortcuts
+│   ├── stores/                 # Zustand (13 stores: space/settings/file/chat/voice/screen/layout/peer/update/...)
+│   ├── services/               # realtime / signal / voice / screen / mobileVpn / shortcuts
 │   ├── utils/                  # api.ts (dual-mode entry) + api/{tauri,web,core}.ts + utilities
 │   ├── i18n/                   # locales (zh / zh-TW / en)
 │   ├── types/                  # index.ts (domain models) + network.ts (NetworkConfig)
 │   └── hooks/  enum/  styles/
 ├── src-tauri/                  # Backend Rust
-│   ├── src/                    # See "Core Modules" table
-│   ├── resources/easytier_lib/easytier   # Built-in EasyTier 2.6.4 (vendored)
-│   ├── resources/bin/          # easytier-core fallback binaries
+│   ├── src/                    # See "Core Modules" table (commands/: 24 modules, 115 registered handlers)
+│   ├── resources/easytier_lib/easytier   # Built-in EasyTier 2.6.4 (vendored, read-only)
+│   ├── resources/bin/          # easytier-core fallback binaries + Windows DLLs (wintun/WinDivert/wpcap)
 │   ├── tauri.conf.json         # Tauri config (identifier: com.hometier.app, v0.1.0)
 │   └── Cargo.toml
-├── docs/                       # Design documents (requirements/design/dev/server-mode etc.)
+├── docs/                       # Local design documents — not tracked in the remote repository
 ├── deploy/hometier-server.service  # systemd deployment unit
 ├── Dockerfile                  # Server mode container image
 ├── homeTier.conf.example       # Config template
 └── package.json / pnpm-lock.yaml
 ```
+
+> `src-tauri/resources/easytier_lib/` is a vendored, read-only copy of the EasyTier upstream tree. Do not edit it (see [Development Conventions](#development-conventions)).
 
 ### Frontend Routes
 
@@ -351,31 +393,111 @@ homeTier/
 
 ## Feature Highlights
 
-- **Space mutual exclusion**: Single EasyTier instance, connecting a new space auto-disconnects the old one, tray menu syncs with language/status.
-- **P2P chat**: HMAC-signed messages, optimistic updates + dedup, virtualized message list.
-- **WebRTC voice**: Full-mesh direct connect, RMS voice activity detection (150ms sampling, 1.2s silence auto-mute), per-peer volume bars, global shortcuts `Ctrl+M`/`Ctrl+T` (with OSD).
-- **Screen sharing**: Invitation-based ACL, quality switching (smooth/standard/hd, maxBitrate control).
-- **File transfer**: zstd compression + optional password encryption, streaming with progress, resume progress recovery.
-- **App browser**: Embedded iframe accessing any HTTP app within the space (up to 10 LRU tabs), via embedded proxy (hyper) bypassing CSP/X-Frame-Options, injecting fetch/XHR/WebSocket shims to rewrite URLs; desktop/mobile viewport scaling.
-- **Distributed config store**: TCP 9788 P2P versioned config sync, anti-version-rollback.
-- **Security**: Share links AES-256-GCM encrypted + zstd; chat HMAC verification; files PBKDF2(210k) derived keys; machine ID anti-replay.
-- **i18n**: Chinese/Traditional Chinese/English, tray menu hot-syncs with language.
+- **Space networking**: create / join / leave / delete spaces, connect / disconnect with mutual exclusion (one EasyTier instance at a time), encrypted `homeTier://join?...` share links and QR codes.
+- **Networking view**: members, mesh routes, traffic statistics, ACL rules and port-forwarding rules.
+- **Signed P2P chat**: HMAC-SHA256 signed messages, optimistic updates + dedup, virtualized list, `new_message` events; signaling rides the same channel.
+- **P2P file transfer**: zstd compression + optional password encryption, streaming with progress and SHA-256 verification.
+- **WebRTC voice (desktop)**: full-mesh direct connect, RMS voice-activity detection (150ms sampling, 1.2s silence auto-mute), per-peer volume bars, global shortcuts `Ctrl+M` / `Ctrl+T` (with OSD). Implemented in the frontend (`src/services/voice.ts`), signaling over the chat channel.
+- **Screen sharing (desktop)**: invitation-based ACL and three quality tiers (smooth / standard / hd), implemented in `src/services/screen.ts`.
+- **App browser + proxy**: embedded iframe with up to 10 LRU tabs and a built-in HTTP/HTTPS/WSS reverse proxy (self-signed CA trust, iframe/X-Frame-Options bypass, cookie jar, fetch/XHR/WebSocket URL rewriting).
+- **Dual-source logging**: switch between GUI logs and daemon logs (`source=gui` / `source=daemon`) in the log viewer, with module filters and export.
+- **Config center**: hot-reloaded `homeTier.conf` plus a P2P distributed config store (TCP 9877) with versioned files, checksums and anti-rollback.
+- **EasyTier version management**: check / download / upgrade the bundled `easytier-core` with progress; app self-update via the project's own GitHub Releases (no Tauri updater).
+- **Tray & background**: system tray menu, background running, single-instance handling.
+- **Three run modes**: desktop GUI (`homeTier`), headless daemon (`--daemon`), single-process server (`--server`), plus mobile builds.
+- **i18n**: Simplified Chinese (default), Traditional Chinese and English; tray menu hot-syncs with language.
+- **Security**: share links AES-256-GCM + zstd; chat HMAC verification; files PBKDF2(210k) derived keys; machine ID anti-replay.
+
+---
+
+## Platform Support & Known Limitations
+
+| Platform | Support |
+|---|---|
+| Windows | Full desktop support + UAC elevation. Bundles Npcap (`wpcap.dll`), WinDivert (`WinDivert64.sys`, `packet.dll`) and Wintun (`wintun.dll`) in `src-tauri/resources/bin/`. |
+| macOS | Full desktop support. The GUI stays unprivileged; the daemon is elevated via `osascript`. `pkexec` is used on Linux. |
+| Linux | Full desktop support, `.deb` and AppImage packages. |
+| Android | APK builds (arm64 / armv7 / x86_64). VPN is provided by the Kotlin `HomeTierVpnService` plugin (`src-tauri/scripts/android/`). Voice and screen native bridges exist but are not wired to the UI, and `get_vpn_status` is a placeholder (`src-tauri/src/commands/mobile_vpn.rs:16`). |
+| iOS | A NetworkExtension static library and an Xcode injection script exist, but there is no host-app → NE start bridge and media (voice / screen) is TODO. VPN never comes up. |
+
+Notes:
+
+- **Platform adapters are thin**: `PlatformAdapter` implementations only resolve config/log directories and the machine ID (`src-tauri/src/platform/mod.rs:19`); all networking and process code is shared.
+- **No official Tauri updater**: the app self-updates by checking its own GitHub Releases (`src-tauri/src/commands/update_app.rs`).
+- **Mobile VPN interface IP**: Android/iOS require the VPN interface IP to equal the EasyTier node IP; do not use `10.144.144.1` for the TUN interface (the mobile fallback is the `.10` address).
+
+---
+
+## CI/CD
+
+- **`.github/workflows/ci.yml`** — runs on every push / PR with two jobs:
+  - `frontend`: pnpm 9 + Node 22, `pnpm install --frozen-lockfile`, then `pnpm lint` and `pnpm build` (tsc + vite).
+  - `backend`: Rust stable + `rust-cache`, installs webkit2gtk/GTK system deps, runs `mkdir -p dist` (the compiler macros require the dir to exist), then `cargo check --all-targets` in `src-tauri`.
+  - There is **no test job**: CI runs no `cargo test` / `pnpm test` (see the P3 item in [TODO / Roadmap](#todo--roadmap)).
+- **`.github/workflows/release.yml`** — triggered manually (`workflow_dispatch`, with per-platform toggles) or by `v*` tags. First `fetch-easytier` downloads per-platform `easytier-core` archives, then builds macOS dmg (aarch64 + x86_64), Windows msi (x86_64; ARM64 currently paused), Linux deb (x86_64 + aarch64), Linux AppImage, Android apk, and a Docker image pushed to GHCR. iOS is skipped by default (the `未完成平台隔离，默认跳过` input gate).
+- **`.github/actions/setup-build`** — composite action that installs pnpm / Node / Rust, restores caches, optionally downloads the EasyTier artifact, installs Linux deps and runs `pnpm install --frozen-lockfile`. It deliberately does not check out the repo (callers do).
+
+---
+
+## Development Conventions
+
+- **pnpm only**: the repo uses `pnpm-workspace.yaml` + `pnpm-lock.yaml`; never install with npm/yarn (`package-lock.json` is stale).
+- Run `pnpm lint` (or `pnpm lint:fix`) before committing.
+- **Never edit `src-tauri/resources/easytier_lib/`** — it is a vendored, read-only copy of upstream EasyTier. Only `edition` / `rust-version` metadata may be touched if strictly required.
+- Custom `log_info!` / `log_warn!` / `log_error!` / `log_debug!` macros write into the in-memory log store (and forwarding targets), **not** to stdout.
+- The daemon and the GUI are separate processes with separate logs; use the log viewer's `source` switch (`source=gui` / `source=daemon`) instead of assuming a single stream.
+- Use the shared `Tip` wrapper (`src/components/Common/Tip.tsx`) instead of raw Radix `Tooltip`.
+- **Do not use `patch_config` for runtime config changes** — it is lossy and disconnects the space (see the P0 item in [TODO / Roadmap](#todo--roadmap)).
+
+---
+
+## TODO / Roadmap
+
+| Priority | Item | Evidence / Impact | Size |
+|---|---|---|---|
+| P0 | iOS system VPN start bridge (host app → NetworkExtension) | `src-tauri/src/commands/ios_vpn.rs:69-72` only emits `ios:start-vpn` with no receiver; `src/services/mobileVpn.ts:143` always calls the Android-only `plugin:hometiervpnservice\|start_vpn`; `src-tauri/gen-scripts/ios/` contains only NE-extension files, no host `@main`/AppDelegate/`NETunnelProviderManager.startVPNTunnel` caller. Impact: VPN never comes up on iOS. Depends on Xcode project + Apple Developer account + device. | L |
+| P0 | Fix `EasyTierManager::patch_config` field-loss bug | `src-tauri/src/easytier/mod.rs:850-882` `read_network_config` only parses TOML `[network_identity]`; `:790-848` lacks a `proxy_cidrs` branch and rewrites the TOML with defaults then restarts the instance. Reachable from `src-tauri/src/server/routes.rs:355-364`, `src-tauri/src/commands/space.rs:160-166`, `src-tauri/src/daemon/mod.rs:447-451` (no frontend caller yet). Impact: any call drops peers/listeners/ipv4 and disconnects the space. Fix = full serde deserialization + `proxy_cidrs` branch. | M |
+| P1 | Mobile voice calling | `src-tauri/src/voice/mobile/android.rs:75-160` JNI targets a Kotlin `VoiceManager` that does not exist in the repo; `src-tauri/src/voice/mobile/ios.rs` is all TODO; `src/stores/mobileVoiceStore.ts:46-49` has the `invoke` calls commented out. | L |
+| P1 | Mobile screen sharing | `src-tauri/scripts/android/screen/ScreenShareManager.kt:90-104` creates the VirtualDisplay with `Surface = null` (no capture); the frame callback in `src-tauri/src/screen/mobile/android.rs:262-275` is still a placeholder (`后续实现`); `src-tauri/src/screen/mobile.rs:192` TODO ReplayKit; `src/stores/mobileScreenStore.ts:31-46` invoke calls commented out. | L |
+| P2 | Mobile easytier-core update path is a stub | `src-tauri/src/commands/mobile_vpn.rs:16` placeholder `get_vpn_status`; update UI hidden on mobile (`src/components/Settings/EasyTierVersionManager.tsx:114`). | M |
+| P2 | Mobile global shortcuts are an empty shell | Entry hidden in the UI: `src/components/Settings/SettingsPage.tsx:314`. | S |
+| P2 | Verify mobile chat/file transfer on real devices | `src-tauri/src/chat/`, `src-tauri/src/file/` have no mobile-specific branches. | S |
+| P2 | Windows ARM64 desktop bundle missing from the release matrix | `docs/workflow.md:298`. | M |
+| P2 | macOS notarization + Windows code signing | `docs/workflow.md:136` and `:254-271` (deferred). | L |
+| P2 | iOS NE signing / App Store compliance | KVC private-API risk for the TUN fd: `docs/mobile_vpn.md:1152-1159`. | L |
+| P2 | Server mode: P2P transfer progress not implemented | `src-tauri/src/server/routes.rs:1566` returns NOT_IMPLEMENTED. | S |
+| P2 | stock EasyTier → homeTier cross-/24 needs a manual `proxy_cidr` on the stock side | Native EasyTier behavior; needs a user-facing FAQ. `src-tauri/src/easytier/config.rs:257-303`. | S |
+| P3 | CI runs no tests | `.github/workflows/ci.yml:12-60` only `pnpm lint` / `pnpm build` + `cargo check --all-targets`, while the repo already has ~35 Rust `#[test]` / `#[tokio::test]` functions. | M |
+| P3 | Mobile real-device checklist never executed | `docs/MOBILE_VPN_TEST_CHECKLIST.md` result cells empty. | M |
+| P3 | Dead code | `src-tauri/src/voice/interop.rs` and `voice/opus.rs` are not part of the compilation unit (`src-tauri/src/voice/mod.rs:1-6`) and `rusty-opus` (`src-tauri/Cargo.toml:38`) is unused. | S |
+| P3 | Documentation drift | Config-store port (fixed by this README update), stale command counts in `AGENTS.md` (151 → 115), `AGENTS.md` cites non-existent `third_libs/easytier/` (truth: `src-tauri/resources/easytier_lib/easytier`) and non-existent `src/types/config.ts`. | S |
+| P3 | Mobile AppBrowser doc is outdated | The local proxy starts unconditionally on mobile: `src-tauri/src/app/setup.rs:466`. | S |
+
+Items already done are intentionally absent. Upstream TODOs inside `easytier_lib/` / `third_libs/` are excluded from this list.
 
 ---
 
 ## Documentation
 
+`docs/` is kept locally only and is no longer tracked in the remote repository — the GitHub copy of these files is intentionally absent.
+
 | Document | Description |
 |---|---|
-| [Requirements](docs/需求文档.md) | Product requirements |
-| [Design](docs/设计文档.md) | System design |
-| [Development](docs/开发文档.md) | Dev environment setup and guide |
-| [Server Mode](docs/服务器化改造.md) | Server mode design |
-| [Distributed Config Store](docs/分布式配置文件存储服务设计文档.md) | Config storage service design |
-| [Third-party App Integration](docs/接入三方应用设计文档.md) | Third-party app integration |
+| `docs/需求文档.md` | Product requirements |
+| `docs/设计文档.md` | System design |
+| `docs/开发文档.md` | Dev environment setup and guide |
+| `docs/服务器化改造.md` | Server mode design |
+| `docs/分布式配置文件存储服务设计文档.md` | Config storage service design |
+| `docs/接入三方应用设计文档.md` | Third-party app integration |
+| `docs/mobile_vpn.md` | Mobile VPN architecture and implementation notes |
+| `docs/MOBILE_VPN_DEV_GUIDE.md` | Mobile VPN development guide |
+| `docs/MOBILE_VPN_TEST_CHECKLIST.md` | Mobile VPN real-device test checklist |
+| `docs/LICENSE_COMPLIANCE_CHECK.md` | Dependency license compliance review |
+| `docs/workflow.md` | CI/CD and release workflow design |
+| `docs/tasks.md` | Implementation task tracking |
 
 ---
 
 ## License
 
-This project is licensed under **GPL-3.0**. Dependencies are subject to their respective licenses (EasyTier: Apache-2.0).
+This project is licensed under **GPL-3.0-or-later**. See the `LICENSE` file at the repository root (the same text also exists as `GPL-3.0 license`). Dependencies are subject to their respective licenses (EasyTier: Apache-2.0).
