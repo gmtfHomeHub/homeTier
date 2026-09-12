@@ -1,7 +1,8 @@
 // 移动端语音/屏幕共享控制工具栏
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
-import { Box, Button, Text, Flex } from '@radix-ui/themes';
+import { Box, Flex } from "@radix-ui/themes";
+import { Button, Text } from "../Common";
 import { useTranslation } from 'react-i18next';
 import {
   MicIcon,

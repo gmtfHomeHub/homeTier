@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Text } from "@radix-ui/themes";
+import { Text } from ".";
 
 interface CollapsibleSectionProps {
   title: string;

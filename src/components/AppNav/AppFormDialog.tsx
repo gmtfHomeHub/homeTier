@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { X, Search } from "lucide-react";
-import { Button, TextField, Select, Flex, Text, Dialog } from "@radix-ui/themes";
+import { TextField, Select, Flex, Dialog } from "@radix-ui/themes";
+import { Button, Text } from "../Common";
 import { Icon } from "@iconify/react";
 import * as api from "../../utils/api";
 import type { SpaceApp } from "../../types";

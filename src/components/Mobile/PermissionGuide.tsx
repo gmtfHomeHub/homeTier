@@ -2,7 +2,8 @@
 // 覆盖：Android MediaProjection（屏幕投射）/ iOS ReplayKit（屏幕录制）/ 麦克风 / 相机
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
-import { Box, Text, Button, Flex, Progress } from '@radix-ui/themes';
+import { Box, Flex, Progress } from "@radix-ui/themes";
+import { Text, Button } from "../Common";
 import { useTranslation } from 'react-i18next';
 import {
   AlertCircleIcon,

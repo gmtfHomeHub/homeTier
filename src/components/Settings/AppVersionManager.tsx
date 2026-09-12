@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { upgradeApp, isTauri } from "../../utils/api";
-import { Badge, Button, Flex, Progress, Text } from "@radix-ui/themes";
+import { Badge, Flex, Progress } from "@radix-ui/themes";
+import { Button, Text } from "../Common";
 import { Package, ArrowUpCircle } from "lucide-react";
 import { useUpdateStore } from "../../stores/updateStore";
 import { useSettingsStore } from "../../stores/settingsStore";

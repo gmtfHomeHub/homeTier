@@ -8,7 +8,7 @@ import { MessageInput } from "./MessageInput";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Button } from "@radix-ui/themes";
+import { Button } from "../Common";
 import { View } from "../Common/PageView";
 
 export function ChatView() {

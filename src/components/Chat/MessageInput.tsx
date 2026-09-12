@@ -1,7 +1,8 @@
 import { useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Send, Image } from "lucide-react";
-import { Button, TextArea, Flex } from "@radix-ui/themes";
+import { TextArea, Flex } from "@radix-ui/themes";
+import { Button } from "../Common";
 
 interface MessageInputProps {
   spaceId: string;

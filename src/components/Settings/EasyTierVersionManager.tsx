@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { getEasyTierVersion, checkEasyTierUpdate, upgradeEasyTierWithProgress, getAppConfig } from "../../utils/api";
-import { Button, Text, Flex, Select, Switch, Progress } from "@radix-ui/themes";
+import { Flex, Select, Switch, Progress } from "@radix-ui/themes";
+import { Button, Text } from "../Common";
 import { Cpu, ArrowUpCircle } from "lucide-react";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { toastSuccess, toastError } from "../../utils/toast";

@@ -1,16 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import {
-  Button,
-  Badge,
-  Dialog,
-  ScrollArea,
-  Checkbox,
-  Select,
-  Text,
-  Flex,
-} from "@radix-ui/themes";
+import { Badge, Dialog, ScrollArea, Checkbox, Select, Flex } from "@radix-ui/themes";
+import { Button, Text } from "../Common";
 import { Monitor, MonitorOff, X, Share2, Square, UserPlus } from "lucide-react";
 import { useScreenStore, type ScreenQuality } from "../../stores/screenStore";
 import { screenService, SCREEN_QUALITY_PRESETS } from "../../services/screen";

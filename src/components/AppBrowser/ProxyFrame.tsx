@@ -2,7 +2,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { useTranslation } from "react-i18next";
 import { ShieldAlert, Loader2 } from "lucide-react";
-import { Button, Flex, Text, Card } from "@radix-ui/themes";
+import { Flex, Card } from "@radix-ui/themes";
+import { Button, Text } from "../Common";
 import { listen } from "@tauri-apps/api/event";
 import { DEVICE_VIEWPORTS, useIsMobilePlatform, type DeviceMode } from "../../utils/device";
 import * as api from "../../utils/api";

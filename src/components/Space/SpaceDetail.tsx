@@ -7,7 +7,8 @@ import {
   Terminal,
   Trash2,
 } from "lucide-react";
-import { Button, Flex, DropdownMenu } from "@radix-ui/themes";
+import { Flex, DropdownMenu } from "@radix-ui/themes";
+import { Button } from "../Common";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useSpaceConnect } from "../../hooks/useSpaceConnect";

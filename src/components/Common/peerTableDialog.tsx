@@ -1,7 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 import { formatBytes } from "../../utils/format";
-import { Button, Badge, Dialog, ScrollArea, Text } from "@radix-ui/themes";
+import { Badge, Dialog, ScrollArea } from "@radix-ui/themes";
+import { Button, Text } from ".";
 import type { PeerInfo } from "../../types";
 import { BaseTable, type ColumnDefs } from "../Common/Table";
 

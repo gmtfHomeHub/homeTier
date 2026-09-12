@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { X, AlertTriangle } from "lucide-react";
-import { Dialog, Button, Flex } from "@radix-ui/themes";
+import { Dialog, Flex } from "@radix-ui/themes";
+import { Button } from ".";
 import { useTranslation } from "react-i18next";
 import { toastError } from "../../utils/toast";
 

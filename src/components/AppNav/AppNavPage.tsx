@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Flex, Text } from "@radix-ui/themes";
+import { Flex } from "@radix-ui/themes";
+import { Button, Text } from "../Common";
 import { useNavigate } from "react-router-dom";
 import * as api from "../../utils/api";
 import { useAppTabsStore } from "../../stores/appTabsStore";

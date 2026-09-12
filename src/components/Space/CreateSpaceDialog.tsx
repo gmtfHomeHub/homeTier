@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { X, Eye, EyeOff } from "lucide-react";
-import { Button, TextField, TextArea, Flex } from "@radix-ui/themes";
+import { TextField, TextArea, Flex } from "@radix-ui/themes";
+import { Button } from "../Common";
 import { toastError } from "../../utils/toast";
 
 interface CreateSpaceDialogProps {

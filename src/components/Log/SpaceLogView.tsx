@@ -3,7 +3,7 @@ import { LogViewer } from "../Log/LogViewer";
 import { ArrowLeft, Terminal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useSpaceStore } from "../../stores/spaceStore";
-import { Button } from "@radix-ui/themes";
+import { Button } from "../Common";
 import { useTranslation } from "react-i18next";
 
 export function SpaceLogView() {
