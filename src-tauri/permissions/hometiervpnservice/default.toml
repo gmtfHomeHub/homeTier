@@ -1,0 +1,73 @@
+"$schema" = "schemas/schema.json"
+
+# homeTier Mobile VPN / Screen Sharing plugin permissions.
+# Identifier names use hyphens (Tauri 2 ACL rule).
+# Command names use underscores to match frontend invoke() and Kotlin @Command methods.
+
+[[permission]]
+identifier = "allow-prepare-vpn"
+description = "Enables the prepare_vpn command — requests OS VPN authorization."
+commands.allow = ["prepare_vpn"]
+
+[[permission]]
+identifier = "allow-start-vpn"
+description = "Enables the start_vpn command — starts the VpnService."
+commands.allow = ["start_vpn"]
+
+[[permission]]
+identifier = "allow-stop-vpn"
+description = "Enables the stop_vpn command — stops the VpnService."
+commands.allow = ["stop_vpn"]
+
+[[permission]]
+identifier = "allow-get-vpn-status"
+description = "Enables the get_vpn_status command — queries VPN status."
+commands.allow = ["get_vpn_status"]
+
+[[permission]]
+identifier = "allow-request-screen-capture"
+description = "Enables the request_screen_capture command — requests MediaProjection permission."
+commands.allow = ["request_screen_capture"]
+
+[[permission]]
+identifier = "allow-request-mic-permission"
+description = "Enables the request_mic_permission command — requests microphone permission."
+commands.allow = ["request_mic_permission"]
+
+[[permission]]
+identifier = "allow-request-camera-permission"
+description = "Enables the request_camera_permission command — requests camera permission."
+commands.allow = ["request_camera_permission"]
+
+[[permission]]
+identifier = "allow-start-screen-share"
+description = "Enables the start_screen_share command — starts screen sharing."
+commands.allow = ["start_screen_share"]
+
+[[permission]]
+identifier = "allow-stop-screen-share"
+description = "Enables the stop_screen_share command — stops screen sharing."
+commands.allow = ["stop_screen_share"]
+
+[[permission]]
+identifier = "allow-set-screen-share-quality"
+description = "Enables the set_screen_share_quality command — adjusts screen share quality."
+commands.allow = ["set_screen_share_quality"]
+
+[default]
+description = """
+All Mobile VPN / screen-sharing / permission commands enabled by default on mobile platforms.
+Desktop platforms ignore this plugin (not compiled in).
+"""
+permissions = [
+  "allow-prepare-vpn",
+  "allow-start-vpn",
+  "allow-stop-vpn",
+  "allow-get-vpn-status",
+  "allow-request-screen-capture",
+  "allow-request-mic-permission",
+  "allow-request-camera-permission",
+  "allow-start-screen-share",
+  "allow-stop-screen-share",
+  "allow-set-screen-share-quality",
+]

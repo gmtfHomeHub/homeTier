@@ -21,7 +21,7 @@ pub fn on_exit_cleanup(app_handle: &tauri::AppHandle) {
         let space_mgr_clone = space_mgr.inner().clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_time()
+                .enable_all()
                 .build()
                 .unwrap();
             rt.block_on(async {
@@ -35,7 +35,7 @@ pub fn on_exit_cleanup(app_handle: &tauri::AppHandle) {
     // 2. 优雅关闭 daemon
     {
         let client = crate::daemon::client::IpcClient::get_global();
-        let rt = tokio::runtime::Builder::new_current_thread().enable_time().build();
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build();
         if let Ok(rt) = rt {
             rt.block_on(async {
                 log_info!("[退出] 发送 IPC Shutdown 到 daemon");

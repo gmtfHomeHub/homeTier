@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.net.VpnService
+import android.os.Build
 import androidx.activity.result.ActivityResult
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -16,6 +17,7 @@ import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import android.util.Log
 import android.webkit.WebView
 import com.hometier.app.screen.ScreenShareManager
 
@@ -50,21 +52,39 @@ class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity
     @Command
     fun prepareVpn(invoke: Invoke) {
         activity.runOnUiThread {
-            val it = VpnService.prepare(activity)
-            if (it != null) {
-                startActivityForResult(invoke, it, "onPrepareVpnResult")
-                return@runOnUiThread
+            try {
+                val it = VpnService.prepare(activity)
+                if (it != null) {
+                    startActivityForResult(invoke, it, "onPrepareVpnResult")
+                    return@runOnUiThread
+                }
+                val ret = JSObject()
+                ret.put("granted", true)
+                invoke.resolve(ret)
+            } catch (e: Exception) {
+                // 授权框无法发起/插件异常 → 回传真实错误，避免 JS 侧把“没弹窗”误报成“被拒绝”
+                val ret = JSObject()
+                ret.put("granted", false)
+                ret.put("error", e.message ?: e.javaClass.simpleName)
+                invoke.resolve(ret)
             }
-            val ret = JSObject()
-            ret.put("granted", true)
-            invoke.resolve(ret)
         }
     }
 
     @ActivityCallback
     fun onPrepareVpnResult(invoke: Invoke, result: ActivityResult) {
         val ret = JSObject()
-        ret.put("granted", result.resultCode == Activity.RESULT_OK)
+        if (result.resultCode == Activity.RESULT_OK) {
+            // 二次确认：授权后 VpnService.prepare() 应返回 null，避免仅凭 RESULT_OK 误判
+            val stillNeedsPrepare = runCatching { VpnService.prepare(activity) }.getOrNull()
+            ret.put("granted", stillNeedsPrepare == null)
+            if (stillNeedsPrepare != null) {
+                ret.put("error", "prepare still returns an intent after grant")
+            }
+        } else {
+            ret.put("granted", false)
+            ret.put("error", "VPN consent canceled")
+        }
         invoke.resolve(ret)
     }
 
@@ -72,10 +92,26 @@ class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity
     fun startVpn(invoke: Invoke) {
         val args = invoke.parseArgs(StartVpnArgs::class.java)
         activity.runOnUiThread {
+            val ret = JSObject()
+
+            // 幂等：若 VPN 已在为同一 spaceId 运行，直接返回成功，避免重复建连触发 "Invalid IP addr string"
+            if (HomeTierVpnService.self != null && HomeTierVpnService.ipv4Addr != null) {
+                val currentSpaceId = HomeTierVpnService.intent?.getStringExtra(HomeTierVpnService.SPACE_ID)
+                if (args.spaceId == currentSpaceId) {
+                    Log.i("HomeTierVpn", "VPN already running for spaceId=${args.spaceId}, skipping restart")
+                    ret.put("running", true)
+                    ret.put("ipv4Addr", HomeTierVpnService.ipv4Addr)
+                    ret.put("routes", HomeTierVpnService.routes)
+                    ret.put("dns", HomeTierVpnService.dns)
+                    invoke.resolve(ret)
+                    return@runOnUiThread
+                }
+            }
+
+            // 需要切换 space 或首次建连：先撤销旧服务
             HomeTierVpnService.self?.onRevoke()
 
             val it = VpnService.prepare(activity)
-            val ret = JSObject()
             if (it != null) {
                 ret.put("errorMsg", "need_prepare")
             } else {
@@ -86,7 +122,12 @@ class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity
                 intent.putExtra(HomeTierVpnService.DNS, args.dns)
                 intent.putExtra(HomeTierVpnService.DISALLOWED_APPLICATIONS, args.disallowedApplications)
                 intent.putExtra(HomeTierVpnService.MTU, args.mtu)
-                activity.startService(intent)
+                // 服务内部会 startForeground，需用 startForegroundService 以符合 Android 8+ 约束
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    ContextCompat.startForegroundService(activity, intent)
+                } else {
+                    activity.startService(intent)
+                }
             }
             invoke.resolve(ret)
         }
@@ -109,6 +150,21 @@ class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity
         ret.put("routes", HomeTierVpnService.routes)
         ret.put("dns", HomeTierVpnService.dns)
         invoke.resolve(ret)
+    }
+
+    // ==================== LAN 子网自动探测 ====================
+
+    @Command
+    fun detectLanSubnets(invoke: Invoke) {
+        activity.runOnUiThread {
+            android.util.Log.i("HomeTierVpn", "detectLanSubnets: 开始探测")
+            // NetworkInterface 枚举不需任何运行时权限，直接调用即可
+            val subnets = LanSubnetDetector.detect(activity)
+            android.util.Log.i("HomeTierVpn", "detectLanSubnets: 探测结果: $subnets")
+            val ret = JSObject()
+            ret.put("subnets", subnets)
+            invoke.resolve(ret)
+        }
     }
 
     // ==================== 屏幕共享（MediaProjection） ====================
@@ -184,8 +240,22 @@ class HomeTierVpnServicePlugin(private val activity: Activity) : Plugin(activity
         }
     }
 
+    /** 请求位置权限（Android 10+ 读取 WiFi 信息需要） */
+    @Command
+    fun requestLocationPermission(invoke: Invoke) {
+        activity.runOnUiThread {
+            if (ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), REQUEST_LOCATION)
+            }
+            invoke.resolve(JSObject())
+        }
+    }
+
     companion object {
         private const val REQUEST_CAMERA = 2001
         private const val REQUEST_MIC = 2002
+        private const val REQUEST_LOCATION = 2003
     }
 }

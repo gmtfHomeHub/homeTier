@@ -37,6 +37,7 @@ export function VoiceAutoJoin() {
 
     return () => {
       // 仅最新一轮 effect 的清理负责退出，避免中间态频繁 join/leave
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       if (token === joinToken.current) {
         void voiceService.leave();
       }

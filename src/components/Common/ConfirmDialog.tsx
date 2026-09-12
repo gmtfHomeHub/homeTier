@@ -41,7 +41,7 @@ export function ConfirmDialog({
 
   return (
     <Dialog.Root open={open} onOpenChange={(open) => { if (!open) onCancel(); }}>
-      <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[var(--color-surface)] rounded-xl p-6 w-80 shadow-xl animate-fade-in z-50 focus:outline-none">
+      <Dialog.Content className="bg-[var(--color-surface)] rounded-xl p-6 max-w-[calc(100vw-24px)] w-full sm:w-80 shadow-xl animate-fade-in z-50 focus:outline-none">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             {danger && <AlertTriangle size={20} className="text-[var(--color-danger)]" />}

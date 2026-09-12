@@ -118,7 +118,8 @@ impl EasyTierManager {
             } else {
                 cfg.peers.iter().map(|p| p.uri.clone()).collect()
             },
-            proxy_cidrs: cfg.proxy_networks.iter().map(|p| p.cidr.clone()).collect(),
+            proxy_cidrs: cfg.effective_proxy_cidrs(),
+            enable_manual_routes: Some(cfg.enable_manual_routes),
             routes: cfg.routes.clone(),
             exit_nodes: cfg.exit_nodes.clone(),
             port_forwards: Vec::new(),
@@ -412,6 +413,24 @@ impl EasyTierManager {
 
                 match running_info {
                     Some(running_info) => {
+                        // 实例启动失败时 easytier-core 返回带 error_msg 的 default 运行信息
+                        // （my_node_info 为空、peer_route_pairs 为空），优先记录真实失败原因。
+                        if let Some(ref err_msg) = running_info.error_msg {
+                            crate::log_error!(format!(
+                                "EasyTierManager: 实例启动失败, instance_id={}, error_msg={}",
+                                instance_id, err_msg
+                            ));
+                            return Some(crate::daemon::ipc::SpaceRuntimeStatus {
+                                space_id: instance_id.to_string(),
+                                is_running: false,
+                                virtual_ip: None,
+                                connected_peers: 0,
+                                rx_bytes: 0,
+                                tx_bytes: 0,
+                                avg_latency_ms: 0.0,
+                            });
+                        }
+
                         let mut virtual_ip = None;
 
                         if let Some(ref my_node) = running_info.my_node_info {
@@ -721,6 +740,52 @@ impl EasyTierManager {
         self.query_rpc_status(instance_id, rpc_port).await
     }
 
+    /// 获取 Mesh 可达的子网代理路由（桌面端: 通过 RPC 查询 collect_network_info 并提取 proxy_cidrs）
+    pub async fn get_mesh_routes(&self, instance_id: &Uuid) -> Option<Vec<String>> {
+        let rpc_port = self.get_instance_rpc_port(instance_id)?;
+        self.query_mesh_routes(instance_id, rpc_port).await
+    }
+
+    /// 通过 RPC 查询 mesh routes（复用 collect_network_info）
+    async fn query_mesh_routes(&self, instance_id: &Uuid, rpc_port: u16) -> Option<Vec<String>> {
+        use easytier::proto::rpc_impl::standalone::StandAloneClient;
+        use easytier::proto::rpc_types::controller::BaseController;
+        use easytier::tunnel::tcp::TcpTunnelConnector;
+        use easytier::proto::api::manage::WebClientServiceClientFactory;
+
+        let url_str = format!("tcp://127.0.0.1:{}", rpc_port);
+        let url = url_str.parse().ok()?;
+        let connector = TcpTunnelConnector::new(url);
+        let mut client = StandAloneClient::new(connector);
+
+        let ctrl = BaseController::default();
+        let web_service = client
+            .scoped_client::<WebClientServiceClientFactory<BaseController>>("".to_string())
+            .await
+            .ok()?;
+
+        let proto_uuid: easytier::proto::common::Uuid = (*instance_id).into();
+        let inst_id_str = instance_id.to_string();
+
+        let req = easytier::proto::api::manage::CollectNetworkInfoRequest {
+            inst_ids: vec![proto_uuid],
+        };
+
+        let resp = web_service.collect_network_info(ctrl, req).await.ok()?;
+        let running_info = resp.info.as_ref()?.map.get(&inst_id_str)?;
+
+        let mut mesh_routes_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+        
+        // 从所有 Route.proxy_cidrs 提取
+        for route in &running_info.routes {
+            for cidr in &route.proxy_cidrs {
+                mesh_routes_set.insert(cidr.clone());
+            }
+        }
+
+        Some(mesh_routes_set.into_iter().collect())
+    }
+
     /// 运行时修改配置（重启子进程应用新配置）
     pub async fn patch_config(
         &self,
@@ -899,6 +964,7 @@ impl EasyTierManager {
         cfg: &config::NetworkConfig,
         instance_id: Uuid,
         initial_config: Option<String>,
+        app_handle: Option<tauri::AppHandle>,
     ) -> Result<Uuid, String> {
         crate::log_info!(format!("EasyTierManager: 启动网络实例 (Mobile), network_name={}, id={}", cfg.network_name, instance_id));
 
@@ -907,12 +973,26 @@ impl EasyTierManager {
             self.stop_network(&instance_id).await?;
         }
 
-        // 使用库方式启动
-        let running = launcher_internal::start_easytier(cfg, instance_id, &self.config_dir, initial_config).await?;
-        self.instances.insert(instance_id, running);
-
-        crate::log_info!(format!("EasyTierManager: 网络实例已启动 (Mobile), id={}", instance_id));
-        Ok(instance_id)
+        // 重试启动：前一次实例可能未完全清理（Drop 不保证资源即时释放），最多重试 3 次
+        let mut last_error = String::new();
+        for attempt in 0..3 {
+            if attempt > 0 {
+                crate::log_warn!(format!("EasyTierManager: 启动重试 {}/3, id={}", attempt, instance_id));
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+            match launcher_internal::start_easytier(cfg, instance_id, &self.config_dir, initial_config.clone(), app_handle.clone()).await {
+                Ok(running) => {
+                    self.instances.insert(instance_id, running);
+                    crate::log_info!(format!("EasyTierManager: 网络实例已启动 (Mobile), id={}", instance_id));
+                    return Ok(instance_id);
+                }
+                Err(e) => {
+                    last_error = format!("尝试 {}/3 失败: {}", attempt + 1, e);
+                    crate::log_warn!(last_error.clone());
+                }
+            }
+        }
+        Err(format!("启动网络实例失败 (Mobile, 重试耗尽): {}", last_error))
     }
 
     /// 停止网络实例
@@ -923,7 +1003,7 @@ impl EasyTierManager {
             crate::log_info!(format!("EasyTierManager: 网络实例已停止 (Mobile), id={}", instance_id));
             Ok(config)
         } else {
-            crate::log_warn!(format!("EasyTierManager: 实例未找到 (Mobile), id={}", instance_id));
+            crate::log_debug!(format!("EasyTierManager: 实例未找到 (Mobile, 可能已停止), id={}", instance_id));
             Ok(None)
         }
     }
@@ -945,9 +1025,10 @@ impl EasyTierManager {
 
     /// 获取 peer 列表
     pub async fn get_peers(&self, instance_id: &Uuid) -> Result<Vec<launcher_internal::PeerInfo>, String> {
-        let instance = self.instances.get(instance_id)
-            .ok_or_else(|| "Instance not found".to_string())?;
-        Ok(instance.get_peers().await)
+        match self.instances.get(instance_id) {
+            Some(instance) => Ok(instance.get_peers().await),
+            None => Ok(Vec::new()), // 实例不存在（过渡期）时返回空列表
+        }
     }
 
     /// 获取虚拟 IP
@@ -972,21 +1053,36 @@ impl EasyTierManager {
 
     /// 获取详细网络统计（Mobile: 基于库实例状态组装）
     pub async fn get_network_stats(&self, instance_id: &Uuid) -> Option<crate::daemon::ipc::SpaceRuntimeStatus> {
-        let status = self.get_status(instance_id).await.ok()?;
+        let instance = self.instances.get(instance_id)?;
+        let (is_running, virtual_ip, connected_peers, rx_bytes, tx_bytes, avg_latency_ms) = instance.get_runtime_stats().await;
         Some(crate::daemon::ipc::SpaceRuntimeStatus {
             space_id: instance_id.to_string(),
-            is_running: true,
-            virtual_ip: status.virtual_ip.clone(),
-            connected_peers: status.connected_peers,
-            rx_bytes: 0,
-            tx_bytes: 0,
-            avg_latency_ms: status.latency_ms.unwrap_or(0.0),
+            is_running,
+            virtual_ip,
+            connected_peers,
+            rx_bytes,
+            tx_bytes,
+            avg_latency_ms,
         })
     }
 
     /// 获取空间运行时状态（Mobile: 基于库实例状态组装）
     pub async fn get_space_status(&self, instance_id: &Uuid) -> Option<crate::daemon::ipc::SpaceRuntimeStatus> {
         self.get_network_stats(instance_id).await
+    }
+
+    /// 获取 Mesh 可达的子网代理路由（Mobile: 从实例状态获取）
+    pub async fn get_mesh_routes(&self, instance_id: &Uuid) -> Option<Vec<String>> {
+        let instance = self.instances.get(instance_id)?;
+        Some(instance.get_mesh_routes().await)
+    }
+
+    /// 获取运行时快照（供 SpaceManager.connect 等待就绪使用）
+    /// 返回: (is_running, virtual_ip, connected_peers)
+    pub async fn get_runtime_snapshot(&self, instance_id: &Uuid) -> Option<(bool, Option<String>, u32)> {
+        let instance = self.instances.get(instance_id)?;
+        let (is_running, virtual_ip, connected_peers, _, _, _) = instance.get_runtime_stats().await;
+        Some((is_running, virtual_ip, connected_peers))
     }
 
     /// 升级版本（Mobile 不支持）
@@ -1019,6 +1115,7 @@ mod launcher_internal {
     use tokio::sync::RwLock;
     use std::path::PathBuf;
     use uuid::Uuid;
+    use tauri::Emitter;
     use crate::types::NetworkStatus;
     use super::config;
 
@@ -1053,12 +1150,12 @@ mod launcher_internal {
         virtual_ip: Option<String>,
         connected_peers: u32,
         is_running: bool,
-        #[allow(dead_code)]
         rx_bytes: u64,
-        #[allow(dead_code)]
         tx_bytes: u64,
         avg_latency_ms: f64,
         peers: Vec<PeerInfo>,
+        // Mesh 可达的子网代理路由（从所有 Route.proxy_cidrs 去重聚合）
+        mesh_routes: Vec<String>,
     }
 
     /// 启动 EasyTier 网络实例（库方式）
@@ -1067,6 +1164,7 @@ mod launcher_internal {
         instance_id: Uuid,
         config_dir: &PathBuf,
         initial_config: Option<String>,
+        app_handle: Option<tauri::AppHandle>,
     ) -> Result<RunningInstance, String> {
         use easytier::common::config::ConfigLoader;
         let network_name = cfg.network_name.clone();
@@ -1196,12 +1294,15 @@ mod launcher_internal {
             tx_bytes: 0,
             avg_latency_ms: 0.0,
             peers: Vec::new(),
+            mesh_routes: Vec::new(),
         }));
 
         let status_poll = status.clone();
         let stop_notifier = instance.get_stop_notifier();
+        let instance_id_for_poll = instance_id;
+        let app_handle_for_poll = app_handle.clone();
         tokio::spawn(async move {
-            poll_instance_status(status_poll, api_service).await;
+            poll_instance_status(status_poll, api_service, instance_id_for_poll, app_handle_for_poll).await;
         });
 
         let status_stop = status.clone();
@@ -1228,25 +1329,160 @@ mod launcher_internal {
     async fn poll_instance_status(
         status: Arc<RwLock<InstanceStatus>>,
         api_service: Option<Arc<dyn easytier::rpc_service::InstanceRpcService>>,
+        instance_id: Uuid,
+        app_handle: Option<tauri::AppHandle>,
     ) {
+        // 首次快速轮询（500ms），前 10s (20次) 每 500ms 快速轮询，后续每 2 秒轮询一次
+        let mut fast_poll_count = 0;
+        let mut last_mesh_routes: Vec<String> = Vec::new();
+
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            if fast_poll_count < 20 { // 前 10s (20 * 500ms) 快速轮询
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                fast_poll_count += 1;
+            } else {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
             let is_running = { status.read().await.is_running };
             if !is_running { break; }
 
             if let Some(ref api) = api_service {
                 let ctrl = easytier::proto::rpc_types::controller::BaseController::default();
-                if let Ok(peers_resp) = api
+
+                // 1) list_peer: 获取 peer 连接状态 + 本机 IP
+                let peers_resp = api
                     .get_peer_manage_service()
                     .list_peer(ctrl.clone(), easytier::proto::api::instance::ListPeerRequest::default())
-                    .await
-                {
+                    .await;
+
+                // 2) list_route: 获取每个 peer 的 virtual_ip / hostname / latency
+                let routes_resp = api
+                    .get_peer_manage_service()
+                    .list_route(ctrl.clone(), easytier::proto::api::instance::ListRouteRequest::default())
+                    .await;
+
+                if let Ok(peers_resp) = peers_resp {
+                    // 按 peer_id 建立连接状态索引
+                    use std::collections::HashMap;
+                    let mut conn_map: HashMap<u32, &easytier::proto::api::instance::PeerInfo> = HashMap::new();
+                    for p in &peers_resp.peer_infos {
+                        conn_map.insert(p.peer_id, p);
+                    }
+
+                    // 本机 IP（my_info.ipv4_addr）
+                    let my_ip = peers_resp.my_info.as_ref().and_then(|m| {
+                        if m.ipv4_addr.is_empty() { None } else { Some(m.ipv4_addr.clone()) }
+                    });
+
+                    // 按 peer_id 建立 route 索引（virtual_ip / hostname / latency）
+                    let mut route_map: HashMap<u32, &easytier::proto::api::instance::Route> = HashMap::new();
+                    if let Ok(routes_resp) = &routes_resp {
+                        for r in &routes_resp.routes {
+                            route_map.insert(r.peer_id, r);
+                        }
+                    }
+
+                    // 计算聚合统计：总接收/发送字节、平均延迟
+                    let total_rx: u64 = conn_map.values().filter_map(|c| c.conns.first().and_then(|cn| cn.stats.as_ref().map(|s| s.rx_bytes))).sum();
+                    let total_tx: u64 = conn_map.values().filter_map(|c| c.conns.first().and_then(|cn| cn.stats.as_ref().map(|s| s.tx_bytes))).sum();
+                    let latency_sum: f64 = route_map.values().filter_map(|r| (r.path_latency > 0).then_some(r.path_latency as f64)).sum();
+                    let latency_count = route_map.values().filter(|r| r.path_latency > 0).count();
+                    let avg_latency = if latency_count > 0 { latency_sum / latency_count as f64 } else { 0.0 };
+
+                    // 组装 PeerInfo 列表（连接的 peer + 有 route 的 peer 取并集）
+                    let mut all_peer_ids: std::collections::HashSet<u32> = conn_map.keys().copied().collect();
+                    all_peer_ids.extend(route_map.keys().copied());
+
+                    let mut peers: Vec<PeerInfo> = all_peer_ids.iter().map(|&pid| {
+                        let conn = conn_map.get(&pid);
+                        let route = route_map.get(&pid);
+                        PeerInfo {
+                            peer_id: pid,
+                            virtual_ip: route.and_then(|r| r.ipv4_addr.map(|ip| ip.to_string())),
+                            hostname: route.and_then(|r| {
+                                if r.hostname.is_empty() { None } else { Some(r.hostname.clone()) }
+                            }),
+                            latency_ms: route.map(|r| r.path_latency as f64).filter(|l| *l > 0.0),
+                            loss_rate: conn.and_then(|c| c.conns.first().map(|cn| cn.loss_rate as f64)),
+                            rx_bytes: conn.and_then(|c| c.conns.first().and_then(|cn| cn.stats.as_ref().map(|s| s.rx_bytes))),
+                            tx_bytes: conn.and_then(|c| c.conns.first().and_then(|cn| cn.stats.as_ref().map(|s| s.tx_bytes))),
+                            connected: conn.is_some(),
+                            is_local: false,
+                            version: route.and_then(|r| {
+                                if r.version.is_empty() { None } else { Some(r.version.clone()) }
+                            }),
+                            tunnel_proto: conn.and_then(|c| c.conns.first().and_then(|cn| cn.tunnel.as_ref().map(|t| t.tunnel_type.clone()))),
+                            nat_type: None,
+                        }
+                    }).collect();
+
+                    // 添加本地节点（my_info）作为第一个元素，is_local = true
+                    if let Some(my_info) = &peers_resp.my_info {
+                        if !my_info.ipv4_addr.is_empty() {
+                            peers.insert(0, PeerInfo {
+                                peer_id: my_info.peer_id,
+                                virtual_ip: Some(my_info.ipv4_addr.clone()),
+                                hostname: if my_info.hostname.is_empty() { None } else { Some(my_info.hostname.clone()) },
+                                latency_ms: Some(0.0),
+                                loss_rate: None,
+                                rx_bytes: None,
+                                tx_bytes: None,
+                                connected: true,
+                                is_local: true,
+                                version: if my_info.version.is_empty() { None } else { Some(my_info.version.clone()) },
+                                tunnel_proto: None,
+                                nat_type: None,
+                            });
+                        }
+                    }
+
+                    // 按 latency 排序（无 latency 的排后面），本地节点因 latency=0 会排在前面
+                    peers.sort_by(|a, b| {
+                        let la = a.latency_ms.unwrap_or(f64::MAX);
+                        let lb = b.latency_ms.unwrap_or(f64::MAX);
+                        la.partial_cmp(&lb).unwrap_or(std::cmp::Ordering::Equal)
+                    });
+
+                    // 提取并去重 mesh 子网代理路由（所有 Route.proxy_cidrs 聚合）
+                    let mut mesh_routes_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+                    if let Ok(routes_resp) = &routes_resp {
+                        for r in &routes_resp.routes {
+                            for cidr in &r.proxy_cidrs {
+                                mesh_routes_set.insert(cidr.clone());
+                            }
+                        }
+                    }
+                    // 也包含本地节点的 proxy_cidrs
+                    if let Some(my_info) = &peers_resp.my_info {
+                        for cidr in &my_info.proxy_cidrs {
+                            mesh_routes_set.insert(cidr.clone());
+                        }
+                    }
+                    let mesh_routes: Vec<String> = mesh_routes_set.into_iter().collect();
+
+                    // 检测 mesh routes 变化并发送事件
+                    // 首次采集到非空 mesh_routes 时也强制触发（last_mesh_routes 初始为空）
+                    let is_first_non_empty = last_mesh_routes.is_empty() && !mesh_routes.is_empty();
+                    if mesh_routes != last_mesh_routes || is_first_non_empty {
+                        last_mesh_routes = mesh_routes.clone();
+                        if let Some(ref handle) = app_handle {
+                            let payload = serde_json::json!({
+                                "spaceId": instance_id.to_string(),
+                                "routes": mesh_routes,
+                            });
+                            let _ = handle.emit("mesh_routes_updated", payload);
+                        }
+                    }
+
                     let mut s = status.write().await;
                     s.connected_peers = peers_resp.peer_infos.len() as u32;
-                    if let Some(ref my_info) = peers_resp.my_info {
-                        if !my_info.ipv4_addr.is_empty() {
-                            s.virtual_ip = Some(my_info.ipv4_addr.clone());
-                        }
+                    s.rx_bytes = total_rx;
+                    s.tx_bytes = total_tx;
+                    s.avg_latency_ms = avg_latency;
+                    s.peers = peers;
+                    s.mesh_routes = mesh_routes;
+                    if let Some(ip) = my_ip {
+                        s.virtual_ip = Some(ip);
                     }
                 }
             }
@@ -1279,6 +1515,17 @@ mod launcher_internal {
                 latency_ms: Some(s.avg_latency_ms),
                 connected_peers: s.connected_peers,
             })
+        }
+
+        /// 获取聚合统计（供 get_network_stats 使用）
+        pub async fn get_runtime_stats(&self) -> (bool, Option<String>, u32, u64, u64, f64) {
+            let s = self.status.read().await;
+            (s.is_running, s.virtual_ip.clone(), s.connected_peers, s.rx_bytes, s.tx_bytes, s.avg_latency_ms)
+        }
+
+        /// 获取 Mesh 可达的子网代理路由（去重后的所有 proxy_cidrs）
+        pub async fn get_mesh_routes(&self) -> Vec<String> {
+            self.status.read().await.mesh_routes.clone()
         }
 
         pub async fn stop(&mut self) -> Result<Option<String>, String> {

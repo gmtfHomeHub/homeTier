@@ -4,9 +4,8 @@ import { useAppTabsStore } from "./appTabsStore";
 import type { Space } from "../types";
 import { SpaceStatus } from "../enum";
 import i18n from "../i18n";
-import { isMobile, getPlatform } from "../utils/platform";
-import { connectWithVpn, disconnectWithVpn } from "../services/mobileVpn";
-import { toastError } from "../utils/toast";
+import { isMobile } from "../utils/platform";
+import { connectWithVpn, disconnectWithVpn, getVpnStatus, resolveVirtualIpForConnect } from "../services/mobileVpn";
 
 interface SpaceStore {
   spaces: Space[];
@@ -43,9 +42,50 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
   currentSpaceId: null,
 
   loadSpaces: async () => {
+    const prev = get().spaces;
     const spaces = await api.listSpaces();
-    set({ spaces });
-    syncTrayMenu(spaces);
+
+    // 移动端：若前次 CED 现变 DIS，优先查 VPN 实时状态（Kotlin VpnService 是否运行）
+    // 避免 list() 瞬态 DIS 覆盖真实连接状态（Rust is_running() 与 Kotlin VpnService 两层可能不同步）
+    const mobile = await isMobile();
+    let finalSpaces = spaces;
+    if (mobile) {
+      const disSpaces = spaces.filter((s) => s.status === SpaceStatus.DIS);
+      if (disSpaces.length > 0) {
+        try {
+          const vpnStatus = await getVpnStatus();
+          if (vpnStatus.running) {
+            // VPN 实际运行中，恢复这些空间为 CED
+            finalSpaces = spaces.map((s) =>
+              s.status === SpaceStatus.DIS ? { ...s, status: SpaceStatus.CED } : s
+            );
+          }
+        } catch {
+          // getVpnStatus 失败，保持 list() 结果
+        }
+      }
+    }
+
+    set({ spaces: finalSpaces });
+    syncTrayMenu(finalSpaces);
+
+    // 异步复核：前次 CED 现变 DIS 的空间（且 VPN 未运行），可能是 list() 瞬态，2s 后重新查询
+    const transient = prev.filter(
+      (p) =>
+        p.status === SpaceStatus.CED &&
+        finalSpaces.find((s) => s.id === p.id && s.status === SpaceStatus.DIS)
+    );
+    if (transient.length > 0) {
+      setTimeout(async () => {
+        try {
+          const rechecked = await api.listSpaces();
+          set({ spaces: rechecked });
+          syncTrayMenu(rechecked);
+        } catch {
+          // 静默失败
+        }
+      }, 2000);
+    }
   },
 
   loadSpacesOnce: async () => {
@@ -53,7 +93,7 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
       const spaces = await api.listSpaces();
       set({ spaces });
       syncTrayMenu(spaces);
-    } catch (e) {
+    } catch {
       // silently ignore
     }
   },
@@ -94,6 +134,13 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
   setCurrentSpace: (id) => set({ currentSpaceId: id }),
 
   connectSpace: async (spaceId) => {
+    // 幂等：若已连接（CED），直接返回，避免重复连接触发 "Invalid IP addr string"
+    if (get().spaces.find((s) => s.id === spaceId && s.status === SpaceStatus.CED)) {
+      return;
+    }
+
+    const mobile = await isMobile();
+
     // 互斥：将其他已连接的空间设为 disconnected，目标空间设为 connecting
     const prevConnected = get().spaces.find((s) => s.status === SpaceStatus.CED || s.status === SpaceStatus.ING);
     set((state) => ({
@@ -104,17 +151,19 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
       }),
     }));
 
-    // 移动端 VPN 特殊流程
-    const mobile = await isMobile();
     if (mobile) {
       try {
-        // 移动端：prepareVpn -> connectSpace -> startVpn (事件驱动 setTunFd)
+        // 移动端：解析本机静态虚拟 IP（VpnService 接口地址必须等于节点身份 IP）
+        // -> prepareVpn -> connectSpace -> startVpn (事件驱动 setTunFd)
         const space = get().spaces.find((s) => s.id === spaceId);
         if (!space) throw new Error("Space not found");
 
-        const success = await connectWithVpn(spaceId, space.name, space.virtual_ip ?? "10.144.144.1");
-        if (!success) {
-          throw new Error("VPN connection failed");
+        // 配置为 DHCP/无静态 IP 时会自动分配并写回配置（dhcp=false），保证 VPN
+        // 接口地址与 EasyTier 节点身份一致，杜绝 mesh L3 回包黑洞；不再使用 .1 兜底。
+        const virtualIp = await resolveVirtualIpForConnect(space);
+        const errorMsg = await connectWithVpn(spaceId, space.name, virtualIp);
+        if (errorMsg) {
+          throw new Error(errorMsg);
         }
 
         set((state) => ({
@@ -135,7 +184,7 @@ export const useSpaceStore = create<SpaceStore>((set, get) => ({
           ),
           error: String(e),
         }));
-        toastError(i18n.t("vpn.connectFailed", { error: String(e) }));
+        // 统一由调用方（useSpaceConnect）toast 一次，避免与 vpn.connectFailed 重复弹两条
         throw e;
       }
     }

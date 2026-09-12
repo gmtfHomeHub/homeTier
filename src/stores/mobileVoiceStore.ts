@@ -42,7 +42,7 @@ export const useMobileVoiceStore = create<MobileVoiceState>()(
         return newMuted;
       },
       
-      joinVoice: async (spaceId: string) => {
+      joinVoice: async (_spaceId: string) => {
         set({ voiceStatus: 'connecting' });
         try {
           // TODO: 调用后端命令
@@ -54,7 +54,7 @@ export const useMobileVoiceStore = create<MobileVoiceState>()(
         }
       },
       
-      leaveVoice: async (spaceId: string) => {
+      leaveVoice: async (_spaceId: string) => {
         // await invoke('mobile_voice_leave', { spaceId });
         set({ voiceStatus: 'disconnected' });
       },

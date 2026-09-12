@@ -41,6 +41,9 @@ pub struct SpaceManager {
     cancel_tokens: Arc<RwLock<HashMap<Uuid, CancellationToken>>>,
     /// 连接任务句柄映射: space_id -> JoinHandle
     connect_handles: Arc<RwLock<HashMap<Uuid, tokio::task::JoinHandle<()>>>>,
+    /// 已注入 TUN fd 的空间集合（幂等防重：JS 与 Rust 双路监听 tun-ready 时避免重复注入）
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    tun_injected: Arc<std::sync::Mutex<std::collections::HashMap<Uuid, i32>>>,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -78,8 +81,28 @@ impl Clone for SpaceManager {
             storage_dir: self.storage_dir.clone(),
             cancel_tokens: self.cancel_tokens.clone(),
             connect_handles: self.connect_handles.clone(),
+            tun_injected: self.tun_injected.clone(),
         }
     }
+}
+
+/// 规范化空间网段（S1）：按 space_id 哈希在空间默认网段 10.144.144.0/24 内取一个
+/// 确定性主机号（2..251，避开 .1 网关）。同一节点每次连接得到同一 IP；不同节点
+/// space_id 不同 → 主机号不同，避免冲突。桌面/移动共用此 IP，统一到同一 /24，
+/// 消除桌面 easytier dhcp 子网与移动端 10.144.144 假设的分叉（跨 /24 直连根因）。
+fn canonical_virtual_ipv4(space_id: &Uuid) -> String {
+    let mut h: u64 = 0;
+    for &b in space_id.as_bytes() {
+        h = h.wrapping_mul(31).wrapping_add(b as u64);
+    }
+    let host = (h % 250) as u32 + 2; // 2..251
+    format!("10.144.144.{}", host)
+}
+
+/// 联动 proxy_cidrs：整体去重 + own_cidr（virtual_ipv4 网络地址）置首位
+/// （create/join 落库前调用；运行时 effective_proxy_cidrs 仍作兜底去重）
+fn sync_proxy_cidrs(config: &mut NetworkConfig) {
+    config.dedupe_proxy_cidrs();
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -118,7 +141,7 @@ Self {
         let prefix =
             crate::config::get_str(crate::config::KEY_RELAY_NETWORK_PREFIX, crate::config::DEFAULT_RELAY_NETWORK_PREFIX);
         let network_name = format!("{}{}", prefix, name);
-        let space = Space {
+        let mut space = Space {
             id: space_id,
             name,
             description,
@@ -148,6 +171,27 @@ Self {
         };
         self.db.insert_space(&row)?;
         self.db.add_member(&space_id.to_string(), &owner_uuid, &space.name, true)?;
+
+        // S1: 创建即落库 10.144.144.0/24 内的确定性静态虚拟 IP（dhcp=false），使桌面/移动
+        // 统一到同一 /24，避免桌面 easytier dhcp 子网与移动端 10.144.144 假设分叉。
+        // 配置继承：默认值 ← 系统级 easytier 配置（SettingsPage 可编辑）← create 特定字段，
+        // create 字段（dhcp/virtual_ipv4/name/secret）最后覆盖，保证不被系统配置污染。
+        let mut config = match self.db.get_user_config()?.and_then(|j| {
+            serde_json::from_str::<NetworkConfig>(&j).ok()
+        }) {
+            Some(sc) => sc,
+            None => NetworkConfig::default(),
+        };
+        config.network_name = space.network_name.clone();
+        config.network_secret = space.network_secret.clone();
+        config.dhcp = false;
+        config.virtual_ipv4 = canonical_virtual_ipv4(&space.id);
+        sync_proxy_cidrs(&mut config);
+        let config_json = serde_json::to_string(&config)
+            .map_err(|e| format!("序列化配置失败: {}", e))?;
+        self.db.update_space_config(&space.id.to_string(), &config_json)?;
+        space.config_json = Some(config_json);
+
         self.spaces.write().await.push(space.clone());
 
         crate::log_info!(format!("创建空间: {} (id={}, owner={})", space.name, space.id, owner_uuid), &space.id.to_string());
@@ -160,11 +204,12 @@ Self {
     pub async fn join(&self, config: NetworkConfig, name: Option<String>) -> Result<Space, String> {
         let network_name = config.network_name.clone();
         let network_secret = config.network_secret.clone();
-        let space = Space {
+        let owner_uuid = self.db.get_user_id()?.unwrap_or_else(|| "local-user".to_string());
+        let mut space = Space {
             id: Uuid::new_v4(),
             name: name.clone().unwrap_or_else(|| network_name.clone()),
             description: None,
-            owner_id: None,
+            owner_id: Some(owner_uuid.clone()),
             network_name: network_name,
             network_secret: network_secret.clone(),
             created_at: chrono::Local::now(),
@@ -179,7 +224,7 @@ Self {
         let row = SpaceRow {
             id: space.id.to_string(),
             name: space.name.clone(),
-            owner_id: None,
+            owner_id: space.owner_id.clone(),
             network_name: space.network_name.clone(),
             network_secret: space.network_secret.clone(),
             description: None,
@@ -190,10 +235,20 @@ Self {
         };
         self.db.insert_space(&row)?;
 
+        // S1: 接收方一律 dhcp=false 静态虚拟 IP。若分享链接携带 virtual_ipv4（非空）则沿用，
+        // 否则按本节点 space_id 哈希在 10.144.144.0/24 内取 canonical IP；own_cidr 由 sync_proxy_cidrs 跟随。
+        let mut config = config;
+        config.dhcp = false;
+        if config.virtual_ipv4.is_empty() {
+            config.virtual_ipv4 = canonical_virtual_ipv4(&space.id);
+        }
+        sync_proxy_cidrs(&mut config);
+
         // 完整配置 json 落库（默认值已由后端 serde(default) 补全）
         let config_json = serde_json::to_string(&config)
             .map_err(|e| format!("序列化配置失败: {}", e))?;
         self.db.update_space_config(&space.id.to_string(), &config_json)?;
+        space.config_json = Some(config_json);
         crate::log_info!(
             format!("加入空间: 配置已写入 config json (dhcp={}, ip={}, peers={}, listeners={})",
                 config.dhcp,
@@ -324,30 +379,31 @@ Self {
             listener_urls: effective.listener_urls.clone(),
         };
         crate::log_info!(format!("生成分享链接: {} (v2 加密)", info.network_name), &space_id.to_string());
-        crate::space::share::encrypt_share_payload(&info)
+        let data = crate::space::share::encode_share_binary(&info)?;
+        crate::qr::encrypt_qr(crate::qr::EVENT_JOIN_SPACE, &data)
     }
 
-    /// 等待 daemon 就绪（ping 轮询，最多 10s）
-    async fn wait_daemon_ready(&self) -> bool {
+    /// 等待 daemon 就绪（ping 轮询，最多 10s），失败返回错误
+    async fn wait_daemon_ready(&self) -> Result<(), String> {
         for i in 0..50 {
             if self.ipc_client.ping().await {
-                return true;
+                return Ok(());
             }
             if i % 10 == 0 {
                 crate::log_debug!(format!("connect: 等待 daemon 就绪 ({}/50)...", i + 1));
             }
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
-        false
+        Err("daemon 启动超时（10s），无法建立 IPC 连接".to_string())
     }
 
     /// 连接空间（通过 IPC 通知 daemon）
-    pub async fn connect(&self, space_id: &Uuid) -> Result<(), String> {
+    pub async fn connect(&self, space_id: &Uuid, _auto_proxy_cidrs: Option<Vec<String>>) -> Result<(), String> {
         crate::log_info!(format!("connect: 开始连接空间, space_id={}", space_id), &space_id.to_string());
 
         if !self.ipc_client.ping().await {
             crate::log_info!("connect: daemon 未就绪，等待...", &space_id.to_string());
-            self.wait_daemon_ready().await;
+            self.wait_daemon_ready().await?;
         }
         crate::log_debug!(format!("connect: 查询当前运行中的空间"), &space_id.to_string());
         let running_spaces: Vec<String> = match self.ipc_client.list_spaces().await {
@@ -773,13 +829,10 @@ Self {
 
     /// 校验是否为空间创建者
     pub async fn check_owner(&self, space_id: &str) -> Result<(), String> {
-        let caller_id = self.db.get_user_id()?.unwrap_or_default();
+        // 取消所有者权限限制：仅保留空间存在性校验，不限制 owner
         let spaces = self.spaces.read().await;
-        let space = spaces.iter().find(|s| s.id.to_string() == *space_id)
+        let _ = spaces.iter().find(|s| s.id.to_string() == *space_id)
             .ok_or_else(|| "空间不存在".to_string())?;
-        if space.owner_id.as_deref() != Some(caller_id.as_str()) {
-            return Err("无权限：仅空间创建者可执行此操作".to_string());
-        }
         Ok(())
     }
 
@@ -834,6 +887,7 @@ impl SpaceManager {
             storage_dir: Arc::new(RwLock::new(storage_dir)),
             cancel_tokens: Arc::new(RwLock::new(HashMap::new())),
             connect_handles: Arc::new(RwLock::new(HashMap::new())),
+            tun_injected: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         }
     }
 
@@ -845,7 +899,7 @@ impl SpaceManager {
             crate::config::get_str(crate::config::KEY_RELAY_NETWORK_PREFIX, crate::config::DEFAULT_RELAY_NETWORK_PREFIX);
         let network_name = format!("{}{}", prefix, name);
 
-        let space = Space {
+        let mut space = Space {
             id: space_id,
             name,
             description,
@@ -875,6 +929,27 @@ impl SpaceManager {
         };
         self.db.insert_space(&row)?;
         self.db.add_member(&space_id.to_string(), &owner_uuid, &space.name, true)?;
+
+        // S1: 创建即落库 10.144.144.0/24 内的确定性静态虚拟 IP（dhcp=false），使桌面/移动
+        // 统一到同一 /24，避免桌面 easytier dhcp 子网与移动端 10.144.144 假设分叉。
+        // 配置继承：默认值 ← 系统级 easytier 配置（SettingsPage 可编辑）← create 特定字段，
+        // create 字段（dhcp/virtual_ipv4/name/secret）最后覆盖，保证不被系统配置污染。
+        let mut config = match self.db.get_user_config()?.and_then(|j| {
+            serde_json::from_str::<NetworkConfig>(&j).ok()
+        }) {
+            Some(sc) => sc,
+            None => NetworkConfig::default(),
+        };
+        config.network_name = space.network_name.clone();
+        config.network_secret = space.network_secret.clone();
+        config.dhcp = false;
+        config.virtual_ipv4 = canonical_virtual_ipv4(&space.id);
+        sync_proxy_cidrs(&mut config);
+        let config_json = serde_json::to_string(&config)
+            .map_err(|e| format!("序列化配置失败: {}", e))?;
+        self.db.update_space_config(&space.id.to_string(), &config_json)?;
+        space.config_json = Some(config_json);
+
         self.spaces.write().await.push(space.clone());
         crate::log_info!(format!("创建空间: {} (id={}, owner={})", space.name, space.id, owner_uuid), &space.id.to_string());
         Ok(space)
@@ -886,11 +961,12 @@ impl SpaceManager {
     pub async fn join(&self, config: NetworkConfig, name: Option<String>) -> Result<Space, String> {
         let network_name = config.network_name.clone();
         let network_secret = config.network_secret.clone();
-        let space = Space {
+        let owner_uuid = self.db.get_user_id()?.unwrap_or_else(|| "local-user".to_string());
+        let mut space = Space {
             id: Uuid::new_v4(),
             name: name.clone().unwrap_or_else(|| network_name.clone()),
             description: None,
-            owner_id: None,
+            owner_id: Some(owner_uuid.clone()),
             network_name: network_name,
             network_secret: network_secret.clone(),
             created_at: chrono::Local::now(),
@@ -905,7 +981,7 @@ impl SpaceManager {
         let row = SpaceRow {
             id: space.id.to_string(),
             name: space.name.clone(),
-            owner_id: None,
+            owner_id: space.owner_id.clone(),
             network_name: space.network_name.clone(),
             network_secret: space.network_secret.clone(),
             description: None,
@@ -916,10 +992,20 @@ impl SpaceManager {
         };
         self.db.insert_space(&row)?;
 
+        // S1: 接收方一律 dhcp=false 静态虚拟 IP。若分享链接携带 virtual_ipv4（非空）则沿用，
+        // 否则按本节点 space_id 哈希在 10.144.144.0/24 内取 canonical IP；own_cidr 由 sync_proxy_cidrs 跟随。
+        let mut config = config;
+        config.dhcp = false;
+        if config.virtual_ipv4.is_empty() {
+            config.virtual_ipv4 = canonical_virtual_ipv4(&space.id);
+        }
+        sync_proxy_cidrs(&mut config);
+
         // 完整配置 json 落库（默认值已由后端 serde(default) 补全）
         let config_json = serde_json::to_string(&config)
             .map_err(|e| format!("序列化配置失败: {}", e))?;
         self.db.update_space_config(&space.id.to_string(), &config_json)?;
+        space.config_json = Some(config_json);
         crate::log_info!(
             format!("加入空间: 配置已写入 config json (dhcp={}, ip={}, peers={}, listeners={})",
                 config.dhcp,
@@ -964,13 +1050,34 @@ impl SpaceManager {
     /// 获取空间列表
     pub async fn list(&self) -> Result<Vec<Space>, String> {
         let rows = self.db.list_spaces()?;
+        // 获取之前缓存的状态，用于检测 CED→DIS 的瞬态变化
+        let prev_spaces = self.spaces.read().await.clone();
         let mut spaces = Vec::new();
         for row in rows {
             let id: Uuid = row.id.parse().unwrap_or_default();
-            let is_running = self.easytier.is_running(&id);
+            let mut is_running = self.easytier.is_running(&id);
+
+            // 二次确认：如果之前是 Connected 但现在显示 Disconnected，可能是瞬态
+            let was_connected = prev_spaces
+                .iter()
+                .find(|s| s.id == id)
+                .map(|s| s.status == SpaceStatus::Connected)
+                .unwrap_or(false);
+            if !is_running && was_connected {
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                is_running = self.easytier.is_running(&id);
+            }
+
             let status = if is_running { SpaceStatus::Connected } else { SpaceStatus::Disconnected };
             let member_count = if is_running { self.easytier.get_connected_peers(&id).unwrap_or(0) + 1 } else { 0 };
-            let virtual_ip = if is_running { self.easytier.get_virtual_ip(&id) } else { None };
+            // CED→DIS 瞬态时保留之前的 virtual_ip，前端会异步复核
+            let virtual_ip = if is_running {
+                self.easytier.get_virtual_ip(&id)
+            } else if was_connected {
+                prev_spaces.iter().find(|s| s.id == id).and_then(|s| s.virtual_ip.clone())
+            } else {
+                None
+            };
 
             spaces.push(Space {
                 id,
@@ -996,32 +1103,47 @@ impl SpaceManager {
         Ok(spaces)
     }
 
-    /// 生成分享链接（Mobile: 基于空间基础信息加密）
+    /// 生成分享链接（Mobile: 携带分享者的对端/监听地址 + 接收方 IP）
     pub async fn generate_share_link(&self, space_id: &Uuid, ip: Option<String>) -> Result<String, String> {
         let spaces = self.spaces.read().await;
         let space = spaces.iter().find(|s| &s.id == space_id)
             .ok_or_else(|| "Space not found".to_string())?;
+        let network_name = space.network_name.clone();
+        let network_secret = space.network_secret.clone();
+        let space_name = space.name.clone();
+        drop(spaces);
+
         let virtual_ip = ip
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
-        // 先借用计算结果，避免之后 move 后 borrow
-        let dhcp = virtual_ip.is_none();
+        let dhcp = Some(virtual_ip.is_none());
+
+        // 从 DB config_json 读取分享者的对端/监听地址（与桌面 get_effective_config 对齐）
+        let (peer_urls, listener_urls) = match self.db.get_space_config(&space_id.to_string()) {
+            Ok(Some(json)) => match NetworkConfig::from_config_json(&json) {
+                Ok(cfg) => (cfg.peer_urls, cfg.listener_urls),
+                Err(_) => (Vec::new(), Vec::new()),
+            },
+            _ => (Vec::new(), Vec::new()),
+        };
+
         let info = ShareInfo {
-            network_name: space.network_name.clone(),
-            network_secret: space.network_secret.clone(),
+            network_name,
+            network_secret,
             host_hint: None,
             virtual_ip,
-            dhcp: Some(dhcp),
-            name: Some(space.name.clone()),
-            peer_urls: Vec::new(),
-            listener_urls: Vec::new(),
+            dhcp,
+            name: Some(space_name),
+            peer_urls,
+            listener_urls,
         };
-        crate::log_info!(format!("生成分享链接: {} (v2 加密)", info.network_name), &space_id.to_string());
-        crate::space::share::encrypt_share_payload(&info)
+        crate::log_info!(format!("生成分享链接: {} (v2 加密, peers={}, listeners={})", info.network_name, info.peer_urls.len(), info.listener_urls.len()), &space_id.to_string());
+        let data = crate::space::share::encode_share_binary(&info)?;
+        crate::qr::encrypt_qr(crate::qr::EVENT_JOIN_SPACE, &data)
     }
 
     /// 连接空间（Mobile: 直接调用库）
-    pub async fn connect(&self, space_id: &Uuid) -> Result<(), String> {
+    pub async fn connect(&self, space_id: &Uuid, auto_proxy_cidrs: Option<Vec<String>>) -> Result<(), String> {
         let running = self.easytier.list_running();
         for running_id in &running {
             let _ = self.easytier.stop_network(running_id).await;
@@ -1031,18 +1153,70 @@ impl SpaceManager {
         let space = spaces.iter().find(|s| &s.id == space_id)
             .ok_or_else(|| "Space not found".to_string())?;
 
-        let existing_config = self.db.get_space_config(&space_id.to_string()).ok().flatten();
-
-        let cfg = crate::easytier::config::NetworkConfig {
-            network_name: space.network_name.clone(),
-            network_secret: space.network_secret.clone(),
-            ..Default::default()
+        // 从 DB 加载完整配置作为主配置（与桌面端 get_effective_config 一致），
+        // 而非当作 initial_config override。initial_config 的 override 逻辑只处理
+        // peers(对象数组)/ipv4(字符串)，不处理 peer_urls(字符串数组)/virtual_ipv4，
+        // 会导致 peer 和虚拟 IP 丢失。
+        let mut cfg = match self.db.get_space_config(&space_id.to_string())
+            .ok()
+            .flatten()
+            .and_then(|json| crate::easytier::config::NetworkConfig::from_config_json(&json).ok())
+        {
+            Some(mut config) => {
+                // 补充 identity 字段（防止 config_json 中缺失）
+                if config.network_name.is_empty() {
+                    config.network_name = space.network_name.clone();
+                }
+                if config.network_secret.is_empty() {
+                    config.network_secret = space.network_secret.clone();
+                }
+                crate::log_info!(format!(
+                    "connect: 从 DB 加载配置, dhcp={}, virtual_ipv4={}, peer_urls={}",
+                    config.dhcp, config.virtual_ipv4, config.peer_urls.len()
+                ), &space_id.to_string());
+                config
+            }
+            None => {
+                crate::log_info!("connect: 无历史配置，使用默认配置", &space_id.to_string());
+                crate::easytier::config::NetworkConfig {
+                    network_name: space.network_name.clone(),
+                    network_secret: space.network_secret.clone(),
+                    ..Default::default()
+                }
+            }
         };
+
+        // 兼容模式：自动探测 ∪ 用户配置 → 去重合并
+        // 注意：config.rs 中 proxy_cidrs 优先，因此自动探测的 CIDR 需合并入 proxy_cidrs
+        if let Some(auto_cidrs) = auto_proxy_cidrs {
+            if !auto_cidrs.is_empty() {
+                use std::collections::HashSet;
+                let mut merged: HashSet<String> = cfg.proxy_cidrs.iter().cloned().collect();
+                let before = merged.len();
+                for cidr in auto_cidrs {
+                    merged.insert(cidr);
+                }
+                let added = merged.len() - before;
+                if added > 0 {
+                    crate::log_info!(format!("connect: 自动探测合并 proxy_cidrs, 新增 {} 条: {:?}", added, merged), &space_id.to_string());
+                }
+                cfg.proxy_cidrs = merged.into_iter().collect();
+                cfg.proxy_networks_auto = Some(true);
+            }
+        }
+
+        // 记录最终生效的代理网络配置（便于排查：用户配置 + 自动探测）
+        crate::log_info!(format!(
+            "connect: 最终 proxy 配置 — proxy_cidrs: {:?}, proxy_networks_auto: {:?}",
+            cfg.proxy_cidrs,
+            cfg.proxy_networks_auto
+        ), &space_id.to_string());
 
         // Emit VPN pending state for mobile
         self.emit_vpn_state(space_id, "pending-vpn", None).await;
 
-        self.easytier.start_network(&cfg, *space_id, existing_config).await?;
+        self.easytier.start_network(&cfg, *space_id, None, self.app_handle.clone()).await?;
+
         crate::log_info!(format!("连接空间: {}", space.name), &space_id.to_string());
         Ok(())
     }
@@ -1068,19 +1242,18 @@ impl SpaceManager {
     pub async fn disconnect(&self, space_id: &Uuid) -> Result<(), String> {
         crate::log_info!(format!("断开空间: {}", space_id), &space_id.to_string());
         self.easytier.stop_network(space_id).await?;
+        // 清理 TUN fd 注入记录，下次重连时允许重新注入
+        self.tun_injected.lock().unwrap().remove(space_id);
         self.emit_vpn_state(space_id, "disconnected", None).await;
         Ok(())
     }
 
     /// 校验是否为空间创建者
     pub async fn check_owner(&self, space_id: &str) -> Result<(), String> {
-        let caller_id = self.db.get_user_id()?.unwrap_or_default();
+        // 取消所有者权限限制：仅保留空间存在性校验，不限制 owner
         let spaces = self.spaces.read().await;
-        let space = spaces.iter().find(|s| s.id.to_string() == *space_id)
+        let _ = spaces.iter().find(|s| s.id.to_string() == *space_id)
             .ok_or_else(|| "空间不存在".to_string())?;
-        if space.owner_id.as_deref() != Some(caller_id.as_str()) {
-            return Err("无权限：仅空间创建者可执行此操作".to_string());
-        }
         Ok(())
     }
 
@@ -1219,8 +1392,72 @@ impl SpaceManager {
         self.db.list_files(space_id, limit)
     }
 
+    /// 获取有效配置（合并组配置和本地配置）
+    pub async fn get_effective_config(&self, space_id: &Uuid) -> Result<NetworkConfig, String> {
+        let spaces = self.spaces.read().await;
+        let space = spaces.iter().find(|s| &s.id == space_id)
+            .ok_or_else(|| "Space not found".to_string())?;
+
+        // 从 DB 加载组配置 (config_json) 作为基础配置
+        let base_config = match self.db.get_space_config(&space_id.to_string()) {
+            Ok(Some(json)) => {
+                crate::log_info!(format!("get_effective_config: 加载 config_json: {}", json), &space_id.to_string());
+                match NetworkConfig::from_config_json(&json) {
+                    Ok(mut cfg) => {
+                        crate::log_info!(format!("get_effective_config: config_json 解析成功: virtual_ipv4={}, network_name={}, instance_id={}", cfg.virtual_ipv4, cfg.network_name, cfg.instance_id), &space_id.to_string());
+                        // 从 config_json 解析成功，补充 identity 字段（防止 config_json 中缺失）
+                        if cfg.network_name.is_empty() {
+                            cfg.network_name = space.network_name.clone();
+                        }
+                        if cfg.network_secret.is_empty() {
+                            cfg.network_secret = space.network_secret.clone();
+                        }
+                        cfg
+                    }
+                    Err(e) => {
+                        crate::log_warn!(format!("get_effective_config: config_json 解析失败，使用空间基础配置: {}", e), &space_id.to_string());
+                        NetworkConfig {
+                            network_name: space.network_name.clone(),
+                            network_secret: space.network_secret.clone(),
+                            dhcp: true,
+                            ..Default::default()
+                        }
+                    }
+                }
+            }
+            Ok(None) => {
+                NetworkConfig {
+                    network_name: space.network_name.clone(),
+                    network_secret: space.network_secret.clone(),
+                    dhcp: true,
+                    ..Default::default()
+                }
+            }
+            Err(e) => return Err(format!("读取空间配置失败: {}", e)),
+        };
+
+        let config = base_config;
+
+        Ok(config)
+    }
+
     /// 设置 TUN 文件描述符（移动端专用：从 VpnService/NetworkExtension 获取 fd 后注入）
+    ///
+    /// 幂等：前端 JS 与 Rust 侧均监听 tun-ready 事件（双保险），同一 fd 重复注入时
+    /// 直接返回 Ok，避免第二次 try_send 失败被误报为连接失败。
+    /// 检查 + 注入 + 记录在同一锁临界区内原子完成，消除双路并发竞态窗口
+    /// （try_send 为非阻塞快速操作，持锁调用无阻塞/死锁风险，且不跨 await）。
     pub fn set_tun_fd(&self, space_id: &Uuid, fd: i32) -> Result<(), String> {
-        self.easytier.set_tun_fd(space_id, fd)
+        let mut injected = self.tun_injected.lock().unwrap();
+        if injected.get(space_id) == Some(&fd) {
+            crate::log_debug!(format!(
+                "VPN: TUN fd {} for space {} 已注入，忽略重复请求",
+                fd, space_id
+            ));
+            return Ok(());
+        }
+        self.easytier.set_tun_fd(space_id, fd)?;
+        injected.insert(*space_id, fd);
+        Ok(())
     }
 }

@@ -13,7 +13,8 @@ pub async fn get_easytier_version(
     #[cfg(any(target_os = "android", target_os = "ios"))]
     return easytier.get_version().await;
 
-    // Desktop: 通过 daemon IPC 获取版本
+    // Desktop: 通过 daemon IPC 获取版本；IPC 失败时回退到本地读取 current_version.json
+    // （binary 可能已由 GUI/daemon 解压，仅版本查询 IPC 不通不应显示“未安装”）
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         let client = IpcClient::get_global();
@@ -22,8 +23,16 @@ pub async fn get_easytier_version(
                 data.and_then(|v| v.get("version").and_then(|s| s.as_str().map(|s| s.to_string())))
                     .ok_or_else(|| "无法获取版本".into())
             }
-            Ok(IpcResponse::Error { message }) => Err(message),
-            Err(e) => Err(format!("连接 daemon 失败: {}", e)),
+            Ok(IpcResponse::Error { message }) => {
+                // daemon 返回错误（如 current_version.json 读取失败），回退本地
+                crate::log_warn!(format!("[get_easytier_version] daemon 返回错误，回退本地读取: {}", message));
+                easytier.get_version().await.map_err(|e| format!("{}; 本地读取也失败: {}", message, e))
+            }
+            Err(e) => {
+                // daemon IPC 不通，回退本地读取 current_version.json
+                crate::log_warn!(format!("[get_easytier_version] daemon IPC 不通，回退本地读取: {}", e));
+                easytier.get_version().await.map_err(|local_err| format!("连接 daemon 失败: {}; 本地读取也失败: {}", e, local_err))
+            }
         }
     }
 }
@@ -59,6 +68,13 @@ pub async fn upgrade_easytier_with_progress(
     app_handle: tauri::AppHandle,
     manager: State<'_, std::sync::Arc<EasyTierManager>>,
 ) -> Result<(), String> {
+    // 移动端使用库内嵌 EasyTier，不支持外部二进制升级
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = (version, use_proxy, app_handle, manager);
+        return Err("移动端不支持 EasyTier 二进制升级".into());
+    }
+
     const MAX_RETRIES: u32 = 3;
     const BASE_DELAY_MS: u64 = 1000;
 

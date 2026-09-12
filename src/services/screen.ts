@@ -1,5 +1,5 @@
 import i18next from "i18next";
-import { registerSignalHandler, sendSignal, preloadMembers, resolveMember, getSelfVirtualIp } from "./signal";
+import { registerSignalHandler, sendSignal, preloadMembers, resolveMember } from "./signal";
 import { useScreenStore, type ScreenQuality } from "../stores/screenStore";
 import { toastError } from "../utils/toast";
 

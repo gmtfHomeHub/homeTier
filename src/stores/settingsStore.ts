@@ -8,6 +8,7 @@ interface SettingsStore {
   settingsTab: SettingTabEnum;
   useProxy: boolean;
   logEnabled: boolean;
+  configEnabled: boolean;
   micShortcut: string;
   speakerShortcut: string;
   shortcutEditing: boolean;
@@ -15,6 +16,7 @@ interface SettingsStore {
   setLanguage: (lang: LanguageEnum) => void;
   setUseProxy: (v: boolean) => void;
   setLogEnabled: (v: boolean) => void;
+  setConfigEnabled: (v: boolean) => void;
   setMicShortcut: (v: string) => void;
   setSpeakerShortcut: (v: string) => void;
   setShortcutEditing: (v: boolean) => void;
@@ -28,6 +30,7 @@ export const useSettingsStore = create<SettingsStore>()(
       language: LanguageEnum.ZH,
       useProxy: true,
       logEnabled: true,
+      configEnabled: false,
       micShortcut: "Ctrl+M",
       speakerShortcut: "Ctrl+T",
       shortcutEditing: false,
@@ -36,6 +39,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setLanguage: (language) => set({ language }),
       setUseProxy: (useProxy) => set({ useProxy }),
       setLogEnabled: (logEnabled) => set({ logEnabled }),
+      setConfigEnabled: (configEnabled) => set({ configEnabled }),
       setMicShortcut: (micShortcut) => set({ micShortcut }),
       setSpeakerShortcut: (speakerShortcut) => set({ speakerShortcut }),
       setShortcutEditing: (shortcutEditing) => set({ shortcutEditing }),
@@ -50,6 +54,7 @@ export const useSettingsStore = create<SettingsStore>()(
         micShortcut: state.micShortcut,
         speakerShortcut: state.speakerShortcut,
         settingsTab: state.settingsTab,
+        configEnabled: state.configEnabled,
       }),
     }
   )

@@ -401,77 +401,102 @@ impl HttpForwardPlugin {
             );
         }
 
-        match req_builder.send().await {
-            Ok(upstream) => {
-                let status = upstream.status();
-                let mut builder = Response::builder().status(status);
+        // 重试配置
+        const MAX_RETRIES: u32 = 2;
+        const RETRY_BASE_MS: u64 = 2000;
+        let mut attempt: u32 = 0;
+        let mut req_builder_opt = Some(req_builder);
 
-                for (key, value) in upstream.headers() {
-                    let key_lower = key.as_str().to_lowercase();
-                    if key_lower == "content-length"
-                        || key_lower == "transfer-encoding"
-                        || key_lower == "content-encoding"
-                    {
-                        continue;
+        'retry: loop {
+            let send_builder = match req_builder_opt.as_ref().and_then(|b| b.try_clone()) {
+                Some(c) => c,
+                None => req_builder_opt.take().unwrap(),
+            };
+            let can_retry = req_builder_opt.is_some();
+            let result = match send_builder.send().await {
+                Ok(upstream) => {
+                    let status = upstream.status();
+                    let mut builder = Response::builder().status(status);
+
+                    for (key, value) in upstream.headers() {
+                        let key_lower = key.as_str().to_lowercase();
+                        if key_lower == "content-length"
+                            || key_lower == "transfer-encoding"
+                            || key_lower == "content-encoding"
+                        {
+                            continue;
+                        }
+                        builder = builder.header(key, value.clone());
                     }
-                    builder = builder.header(key, value.clone());
-                }
 
-                if status == StatusCode::NOT_MODIFIED || status == StatusCode::NO_CONTENT {
-                    return Ok(builder.body(full_body(Bytes::new())).unwrap());
-                }
-                // 静态资源（.css/.js/.mjs 及字体/图片）若上游返回 HTML，说明目标解析错误（实际为 404 页等），
-                // 浏览器 strict-mode 会拒绝并报「非 CSS MIME 类型」错误 / 图标字体失效（□□）；改为返回 502 + text/plain，
-                // 保留原始 content-type 到日志，避免触发页面级阻断。
-                let is_static_asset = req_path.ends_with(".css")
-                    || req_path.ends_with(".js")
-                    || req_path.ends_with(".mjs")
-                    || req_path.ends_with(".woff")
-                    || req_path.ends_with(".woff2")
-                    || req_path.ends_with(".ttf")
-                    || req_path.ends_with(".eot")
-                    || req_path.ends_with(".svg")
-                    || req_path.ends_with(".png")
-                    || req_path.ends_with(".jpg")
-                    || req_path.ends_with(".jpeg")
-                    || req_path.ends_with(".gif")
-                    || req_path.ends_with(".webp")
-                    || req_path.ends_with(".ico");
-                if is_static_asset {
-                    if let Some(ct) = upstream
-                        .headers()
-                        .get("content-type")
-                        .and_then(|v| v.to_str().ok())
-                    {
-                        if ct.contains("text/html") {
-                            crate::log_error!(format!(
-                                "直通模式: 静态资源 {}, 上游返回 HTML (status={}, ct={}), 改返 502",
-                                req_path, status.as_u16(), ct
-                            ));
-                            return Ok(Response::builder()
-                                .status(StatusCode::BAD_GATEWAY)
-                                .header("content-type", "text/plain; charset=utf-8")
-                                .body(full_body(Bytes::from(format!(
-                                    "Upstream returned HTML for static asset {} (status {})",
-                                    req_path, status.as_u16()
-                                ))))
-                                .unwrap());
+                    if status == StatusCode::NOT_MODIFIED || status == StatusCode::NO_CONTENT {
+                        return Ok(builder.body(full_body(Bytes::new())).unwrap());
+                    }
+                    // 静态资源（.css/.js/.mjs 及字体/图片）若上游返回 HTML，说明目标解析错误（实际为 404 页等），
+                    // 浏览器 strict-mode 会拒绝并报「非 CSS MIME 类型」错误 / 图标字体失效（□□）；改为返回 502 + text/plain，
+                    // 保留原始 content-type 到日志，避免触发页面级阻断。
+                    let is_static_asset = req_path.ends_with(".css")
+                        || req_path.ends_with(".js")
+                        || req_path.ends_with(".mjs")
+                        || req_path.ends_with(".woff")
+                        || req_path.ends_with(".woff2")
+                        || req_path.ends_with(".ttf")
+                        || req_path.ends_with(".eot")
+                        || req_path.ends_with(".svg")
+                        || req_path.ends_with(".png")
+                        || req_path.ends_with(".jpg")
+                        || req_path.ends_with(".jpeg")
+                        || req_path.ends_with(".gif")
+                        || req_path.ends_with(".webp")
+                        || req_path.ends_with(".ico");
+                    if is_static_asset {
+                        if let Some(ct) = upstream
+                            .headers()
+                            .get("content-type")
+                            .and_then(|v| v.to_str().ok())
+                        {
+                            if ct.contains("text/html") {
+                                crate::log_error!(format!(
+                                    "直通模式: 静态资源 {}, 上游返回 HTML (status={}, ct={}), 改返 502",
+                                    req_path, status.as_u16(), ct
+                                ));
+                                return Ok(Response::builder()
+                                    .status(StatusCode::BAD_GATEWAY)
+                                    .header("content-type", "text/plain; charset=utf-8")
+                                    .body(full_body(Bytes::from(format!(
+                                        "Upstream returned HTML for static asset {} (status {})",
+                                        req_path, status.as_u16()
+                                    ))))
+                                    .unwrap());
+                            }
                         }
                     }
+                    Ok(builder.body(stream_body(upstream.bytes_stream())).unwrap())
                 }
-                Ok(builder.body(stream_body(upstream.bytes_stream())).unwrap())
-            }
-            Err(e) => {
-                crate::log_error!(format!("直通上游请求失败 {} {}", target_url, e));
-                Ok(Response::builder()
-                    .status(StatusCode::BAD_GATEWAY)
-                    .header("content-type", "text/plain; charset=utf-8")
-                    .body(full_body(Bytes::from(format!(
-                        "Passthrough request failed: {}",
-                        e
-                    ))))
-                    .unwrap())
-            }
+                Err(e) => {
+                    let is_retriable = e.is_connect() || e.is_request() || e.is_timeout();
+                    if is_retriable && can_retry && attempt < MAX_RETRIES {
+                        attempt += 1;
+                        let delay_ms = RETRY_BASE_MS * (1 << (attempt - 1));
+                        crate::log_warn!(format!(
+                            "直通模式重试 {}/{} 后 {}ms: {} -> {}",
+                            attempt, MAX_RETRIES, delay_ms, target_url, e
+                        ));
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        continue 'retry;
+                    }
+                    crate::log_error!(format!("直通上游请求失败 {} {}", target_url, e));
+                    Ok(Response::builder()
+                        .status(StatusCode::BAD_GATEWAY)
+                        .header("content-type", "text/plain; charset=utf-8")
+                        .body(full_body(Bytes::from(format!(
+                            "Passthrough request failed: {}",
+                            e
+                        ))))
+                        .unwrap())
+                }
+            };
+            return result;
         }
     }
 
@@ -483,6 +508,27 @@ impl HttpForwardPlugin {
         proxy_key: &str,
         ctx: &RequestContext,
     ) -> Result<ProxyResponse, Box<dyn std::error::Error + Send + Sync>> {
+        // 主文档请求（iframe 导航，Accept: text/html）才 emit 加载进度，子资源静默避免事件风暴
+        let is_document = req
+            .headers()
+            .get("accept")
+            .and_then(|v| v.to_str().ok())
+            .map(|a| a.contains("text/html"))
+            .unwrap_or(false);
+        let app_handle = &self.app_handle;
+        let emit_progress = |stage: &str, error: Option<&str>| {
+            if is_document && !proxy_key.is_empty() {
+                if let Some(h) = app_handle {
+                    let mut payload = serde_json::json!({"key": proxy_key, "stage": stage});
+                    if let Some(err) = error {
+                        payload["error"] = serde_json::json!(err);
+                    }
+                    let _ = h.emit("proxy:load-progress", payload);
+                }
+            }
+        };
+        emit_progress("connecting", None);
+
         let method = req.method().clone();
         let proxy_prefix_host = req
             .headers()
@@ -572,8 +618,22 @@ let body_bytes = BodyExt::collect(req.into_body())
             req_builder = req_builder.header(key.as_str(), value.as_str());
         }
 
-        match req_builder.send().await {
-            Ok(upstream) => {
+        emit_progress("fetching", None);
+        // 重试循环：仅对连接类错误（超时/连接失败/请求失败）重试
+        // 短暂等待 mesh 路由就绪；2 次后快速失败回 502 + 进度事件，避免长时间假性加载
+        const MAX_RETRIES: u32 = 2;
+        const RETRY_BASE_MS: u64 = 2000;
+        let mut attempt: u32 = 0;
+        let mut req_builder_opt = Some(req_builder);
+        'retry: loop {
+            let send_builder = match req_builder_opt.as_ref().and_then(|b| b.try_clone()) {
+                Some(c) => c,
+                None => req_builder_opt.take().unwrap(),
+            };
+            let can_retry = req_builder_opt.is_some();
+            let result = match send_builder.send().await {
+                Ok(upstream) => {
+                    emit_progress("processing", None);
                 let status = upstream.status();
                 let upstream_headers = upstream.headers().clone();
 
@@ -794,6 +854,7 @@ let body_bytes = BodyExt::collect(req.into_body())
                     stream_body(upstream.bytes_stream())
                 };
 
+                emit_progress("ready", None);
                 let mut resp = builder.body(body).unwrap();
                 if let Some(csp_override) = csp_override {
                     if csp_override.is_empty() {
@@ -806,16 +867,49 @@ let body_bytes = BodyExt::collect(req.into_body())
                 Ok(resp)
             }
             Err(e) => {
+                let is_retriable = e.is_connect() || e.is_request() || e.is_timeout();
+                if is_retriable && can_retry && attempt < MAX_RETRIES {
+                    attempt += 1;
+                    let delay_ms = RETRY_BASE_MS * (1 << (attempt - 1));
+                    crate::log_warn!(format!(
+                        "代理转发重试 {}/{} 后 {}ms: {} -> {}",
+                        attempt, MAX_RETRIES, delay_ms, forward_url, e
+                    ));
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    continue 'retry;
+                }
+                let err_msg = if e.is_connect() {
+                    if e.is_timeout() {
+                        format!("connect_timeout to {}", forward_url)
+                    } else {
+                        format!("connect_failed to {}", forward_url)
+                    }
+                } else if e.is_request() {
+                    format!("request_failed (possibly DNS) to {}", forward_url)
+                } else if e.is_status() {
+                    format!("status_error to {}", forward_url)
+                } else {
+                    format!("unknown_error to {}: {}", forward_url, e)
+                };
+                if attempt > 0 {
+                    crate::log_error!(format!(
+                        "代理转发重试耗尽 ({} 次)，最终错误: {}",
+                        attempt, err_msg
+                    ));
+                }
+                emit_progress("error", Some(&err_msg));
                 crate::log_error!(format!("上游请求失败 {} {}", forward_url, e));
                 Ok(Response::builder()
                     .status(StatusCode::BAD_GATEWAY)
                     .header("content-type", "text/plain; charset=utf-8")
                     .body(full_body(Bytes::from(format!(
                         "Proxy request failed: {}",
-                        e
+                        err_msg
                     ))))
                     .unwrap())
             }
+            };
+            return result;
         }
     }
 }

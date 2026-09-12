@@ -1,7 +1,7 @@
 import { useSpaceStore } from "../../stores/spaceStore";
 import { useSpaceConnect } from "../../hooks/useSpaceConnect";
 import { useNavigate } from "react-router-dom";
-import { Share2, Trash2, Settings, X, LogIn, Plus, Ellipsis, House } from "lucide-react";
+import { Share2, Trash2, Settings, X, LogIn, Plus, Ellipsis, ScanLine } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { ShareSpaceDialog } from "../Common/ShareSpaceDialog";
@@ -9,13 +9,16 @@ import { ConfirmDialog } from "../Common/ConfirmDialog";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { MemberCount } from "../Common/MemberCount";
 import { Button, Flex, Grid, Badge, DropdownMenu } from "@radix-ui/themes";
-import { getSystemConfig, updateSpaceConfig } from "../../utils/api";
-import { toastError } from "../../utils/toast";
+import { getSystemConfig, updateSpaceConfig, parseQR, parseShareData, importAddApps } from "../../utils/api";
+import { toastError, toastSuccess } from "../../utils/toast";
 import type { NetworkConfig } from "../../types/network";
 import { DEFAULT_NETWORK_CONFIG } from "../../types/network";
 import { getSpaceIp, handleStopProp } from "../../utils";
 import { CreateSpaceDialog } from "../Space/CreateSpaceDialog";
 import { JoinSpaceDialog } from "../Space/JoinSpaceDialog";
+import { ScanQRPanel } from "./ScanQRPanel";
+import { QR_EVENT_JOIN_SPACE, QR_EVENT_ADD_APP } from "../../utils/share";
+import type { ShareInfo } from "../../types";
 
 export function SpaceList() {
   const { spaces, deleteSpace, loadSpaces, loadSpacesOnce } = useSpaceStore();
@@ -30,6 +33,8 @@ export function SpaceList() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [pendingShare, setPendingShare] = useState<ShareInfo | null>(null);
 
   const configSpace = spaces.find(s => s.id === configTarget);
 
@@ -65,6 +70,7 @@ export function SpaceList() {
         setSpaceConfig(merged);
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [configTarget]);
 
   const handleSaveConfig = async () => {
@@ -93,6 +99,28 @@ export function SpaceList() {
     }
   };
 
+  // 扫一扫通用分发器：parseQR 后按 event 分发业务（j_s → 加入空间，a_a → 导入应用）
+  const handleScanResult = async (text: string) => {
+    setScanOpen(false);
+    try {
+      const { event, data } = await parseQR(text);
+      if (event === QR_EVENT_JOIN_SPACE) {
+        const info = await parseShareData(data);
+        setPendingShare(info);
+        setShowJoin(true);
+      } else if (event === QR_EVENT_ADD_APP) {
+        const result = await importAddApps(data);
+        toastSuccess(t("space.appsImported", { count: result.imported, name: result.spaceName }));
+        // 扫码导入应用仅为 DB 写操作，不应刷新空间状态（避免 list() 瞬态 DIS 覆盖真实 CED）
+        // 如需刷新应用列表，应由调用方在关闭弹窗后单独触发
+      } else {
+        toastError(t("qr.unsupportedEvent", { event }));
+      }
+    } catch (e) {
+      toastError(String(e));
+    }
+  };
+
   return (
     <div className="flex-1 p-6 overflow-y-auto">
       <Flex align="center" justify="between" className="mb-6">
@@ -104,6 +132,10 @@ export function SpaceList() {
             </Button>
           </DropdownMenu.Trigger>
           <DropdownMenu.Content>
+            <DropdownMenu.Item onClick={() => setScanOpen(true)}>
+              <ScanLine size={16} />
+              {t("space.scan")}
+            </DropdownMenu.Item>
             <DropdownMenu.Item onClick={() => setShowCreate(true)}>
               <Plus size={16} />
               {t("space.create")}
@@ -123,7 +155,7 @@ export function SpaceList() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <Grid columns={{ xs: "2", md: "3", lg: "3" }} gap="4">
         {spaces.map((space) => (
           <div
             key={space.id}
@@ -138,10 +170,10 @@ export function SpaceList() {
             }}
             className="bg-[var(--color-surface)] rounded-xl p-5 border border-[var(--color-border)] hover:shadow-md transition-shadow cursor-pointer"
           >
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
+            <Flex align="center" justify="between" className="mb-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <div
-                  className={`w-3 h-3 rounded-full ${
+                  className={`w-3 h-3 rounded-full shrink-0 ${
                     space.status === "connected"
                       ? "bg-[var(--color-success)]"
                       : space.status === "connecting"
@@ -149,13 +181,13 @@ export function SpaceList() {
                         : "bg-[var(--color-text-secondary)]"
                   }`}
                 />
-                <h3 className="font-semibold truncate">{space.name}</h3>
+                <h3 className="flex-1 min-w-0 font-semibold truncate">{space.name}</h3>
                 {getSpaceIp(space) && (
                   <Badge
                     color="gray"
                     variant="soft"
                     size="1"
-                    className="mt-0.5 font-mono max-w-full truncate"
+                    className="max-w-full font-mono truncate shrink-0"
                     title={getSpaceIp(space) || ""}
                   >
                     {getSpaceIp(space)}
@@ -163,7 +195,7 @@ export function SpaceList() {
                 )}
               </div>
               <div
-                className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]"
+                className="flex items-center gap-2 shrink-0 text-xs text-[var(--color-text-secondary)]"
                 onClick={(e) => e.stopPropagation()}
               >
                 <MemberCount
@@ -171,7 +203,7 @@ export function SpaceList() {
                   connected={space.status === "connected"}
                 />
               </div>
-            </div>
+            </Flex>
             <Grid columns={{ initial: "1", sm: "2" }} gap="3">
               <Flex>
                 {space.status === "connected" ? (
@@ -221,27 +253,25 @@ export function SpaceList() {
                 >
                   <Settings size={16} />
                 </Button>
-                {space.owner_id && (
-                  <Button
-                    onClick={handleStopProp(() =>
-                      setDeleteTarget({
-                        id: space.id,
-                        name: space.name,
-                      }),
-                    )}
-                    variant="ghost"
-                    color="red"
-                    size="2"
-                    title={t("space.deleteSpace")}
-                  >
-                    <Trash2 size={16} />
-                  </Button>
-                )}
+                <Button
+                  onClick={handleStopProp(() =>
+                    setDeleteTarget({
+                      id: space.id,
+                      name: space.name,
+                    }),
+                  )}
+                  variant="ghost"
+                  color="red"
+                  size="2"
+                  title={t("space.deleteSpace")}
+                >
+                  <Trash2 size={16} />
+                </Button>
               </Flex>
             </Grid>
           </div>
         ))}
-      </div>
+      </Grid>
 
       <ConfirmDialog
         open={deleteTarget !== null}
@@ -258,7 +288,7 @@ export function SpaceList() {
       {configTarget && configSpace && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-[var(--color-surface)] rounded-xl w-full max-w-[calc(100vw-24px)] sm:w-[640px] max-h-[80vh] flex flex-col shadow-xl">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
+            <Flex align="center" justify="between" className="px-6 py-4 border-b border-[var(--color-border)]">
               <h2 className="text-lg font-semibold">
                 {t("space.spaceConfigTitle", { name: configSpace.name })}
               </h2>
@@ -269,7 +299,7 @@ export function SpaceList() {
               >
                 <X size={20} />
               </Button>
-            </div>
+            </Flex>
             <div className="flex-1 p-6 overflow-y-auto">
               <EasyTierConfigEditor
                 value={spaceConfig}
@@ -306,6 +336,10 @@ export function SpaceList() {
         </div>
       )}
 
+      {scanOpen && (
+        <ScanQRPanel onResult={handleScanResult} onCancel={() => setScanOpen(false)} />
+      )}
+
       {shareTarget && (
         <ShareSpaceDialog
           spaceId={shareTarget}
@@ -314,7 +348,15 @@ export function SpaceList() {
       )}
 
       {showCreate && <CreateSpaceDialog onClose={() => setShowCreate(false)} />}
-      {showJoin && <JoinSpaceDialog onClose={() => setShowJoin(false)} />}
+      {showJoin && (
+        <JoinSpaceDialog
+          initialShare={pendingShare ?? undefined}
+          onClose={() => {
+            setShowJoin(false);
+            setPendingShare(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -41,3 +41,18 @@ export function useIsMobile(): boolean {
 
   return mobile;
 }
+
+/** 判断平台是否为移动端（iOS/Android，同步，平台不变无需 effect）。
+ * 区别于 useIsMobile（视口宽度断点）：此 hook 判断真实设备平台，
+ * 用于区分桌面端原生 desktop 模式（需自适应 100%）vs 移动端切到 desktop 模式（需 50% + 手势）。 */
+export function useIsMobilePlatform(): boolean {
+  const [mobilePlatform] = useState<boolean>(() => {
+    try {
+      const t = osType();
+      return t === "ios" || t === "android";
+    } catch {
+      return MOBILE_UA.test(navigator.userAgent);
+    }
+  });
+  return mobilePlatform;
+}

@@ -27,6 +27,44 @@ export interface ShareInfo {
   listener_urls?: string[];
 }
 
+/** parseQR 返回：事件标识 + base64 编码的业务数据 */
+export interface ParseQrResult {
+  event: string;
+  data: string;
+}
+
+/** 应用分享导入用数据（e=a_a payload.apps 项） */
+export interface AppImport {
+  name: string;
+  category?: string;
+  icon?: string;
+  protocol?: string;
+  hostname?: string;
+  port?: string;
+  pathname?: string;
+}
+
+/** e=a_a 完整载荷 */
+export interface AddAppPayload {
+  name: string;
+  network_name: string;
+  apps: AppImport[];
+  target_peers: PeerTarget[];
+}
+
+/** 目标节点标识 */
+export interface PeerTarget {
+  peer_id: number;
+  virtual_ip?: string;
+}
+
+/** import_add_apps 返回 */
+export interface ImportAddAppsResult {
+  spaceId: string;
+  spaceName: string;
+  imported: number;
+}
+
 export interface Member {
   id: string;
   space_id: string;

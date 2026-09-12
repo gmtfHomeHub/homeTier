@@ -12,11 +12,14 @@ pub mod file;
 pub mod log;
 pub mod platform;
 pub mod proxy;
+pub mod qr;
 pub mod screen;
+pub mod system_apps;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod server;
 pub mod space;
 pub mod types;
+pub mod utils;
 pub mod voice;
 
 use std::sync::Arc;
@@ -30,11 +33,15 @@ use tauri::Manager;
 pub fn run() -> std::process::ExitCode {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init());
+
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let builder = builder.plugin(tauri_plugin_barcode_scanner::init());
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
@@ -53,7 +60,8 @@ pub fn run() -> std::process::ExitCode {
             commands::space::get_space_config,
             commands::space::update_space_config,
             commands::space::generate_share_link,
-            commands::space::parse_share_link,
+            commands::space::parse_share_data,
+            commands::qr::parse_qr,
             commands::space::connect_space,
             commands::space::disconnect_space,
             commands::space::get_space_status,
@@ -63,7 +71,10 @@ pub fn run() -> std::process::ExitCode {
             commands::ios_vpn::start_ios_vpn,
             #[cfg(target_os = "ios")]
             commands::ios_vpn::stop_ios_vpn,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            commands::mobile_vpn::get_vpn_status,
             commands::network::get_network_stats,
+            commands::network::get_mesh_routes,
             commands::network::update_group_config,
             commands::network::get_space_peers,
             commands::chat::send_message,
@@ -144,23 +155,18 @@ pub fn run() -> std::process::ExitCode {
             commands::app::delete_app,
              commands::app::list_apps,
              commands::app::share_app,
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::app::get_system_apps,
+            commands::app::generate_add_app_link,
+            commands::app::import_add_apps,
             commands::config::get_app_config,
             commands::config::set_app_config,
             commands::config::get_config_file_path,
             commands::config::get_config_template_path,
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::get_proxy_url,
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::get_proxy_status,
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::register_proxy_key,
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::set_proxy_source,
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::set_device_mode,
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::proxy::get_pending_downloads,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::tray::update_tray_menu,

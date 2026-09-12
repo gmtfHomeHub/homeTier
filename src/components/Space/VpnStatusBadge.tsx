@@ -1,6 +1,7 @@
 // src/components/Space/VpnStatusBadge.tsx - VPN 状态徽章组件
 import { useTranslation } from "react-i18next";
-import { Badge, Tooltip, Box, Text } from "@radix-ui/themes";
+import { Badge, Box, Text } from "@radix-ui/themes";
+import Tip from "../Common/Tip";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { SpaceStatus } from "../../enum";
 
@@ -56,7 +57,7 @@ export function VpnStatusBadge({ spaceId, className = "", showTooltip = true }: 
   if (!showTooltip) return content;
 
   return (
-    <Tooltip
+    <Tip
       content={
         <Box
           display="block"
@@ -86,7 +87,7 @@ export function VpnStatusBadge({ spaceId, className = "", showTooltip = true }: 
       }
     >
       {content}
-    </Tooltip>
+    </Tip>
   );
 }
 

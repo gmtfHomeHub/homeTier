@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { getEasyTierVersion, checkEasyTierUpdate, upgradeEasyTierWithProgress, getAppConfig } from "../../utils/api";
 import { Button, Text, Flex, Select, Switch, Progress } from "@radix-ui/themes";
-import { Cpu, RefreshCw, ArrowUpCircle } from "lucide-react";
+import { Cpu, ArrowUpCircle } from "lucide-react";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { toastSuccess, toastError } from "../../utils/toast";
 import { isMobile } from "../../utils/platform";
@@ -42,7 +42,7 @@ export function EasyTierVersionManager() {
     try {
       const version = await getEasyTierVersion();
       setCurrentVersion(version);
-    } catch (e) {
+    } catch {
       setCurrentVersion(null);
     }
   };

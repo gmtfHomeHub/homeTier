@@ -276,7 +276,7 @@ SQLite file at `{app_data_dir}/homeTier.db` (server mode: `{server-dir}/homeTier
 
 ### Share Links
 
-Format: `homeTier://join?v=3&d={base64url}`. Payload flow: ShareInfo serialized → **zstd compress (level 3)** → **AES-256-GCM encrypt** (key = SHA-256("homeTier-share-link-v2"), versioned for rotation) → base64url. Chat messages use the space `network_secret` for HMAC-SHA256 signature verification; password-protected files use PBKDF2-derived key encryption.
+Format: `homeTier://join?v=1&d={base64url}`. Payload flow: ShareInfo **binary-encoded (little-endian, 1-byte length prefixes, optional-field bitmask)** → **adaptive compress (zstd level 3; falls back to raw when compressed ≥ original)** → **AES-256-GCM encrypt** (key = SHA-256("homeTier-share-link-v1")) → base64url (no padding). Chat messages use the space `network_secret` for HMAC-SHA256 signature verification; password-protected files use PBKDF2-derived key encryption.
 
 ---
 

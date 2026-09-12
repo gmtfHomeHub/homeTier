@@ -3,7 +3,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeft,
-  MessageSquare,
   MoreHorizontal,
   Terminal,
   Trash2,
@@ -27,10 +26,11 @@ export function SpaceDetail() {
   const { logEnabled } = useSettingsStore();
   const { disconnectingId, connect, disconnect } = useSpaceConnect();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [, setDeleting] = useState(false);
 
   const space = spaces.find((s) => s.id === id);
-  const isOwner = !!space?.owner_id;
+  // 取消所有者权限限制：默认放开（不再按 space.owner_id 判断）
+  const isOwner = true;
   const isRunning = space?.status === SpaceStatus.CED;
 
   const handleDelete = async () => {
@@ -114,15 +114,13 @@ export function SpaceDetail() {
                     {t("space.logs")}
                   </DropdownMenu.Item>
                 )}
-                {isOwner && (
-                  <DropdownMenu.Item
-                    color="red"
-                    onClick={() => setShowDeleteConfirm(true)}
-                  >
-                    <Trash2 size={16} />
-                    {t("space.deleteSpace")}
-                  </DropdownMenu.Item>
-                )}
+                <DropdownMenu.Item
+                  color="red"
+                  onClick={() => setShowDeleteConfirm(true)}
+                >
+                  <Trash2 size={16} />
+                  {t("space.deleteSpace")}
+                </DropdownMenu.Item>
               </DropdownMenu.Content>
             </DropdownMenu.Root>
           </Flex>

@@ -2,24 +2,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-type ScreenQuality = 'low' | 'medium' | 'high' | 'ultra';
-
-interface MobileScreenState {
-  // 状态
-  isSharing: boolean;
-  screenStatus: 'disconnected' | 'connecting' | 'connected' | 'paused';
-  quality: 'low' | 'medium' | 'high' | 'ultra';
-  
-  // 动作
-  setIsSharing: (sharing: boolean) => void;
-  setScreenStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'paused') => void;
-  setQuality: (quality: 'low' | 'medium' | 'high' | 'ultra') => void;
-  
-  startSharing: (spaceId: string) => Promise<void>;
-  stopSharing: (spaceId: string) => Promise<void>;
-  setQualityLevel: (quality: 'low' | 'medium' | 'high' | 'ultra') => void;
-}
-
 export const useMobileScreenStore = create<
   { 
     isSharing: boolean;
@@ -34,7 +16,7 @@ export const useMobileScreenStore = create<
   }
 >()(
   persist(
-    (set, get) => ({
+    (set) => ({
       isSharing: false,
       screenStatus: 'disconnected',
       quality: 'medium',
@@ -43,7 +25,7 @@ export const useMobileScreenStore = create<
       setScreenStatus: (status) => set({ screenStatus: status }),
       setQuality: (quality) => set({ quality }),
       
-      startSharing: async (spaceId: string) => {
+      startSharing: async (_spaceId: string) => {
         set({ screenStatus: 'connecting' });
         try {
           // await invoke('mobile_screen_start', { spaceId });
@@ -54,7 +36,7 @@ export const useMobileScreenStore = create<
         }
       },
       
-      stopSharing: async (spaceId: string) => {
+      stopSharing: async (_spaceId: string) => {
         // await invoke('mobile_screen_stop', { spaceId });
         set({ screenStatus: 'disconnected', isSharing: false });
       },

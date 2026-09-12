@@ -68,6 +68,7 @@ export function AppConfigEditor() {
     return () => {
       unlisten.then((fn) => fn());
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSave = async () => {

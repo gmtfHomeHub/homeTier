@@ -34,7 +34,8 @@ pub fn cmd_router(app_state: Arc<AppState>) -> Router {
         .route("/space/{space_id}/config", get(get_space_config_handler).post(update_space_config_handler))
         .route("/space/{space_id}/config/patch", post(patch_space_config_handler))
         .route("/space/{space_id}/share", post(generate_share_link_handler))
-        .route("/space/share/parse", post(parse_share_link_handler))
+        .route("/qr/parse", post(parse_qr_handler))
+        .route("/space/share/parse-data", post(parse_share_data_handler))
         .route("/space/{space_id}/signal", post(send_signal_handler))
         .route("/space/{space_id}/acl", get(get_acl_rules_handler).post(create_acl_rule_handler))
         .route("/space/{space_id}/acl/update", post(update_acl_rule_handler))
@@ -55,6 +56,7 @@ pub fn cmd_router(app_state: Arc<AppState>) -> Router {
         // 网络
         .route("/network/{space_id}/stats", get(get_network_stats_handler))
         .route("/network/{space_id}/peers", get(get_space_peers_handler))
+        .route("/network/{space_id}/mesh_routes", get(get_mesh_routes_handler))
         // 日志
         .route("/log/list", get(get_logs_handler))
         .route("/log/space/{space_id}", get(get_space_logs_handler))
@@ -242,7 +244,7 @@ async fn connect_space_handler(
         Ok(u) => u,
         Err(e) => return e.into_response(),
     };
-    match state.space_manager.connect(&id).await {
+    match state.space_manager.connect(&id, None).await {
         Ok(()) => {
             let event = crate::server::event::ServerEvent::new(
                 crate::server::event::EventType::SpaceUpdated,
@@ -323,6 +325,26 @@ async fn update_space_config_handler(
     if config_json.is_empty() {
         return (StatusCode::BAD_REQUEST, "缺少 config_json").into_response();
     }
+    // 落库前去重 proxy_cidrs（与 Tauri command update_space_config 一致），修复重复 CIDR
+    let mut config =
+        match serde_json::from_str::<crate::easytier::config::NetworkConfig>(&config_json) {
+            Ok(c) => c,
+            Err(e) => {
+                return (StatusCode::BAD_REQUEST, format!("配置 json 解析失败: {}", e))
+                    .into_response()
+            }
+        };
+    config.dedupe_proxy_cidrs();
+    let config_json = match serde_json::to_string(&config) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("配置 json 序列化失败: {}", e),
+            )
+                .into_response()
+        }
+    };
     match state.db.update_space_config(&space_id, &config_json) {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
@@ -356,16 +378,46 @@ async fn generate_share_link_handler(
     }
 }
 
-async fn parse_share_link_handler(
+async fn parse_qr_handler(
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let link = body["link"].as_str().unwrap_or("").to_string();
     if link.is_empty() {
         return (StatusCode::BAD_REQUEST, "缺少 link").into_response();
     }
-    match crate::space::share::decrypt_share_link(&link) {
-        Ok(info) => Json(info).into_response(),
+    match crate::qr::decrypt_qr(&link) {
+        Ok((event, data)) => {
+            use base64::engine::general_purpose::STANDARD;
+            use base64::Engine as _;
+            Json(serde_json::json!({
+                "event": event,
+                "data": STANDARD.encode(&data),
+            }))
+            .into_response()
+        }
         Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+    }
+}
+
+async fn parse_share_data_handler(
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let data = body["data"].as_str().unwrap_or("").to_string();
+    if data.is_empty() {
+        return (StatusCode::BAD_REQUEST, "缺少 data").into_response();
+    }
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine as _;
+    match STANDARD.decode(&data) {
+        Ok(bytes) => match crate::space::share::decode_share_binary(&bytes) {
+            Ok(info) => Json(info).into_response(),
+            Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+        },
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            format!("分享数据解码失败: {}", e),
+        )
+            .into_response(),
     }
 }
 
@@ -550,6 +602,20 @@ async fn get_space_peers_handler(
     match state.space_manager.get_peers(&id).await {
         Ok(peers) => Json(peers).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    }
+}
+
+async fn get_mesh_routes_handler(
+    State(state): State<Arc<AppState>>,
+    Path(space_id): Path<String>,
+) -> impl IntoResponse {
+    let id = match parse_uuid(&space_id).await {
+        Ok(u) => u,
+        Err(e) => return e.into_response(),
+    };
+    match state.easy_tier.get_mesh_routes(&id).await {
+        Some(routes) => Json(routes).into_response(),
+        None => (StatusCode::NOT_FOUND, "Instance not found").into_response(),
     }
 }
 
@@ -1181,7 +1247,7 @@ async fn list_apps_handler(
 async fn get_system_apps_handler(
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    Json(crate::server::system_apps::load_system_apps(&state.data_dir)).into_response()
+    Json(crate::system_apps::load_system_apps(&state.data_dir)).into_response()
 }
 
 async fn share_app_handler(
@@ -1673,16 +1739,23 @@ async fn download_remote_config_handler(
     }
 }
 
-pub fn static_file_handler(static_dir: String) -> axum::Router {
+pub fn static_file_handler(static_dir: String, public_base: String) -> axum::Router {
     use axum::routing::any;
 
     // 优先使用嵌入式 dist（编译时嵌入，无运行时依赖）；
     // 若 dist/ 不存在于嵌入中，回退到 ServeDir 文件系统。
-    if std::path::Path::new(&static_dir).exists() {
+    let inner: axum::Router = if std::path::Path::new(&static_dir).exists() {
         Router::new().fallback_service(ServeDir::new(static_dir))
     } else {
         Router::new().fallback(any(|uri: axum::http::Uri| async move {
             crate::server::assets::serve_embedded(uri)
         }))
+    };
+    // 配置了非 / 公共前缀（如 /hometier）时，将静态服务挂到该前缀下，
+    // axum nest 会自动剥前缀转发给 inner（请求 /hometier/assets/x.js → inner 收到 /assets/x.js）。
+    if public_base.is_empty() || public_base == "/" {
+        inner
+    } else {
+        Router::new().nest(&public_base, inner)
     }
 }

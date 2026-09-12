@@ -1,5 +1,8 @@
 fn main() {
-    tauri_build::build();
+    tauri_build::try_build(
+        tauri_build::Attributes::default()
+            .plugin("hometiervpnservice", tauri_build::InlinedPlugin::new())
+    ).unwrap_or_else(|e| panic!("tauri-build failed: {}", e));
 
     // iOS-specific build steps
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
@@ -16,6 +19,7 @@ fn main() {
 
     // Re-run if build.rs changes
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=permissions/");
     println!("cargo:rerun-if-changed=gen-scripts/ios/");
     println!("cargo:rerun-if-changed=easytier-ios-staticlib/");
 }

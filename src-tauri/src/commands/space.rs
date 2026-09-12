@@ -4,6 +4,8 @@ use crate::space::manager::SpaceManager;
 use crate::db::Database;
 use std::sync::Arc;
 use uuid::Uuid;
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine as _;
 
 #[tauri::command]
 pub async fn get_space_config(
@@ -19,7 +21,13 @@ pub async fn update_space_config(
     config_json: String,
     db: State<'_, Arc<Database>>,
 ) -> Result<(), String> {
-    db.update_space_config(&space_id, &config_json)
+    // 落库前去重 proxy_cidrs（trim + 保留首次 + own_cidr 首位），修复重复 CIDR
+    let mut config = serde_json::from_str::<crate::easytier::config::NetworkConfig>(&config_json)
+        .map_err(|e| format!("配置 json 解析失败: {}", e))?;
+    config.dedupe_proxy_cidrs();
+    let cleaned = serde_json::to_string(&config)
+        .map_err(|e| format!("配置 json 序列化失败: {}", e))?;
+    db.update_space_config(&space_id, &cleaned)
 }
 
 #[tauri::command]
@@ -92,20 +100,41 @@ pub async fn generate_share_link(
 }
 
 #[tauri::command]
-pub async fn parse_share_link(
-    link: String,
-) -> Result<ShareInfo, String> {
-    crate::space::share::decrypt_share_link(&link)
+pub async fn parse_share_data(data: String) -> Result<ShareInfo, String> {
+    let bytes = STANDARD
+        .decode(&data)
+        .map_err(|e| format!("分享数据解码失败: {}", e))?;
+    crate::space::share::decode_share_binary(&bytes)
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+#[tauri::command]
+pub async fn detect_lan_subnets(
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<String>, String> {
+    // 通过 Tauri 插件调用 Android/iOS 原生探测
+    // 注意：实际调用在前端通过 invoke("plugin:hometiervpnservice|detect_lan_subnets") 完成
+    // 此命令仅作为类型占位，前端直接调用插件
+    Err("请在前端直接调用插件: invoke(\"plugin:hometiervpnservice|detect_lan_subnets\")".into())
 }
 
 #[tauri::command]
 pub async fn connect_space(
     space_id: String,
+    auto_proxy_cidrs: Option<Vec<String>>,
     space_manager: State<'_, Arc<SpaceManager>>,
 ) -> Result<(), String> {
     let id = uuid::Uuid::parse_str(&space_id).map_err(|e| e.to_string())?;
-    crate::log_info!(format!("连接空间: {}", space_id));
-    space_manager.connect(&id).await
+    crate::log_info!(format!("连接空间: {}, auto_proxy_cidrs: {:?}", space_id, auto_proxy_cidrs));
+    // 调试：记录每个 CIDR
+    if let Some(ref cidrs) = auto_proxy_cidrs {
+        for c in cidrs {
+            crate::log_info!(format!("connect_space: 收到 auto_proxy_cidr: {}", c));
+        }
+    } else {
+        crate::log_info!("connect_space: auto_proxy_cidrs 为 None");
+    }
+    space_manager.connect(&id, auto_proxy_cidrs).await
 }
 
 #[tauri::command]
