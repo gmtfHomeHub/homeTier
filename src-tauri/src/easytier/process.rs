@@ -25,19 +25,33 @@ impl EasyTierProcess {
     #[cfg(target_os = "windows")]
     fn ensure_dlls(binary: &PathBuf, resource_dir: Option<&PathBuf>) {
         let target_dir = binary.parent().unwrap_or_else(|| Path::new("."));
-        let dlls = ["packet.dll", "wpcap.dll", "wintun.dll", "WinDivert64.sys"];
+        // ARM64: easytier 编译时排除 WinDivert（cfg_select 限定 x86_64/x86），走 PnetTun 分支；
+        // wpcap.dll 在 easytier arm64 zip 中无提供且非必需（homeTier 不启用 fake_tcp）。
+        let dlls: &[&str] = if cfg!(target_arch = "aarch64") {
+            &["wintun.dll", "packet.dll"]
+        } else {
+            &["packet.dll", "wpcap.dll", "wintun.dll", "WinDivert64.sys"]
+        };
 
-        // 收集候选源目录
+        // 收集候选源目录（ARM64 优先从 aarch64 子目录取架构匹配的 DLL）
         let mut candidates = Vec::new();
         if let Some(rd) = resource_dir {
-            candidates.push(rd.join("resources").join("bin"));
+            let bin = rd.join("resources").join("bin");
+            if cfg!(target_arch = "aarch64") {
+                candidates.push(bin.join("aarch64"));
+            }
+            candidates.push(bin);
             candidates.push(rd.join("bin"));
             candidates.push(rd.clone());
         }
         // 兜底：当前 exe 所在目录（MSI 安装时 resources/ 与 exe 同级）
         if let Ok(exe) = std::env::current_exe() {
             if let Some(parent) = exe.parent() {
-                candidates.push(parent.join("resources").join("bin"));
+                let bin = parent.join("resources").join("bin");
+                if cfg!(target_arch = "aarch64") {
+                    candidates.push(bin.join("aarch64"));
+                }
+                candidates.push(bin);
                 candidates.push(parent.join("bin"));
                 candidates.push(parent.to_path_buf());
             }

@@ -182,13 +182,26 @@ impl EasyTierDownloader {
                 {
                     if let Some(resource_dir) = &self.resource_dir {
                         let target_dir = target_path.parent().unwrap_or(&self.bin_dir);
-                        for dll_name in &["packet.dll", "wpcap.dll", "wintun.dll", "WinDivert64.sys"] {
+                        let dlls: &[&str] = if cfg!(target_arch = "aarch64") {
+                            &["wintun.dll", "packet.dll"]
+                        } else {
+                            &["packet.dll", "wpcap.dll", "wintun.dll", "WinDivert64.sys"]
+                        };
+                        let bin_dir = resource_dir.join("resources").join("bin");
+                        for dll_name in dlls {
                             let mut copied = false;
-                            for candidate_dir in &[
-                                resource_dir.join("resources").join("bin"),
-                                resource_dir.join("bin"),
-                                resource_dir.clone(),
-                            ] {
+                            let candidate_dirs: Vec<std::path::PathBuf> = {
+                                let mut v = vec![
+                                    bin_dir.clone(),
+                                    resource_dir.join("bin"),
+                                    resource_dir.clone(),
+                                ];
+                                if cfg!(target_arch = "aarch64") {
+                                    v.insert(0, bin_dir.join("aarch64"));
+                                }
+                                v
+                            };
+                            for candidate_dir in &candidate_dirs {
                                 let src = candidate_dir.join(dll_name);
                                 if src.exists() {
                                     // 忽略占位文件（如 "PLACEHOLDER - Replace with actual packet.dll"），避免把假 DLL 复制给 easytier-core.exe

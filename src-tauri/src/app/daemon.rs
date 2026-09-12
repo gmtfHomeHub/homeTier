@@ -284,13 +284,26 @@ exit 1
         // Windows: 启动前验证关键 DLL 是否存在且有效，缺失则直接报错
         if let Some(rd) = resource_dir {
             let rd_buf = rd.to_path_buf();
-            for dll_name in &["packet.dll", "wpcap.dll", "wintun.dll"] {
+            let dlls: &[&str] = if cfg!(target_arch = "aarch64") {
+                &["wintun.dll", "packet.dll"]
+            } else {
+                &["packet.dll", "wpcap.dll", "wintun.dll"]
+            };
+            let bin_dir = rd_buf.join("resources").join("bin");
+            for dll_name in dlls {
                 let mut dll_found = false;
-                for candidate_dir in &[
-                    rd_buf.join("resources").join("bin"),
-                    rd_buf.join("bin"),
-                    rd_buf.clone(),
-                ] {
+                let candidate_dirs: Vec<std::path::PathBuf> = {
+                    let mut v = vec![
+                        bin_dir.clone(),
+                        rd_buf.join("bin"),
+                        rd_buf.clone(),
+                    ];
+                    if cfg!(target_arch = "aarch64") {
+                        v.insert(0, bin_dir.join("aarch64"));
+                    }
+                    v
+                };
+                for candidate_dir in &candidate_dirs {
                     let src = candidate_dir.join(dll_name);
                     if src.exists() {
                         // 忽略占位文件（<10KB 视为无效）
