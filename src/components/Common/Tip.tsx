@@ -45,14 +45,6 @@ function composeHandlers<T>(
   return (e: T) => handlers.forEach((h) => h?.(e));
 }
 
-/** 提取 ReactNode 纯文本（toast 展示用） */
-function toPlainText(node: ReactNode): string {
-  if (node === null || node === undefined || typeof node === "boolean") return "";
-  if (typeof node === "string" || typeof node === "number") return String(node);
-  if (Array.isArray(node)) return node.map(toPlainText).join("");
-  if (isValidElement(node)) return toPlainText(node.props.children);
-  return "";
-}
 
 /** 从子元素提取 ref 与 props（cloneElement 类型辅助） */
 function childProps(child: ReactElement): {

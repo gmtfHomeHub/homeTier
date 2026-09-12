@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { NetworkConfig, PortForwardConfig } from "../../types/network";
-import { DEFAULT_NETWORK_CONFIG, addRow, removeRow } from "../../types/network";
-import { Button, TextField, Checkbox, Text, Select, Flex } from "@radix-ui/themes";
+import { addRow, removeRow, computeNetworkCidr } from "../../types/network";
+import { Button, TextField, Checkbox, Text, Select, Flex , Grid } from "@radix-ui/themes";
 import { CollapsibleSection } from "../Common/CollapsibleSection";
 import { Eye, EyeOff, Trash2, Globe } from "lucide-react";
 
@@ -60,6 +60,27 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
 
   const set = (patch: Partial<NetworkConfig>) => onChange({ ...value, ...patch });
 
+  // 本机虚拟网段派生 CIDR（用于 proxy_cidrs 渲染时标记不可编辑/删除的派生项）
+  const ownCidr = computeNetworkCidr(value.virtual_ipv4 ?? '', value.network_length ?? 24);
+
+  // virtual_ipv4 / network_length 变化时联动 proxy_cidrs：移除旧派生项，添加新派生项
+  const syncProxyCidrs = (patch: Partial<NetworkConfig>): Partial<NetworkConfig> => {
+    const newV4 = patch.virtual_ipv4 ?? value.virtual_ipv4 ?? '';
+    const newLen = patch.network_length ?? value.network_length ?? 24;
+    const newC = computeNetworkCidr(newV4, newLen);
+    // 整体去重（trim + 保留首次出现），own_cidr 变化时移除旧派生项再添加新派生项
+    const seen = new Set<string>();
+    const proxy_cidrs = (value.proxy_cidrs ?? [])
+      .map(c => c.trim())
+      .filter((c) => {
+        if (!c || seen.has(c)) return false;
+        seen.add(c);
+        return true;
+      });
+    if (newC && !seen.has(newC)) proxy_cidrs.push(newC);
+    return { ...patch, proxy_cidrs };
+  };
+
   const boolVal = (key: keyof NetworkConfig): boolean =>
     value[key] === true;
 
@@ -82,12 +103,12 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
 
       {/* Panel 1: Basic Settings (always open) */}
       <div className="border border-[var(--color-border)] rounded-lg">
-        <div className="flex items-center gap-2 p-4 border-b border-[var(--color-border)]">
+        <Flex align="center" gap="2" className="p-4 border-b border-[var(--color-border)]">
           <Globe size={16} />
           <Text size="2" weight="medium">{t("network.basicSettings")}</Text>
-        </div>
+        </Flex>
         <div className="p-4 space-y-3">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Grid columns={{ initial: "1", sm: "2" }} gap="3">
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("settings.networkName")}</label>
               <TextField.Root size="1" value={strVal("network_name")}
@@ -105,16 +126,16 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                 </TextField.Slot>
               </TextField.Root>
             </div>
-          </div>
+          </Grid>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Grid columns={{ initial: "1", sm: "2" }} gap="3">
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("network.virtualIpv4")}</label>
               <TextField.Root size="1" value={strVal("virtual_ipv4")}
                 onChange={e => {
                   const ip = e.target.value;
-                  // 静态 IP 与 DHCP 互斥：输入 IP 时自动关闭 dhcp
-                  set({ virtual_ipv4: ip, ...(ip.trim() ? { dhcp: false } : {}) });
+                  // 静态 IP 与 DHCP 互斥：输入 IP 时自动关闭 dhcp；联动 proxy_cidrs 派生项
+                  set(syncProxyCidrs({ virtual_ipv4: ip, ...(ip.trim() ? { dhcp: false } : {}) }));
                 }}
                 placeholder="10.0.0.1" />
             </div>
@@ -122,9 +143,9 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
               <label className={LABEL_CLASS}>{t("network.networkLength")}</label>
               <TextField.Root size="1" type="number"
                 value={String(value.network_length ?? 24)}
-                onChange={e => set({ network_length: parseInt(e.target.value) || 24 })} />
+                onChange={e => set(syncProxyCidrs({ network_length: parseInt(e.target.value) || 24 }))} />
             </div>
-          </div>
+          </Grid>
 
           <Text as="label" size="1" className="flex items-center gap-2">
             <Checkbox checked={boolVal("dhcp")}
@@ -226,21 +247,26 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           {/* Proxy CIDRs */}
           <div className={FIELD_CLASS}>
             <label className={LABEL_CLASS}>{t("network.subnetProxy")}</label>
-            {(value.proxy_cidrs ?? []).map((cidr, i) => (
-              <Flex gap="2" align="center" key={i}>
-                <TextField.Root size="1" className="flex-1" value={cidr}
-                  onChange={e => {
-                    const list = [...(value.proxy_cidrs ?? [])];
-                    list[i] = e.target.value;
-                    set({ proxy_cidrs: list });
-                  }}
-                  placeholder="10.0.0.0/24" />
-                <Button variant="ghost" color="red" size="1" onClick={() => {
-                  const list = (value.proxy_cidrs ?? []).filter((_, j) => j !== i);
-                  set({ proxy_cidrs: list.length ? list : [] });
-                }}>×</Button>
-              </Flex>
-            ))}
+            {(value.proxy_cidrs ?? []).map((cidr, i) => {
+              const isDerived = !!ownCidr && cidr.trim() === ownCidr;
+              return (
+                <Flex gap="2" align="center" key={i}>
+                  <TextField.Root size="1" className="flex-1" value={cidr}
+                    disabled={isDerived}
+                    onChange={e => {
+                      const list = [...(value.proxy_cidrs ?? [])];
+                      list[i] = e.target.value;
+                      set({ proxy_cidrs: list });
+                    }}
+                    placeholder="10.0.0.0/24" />
+                  <Button variant="ghost" color="red" size="1" disabled={isDerived}
+                    onClick={() => {
+                      const list = (value.proxy_cidrs ?? []).filter((_, j) => j !== i);
+                      set({ proxy_cidrs: list.length ? list : [] });
+                    }}>×</Button>
+                </Flex>
+              );
+            })}
 
             <Flex justify="center" className="mt-2">
               <Button variant="ghost" color="blue" size="1"
@@ -251,7 +277,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           </div>
 
           {/* Routes & Exit Nodes */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Grid columns={{ initial: "1", sm: "2" }} gap="3">
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("network.routes")}</label>
               <TextField.Root size="1"
@@ -266,10 +292,10 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                 onChange={e => set({ exit_nodes: e.target.value ? e.target.value.split(",").map(s => s.trim()) : [] })}
                 placeholder={t("network.commaSeparated")} />
             </div>
-          </div>
+          </Grid>
 
           {/* Dev Name, MTU, Instance Recv Bps Limit */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Grid columns={{ initial: "1", sm: "3" }} gap="3">
             <div className={FIELD_CLASS}>
               <label className={LABEL_CLASS}>{t("network.devName")}</label>
               <TextField.Root size="1" value={strVal("dev_name")}
@@ -290,7 +316,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                 onChange={e => set({ instance_recv_bps_limit: e.target.value ? parseInt(e.target.value) : null })}
                 placeholder={t("network.unlimited")} />
             </div>
-          </div>
+          </Grid>
 
           {/* Relay Network Whitelist */}
           <div className={FIELD_CLASS}>
@@ -302,7 +328,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
           </div>
 
           {/* SOCKS5 */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Grid columns={{ initial: "1", sm: "2" }} gap="3">
             <div className={FIELD_CLASS}>
               <Text as="label" size="1" className="flex items-center gap-2">
                 <Checkbox checked={boolVal("enable_socks5")}
@@ -315,7 +341,7 @@ export function EasyTierConfigEditor({ value, onChange, title }: Props) {
                   onChange={e => set({ socks5_port: parseInt(e.target.value) || 1080 })} />
               )}
             </div>
-          </div>
+          </Grid>
 
           {/* Boolean flags grid */}
           <div className="pt-2">

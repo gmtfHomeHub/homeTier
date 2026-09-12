@@ -88,15 +88,10 @@ button:not([disabled]) {
 .gray.disabled {
   cursor: not-allowed;
 }
-/* 二维码扫码容器：固定高度并让视频填满，保证 html5-qrcode 读取到的
-   clientWidth/clientHeight 稳定且 >= qrbox，避免解码循环因尺寸退化而空转 */
-#qr-reader {
-  position: relative;
-  background: #000;
-  border-radius: 8px;
-}
-#qr-reader video {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: cover;
+
+/* Dialog 内容可滚动；移动端键盘弹起时 main.tsx 动态覆写 max-height 跟随可视区，
+   避免 portal 到 body 的 Dialog 不受 #root 上推影响导致输入框被遮挡 */
+[role="dialog"] {
+  max-height: 85vh;
+  overflow-y: auto;
 }

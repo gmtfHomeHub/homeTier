@@ -174,8 +174,6 @@ pub async fn list_files(
     // 从数据库查询
     let rows = space_manager.list_space_files(&space_id, limit).await?;
 
-    crate::log_debug!(format!("列出文件: space_id={}, count={}", space_id, rows.len()));
-
     let files = rows.iter().map(|r| {
         FileInfo {
             id: r.id.parse().unwrap_or_default(),
@@ -204,6 +202,5 @@ pub async fn get_transfer_progress(
 ) -> Result<Option<TransferProgress>, String> {
     let id = uuid::Uuid::parse_str(&transfer_id).map_err(|e| e.to_string())?;
     let progress = file_manager.get_progress(&id).await;
-    crate::log_debug!(format!("查询传输进度: transfer_id={}, has_progress={}", transfer_id, progress.is_some()));
     Ok(progress)
 }

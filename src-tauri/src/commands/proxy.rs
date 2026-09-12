@@ -1,5 +1,3 @@
-#![cfg(not(any(target_os = "android", target_os = "ios")))]
-
 use std::sync::Arc;
 use tauri::State;
 use crate::proxy::{ActiveOrigin, ProxyKeyMap, ProxyServer};
@@ -15,7 +13,6 @@ pub async fn get_proxy_url(
 pub async fn get_proxy_status(
     proxy: State<'_, Arc<ProxyServer>>,
 ) -> Result<serde_json::Value, String> {
-    crate::log_debug!("获取代理状态");
     Ok(serde_json::json!({
         "running": true,
         "port": proxy.port,
@@ -28,7 +25,6 @@ pub async fn register_proxy_key(
     url: String,
     key_map: State<'_, ProxyKeyMap>,
 ) -> Result<String, String> {
-    crate::log_debug!(format!("注册代理 key: url={}", url));
     let hash = crate::crypto::sha256(url.as_bytes());
     let key = hex::encode(&hash[..6]);
 

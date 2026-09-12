@@ -276,7 +276,7 @@ SQLite 文件位于 `{app_data_dir}/homeTier.db`（服务器模式为 `{server-d
 
 ### 分享链接
 
-格式：`homeTier://join?v=3&d={base64url}`。载荷流程：ShareInfo 序列化 → **zstd 压缩（level 3）** → **AES-256-GCM 加密**（密钥 = SHA-256("homeTier-share-link-v2")，版本化便于轮换）→ base64url。聊天消息使用空间 `network_secret` 做 HMAC-SHA256 签名校验；密码保护文件使用 PBKDF2 派生密钥加密。
+格式：`homeTier://join?v=1&d={base64url}`。载荷流程：ShareInfo **二进制编码（小端序、单字节长度前缀、可选字段 bitmask）** → **自适应压缩（zstd level 3；压缩后不小于原文则走 raw）** → **AES-256-GCM 加密**（密钥 = SHA-256("homeTier-share-link-v1")）→ base64url（无 padding）。聊天消息使用空间 `network_secret` 做 HMAC-SHA256 签名校验；密码保护文件使用 PBKDF2 派生密钥加密。
 
 ---
 

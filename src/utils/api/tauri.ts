@@ -14,6 +14,8 @@ import type {
   AclRule,
   PortForwardRule,
   ShareInfo,
+  ParseQrResult,
+  ImportAddAppsResult,
   TraySpace,
   TrayLabels,
   SendFileResult,
@@ -49,12 +51,28 @@ export async function generateShareLink(spaceId: string, ip?: string): Promise<s
   return invoke("generate_share_link", { spaceId, ip });
 }
 
-export async function parseShareLink(link: string): Promise<ShareInfo> {
-  return invoke("parse_share_link", { link });
+export async function parseQR(link: string): Promise<ParseQrResult> {
+  return invoke("parse_qr", { link });
 }
 
-export async function connectSpace(spaceId: string): Promise<void> {
-  return invoke("connect_space", { spaceId });
+export async function parseShareData(data: string): Promise<ShareInfo> {
+  return invoke("parse_share_data", { data });
+}
+
+export async function generateAddAppLink(
+  spaceId: string,
+  appIds: string[],
+  targetPeerIds: number[]
+): Promise<string> {
+  return invoke("generate_add_app_link", { spaceId, appIds, targetPeerIds });
+}
+
+export async function importAddApps(data: string): Promise<ImportAddAppsResult> {
+  return invoke("import_add_apps", { data });
+}
+
+export async function connectSpace(spaceId: string, autoProxyCidrs?: string[]): Promise<void> {
+  return invoke("connect_space", { spaceId, auto_proxy_cidrs: autoProxyCidrs });
 }
 
 export async function disconnectSpace(spaceId: string): Promise<void> {
@@ -273,6 +291,14 @@ export async function getConfigTemplatePath(): Promise<string> {
 
 export async function getSpacePeers(spaceId: string): Promise<PeerInfo[]> {
   return invoke<PeerInfo[]>("get_space_peers", { spaceId });
+}
+
+export async function getMeshRoutes(spaceId: string): Promise<string[]> {
+  return invoke<string[]>("get_mesh_routes", { spaceId });
+}
+
+export async function patchSpaceConfig(spaceId: string, patch: Record<string, unknown>): Promise<void> {
+  return invoke("patch_space_config", { spaceId, patch });
 }
 
 export async function addApp(

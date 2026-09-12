@@ -131,7 +131,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadSpaces]);
 
   // 初始化实时事件中枢（监听 new_message，分发聊天/信令）
   useEffect(() => {

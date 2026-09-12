@@ -582,6 +582,28 @@ jobs:
           if [ -z "$APK" ]; then echo "ERROR: no APK produced"; exit 1; fi
           echo "APK: $APK"
           unzip -l "$APK" | grep -E "lib/(arm64-v8a|armeabi-v7a)/.*\.so" || { echo "ERROR: no native libs found in APK"; exit 1; }
+      - name: Verify APK contains ML Kit barcode classes
+        run: |
+          APK=$(find src-tauri/gen/android -maxdepth 8 -name "*.apk" | head -1)
+          if [ -z "$APK" ]; then echo "ERROR: no APK produced"; exit 1; fi
+          echo "APK: $APK"
+          # 1) 资产层面：bundled model 通常以 assets 下的模型文件存在（如 mlkit/ 或 com_google_mlkit_* 前缀）
+          ASSET_HITS=$(unzip -l "$APK" | grep -iE "assets/(mlkit|.*mlkit.*|.*barcode.*model|com_google_mlkit)" | head -5)
+          echo "ML Kit asset candidates:"
+          echo "$ASSET_HITS"
+          # 2) DEX 层面：barcode 相关类必须存在（无论 bundled 实现还是 GMS 桥接实现）
+          DEX_BARCODE=$(unzip -p "$APK" "classes*.dex" 2>/dev/null | grep -ac "com/google/mlkit/vision/barcode" || true)
+          DEX_THIN=$(unzip -p "$APK" "classes*.dex" 2>/dev/null | grep -ac "com/google/android/gms/internal/mlkit_vision_barcode" || true)
+          echo "DEX barcode classes found: $DEX_BARCODE"
+          echo "DEX thin-model(GMS) bridge classes found: $DEX_THIN"
+          if [ "$DEX_BARCODE" -eq 0 ]; then
+            echo "ERROR: APK 中完全找不到 ML Kit barcode 类 —— 依赖未打入，扫码必失败"
+            exit 1
+          fi
+          if [ "$DEX_THIN" -gt 0 ] && [ -z "$ASSET_HITS" ]; then
+            echo "WARN: DEX 含 GMS 桥接类且 assets 无模型文件 —— 疑似仍为 thin model（依赖 GMS），请核实 fix-android-build-gradle.sh 的 exclude 是否生效"
+          fi
+          echo "OK: ML Kit barcode classes present in APK"
       - name: Stage artifact
         shell: bash
         run: |

@@ -155,6 +155,19 @@ impl Daemon {
             }
             crate::log_debug!("[Daemon] config_dir 清理完成");
 
+            // Windows: 清理残留的 easytier-core.exe 孤儿进程（避免占用虚拟网卡/端口导致新进程启动失败）
+            #[cfg(target_os = "windows")]
+            {
+                crate::log_info!("[Daemon] 清理残留 easytier-core.exe 进程...");
+                let _ = tokio::process::Command::new("taskkill")
+                    .args(["/F", "/IM", "easytier-core.exe"])
+                    .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                    .output()
+                    .await;
+                // 给系统一点时间释放虚拟网卡和端口
+                tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+            }
+
             let binary = match easytier.downloader.ensure_binary().await {
                 Ok(b) => b,
                 Err(e) => {

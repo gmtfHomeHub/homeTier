@@ -20,7 +20,7 @@ if [ ! -d "$ANDROID_KOTLIN_DIR" ]; then
   echo "ERROR: Kotlin 源码目录不存在: $ANDROID_KOTLIN_DIR（tauri android init 未执行？）"
   FAIL=1
 else
-  for f in HomeTierVpnService.kt HomeTierVpnServicePlugin.kt MainActivity.kt; do
+  for f in HomeTierVpnService.kt HomeTierVpnServicePlugin.kt TauriEventBus.kt LanSubnetDetector.kt MainActivity.kt; do
     if [ ! -f "$ANDROID_KOTLIN_DIR/$f" ]; then
       echo "ERROR: $f 缺失（$ANDROID_KOTLIN_DIR/$f）"
       FAIL=1
@@ -65,6 +65,35 @@ else
       echo "OK: 权限 $p 存在"
     fi
   done
+fi
+
+# 4. build.gradle.kts 必须启用 cleartext traffic（否则 WebView 加载 127.0.0.1 代理报 ERROR_CLEARTEXT_NOT_PERMITTED）
+BUILD_GRADLE="src-tauri/gen/android/app/build.gradle.kts"
+if [ ! -f "$BUILD_GRADLE" ]; then
+  echo "ERROR: build.gradle.kts 不存在"
+  FAIL=1
+elif ! grep -q 'manifestPlaceholders\["usesCleartextTraffic"\] = "true"' "$BUILD_GRADLE"; then
+  echo "ERROR: build.gradle.kts 未启用 cleartext traffic（fix-android-build-gradle.sh 未生效？）"
+  FAIL=1
+else
+  echo "OK: build.gradle.kts 已启用 cleartext traffic (usesCleartextTraffic=true)"
+fi
+
+# 5. build.gradle.kts 必须包含 ML Kit bundled model 修复（否则无 GMS 设备扫码永远无响应）
+# fix-android-build-gradle.sh 会排除 play-services-mlkit-barcode-scanning（轻量模型，依赖 GMS）
+# 并加入 com.google.mlkit:barcode-scanning（内置模型，全设备可用）。
+# 若此步骤未生效，APK 在无 Google Play Services 的设备上 scanner.process() 静默失败。
+if [ ! -f "$BUILD_GRADLE" ]; then
+  echo "ERROR: build.gradle.kts 不存在（重复检查）"
+  FAIL=1
+elif ! grep -q 'com.google.mlkit:barcode-scanning' "$BUILD_GRADLE"; then
+  echo "ERROR: build.gradle.kts 缺少 com.google.mlkit:barcode-scanning（ML Kit 内置模型修复未生效？）"
+  FAIL=1
+else
+  echo "OK: build.gradle.kts 已引入 ML Kit 内置模型 (com.google.mlkit:barcode-scanning)"
+fi
+if [ -f "$BUILD_GRADLE" ] && ! grep -q 'play-services-mlkit-barcode-scanning' "$BUILD_GRADLE"; then
+  echo "WARN: build.gradle.kts 中未见轻量模型排除项 exclude(play-services-mlkit-barcode-scanning)，请确认 fix 脚本已应用"
 fi
 
 if [ "$FAIL" -ne 0 ]; then

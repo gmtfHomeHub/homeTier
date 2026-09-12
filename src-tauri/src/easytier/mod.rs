@@ -118,7 +118,8 @@ impl EasyTierManager {
             } else {
                 cfg.peers.iter().map(|p| p.uri.clone()).collect()
             },
-            proxy_cidrs: cfg.proxy_networks.iter().map(|p| p.cidr.clone()).collect(),
+            proxy_cidrs: cfg.effective_proxy_cidrs(),
+            enable_manual_routes: Some(cfg.enable_manual_routes),
             routes: cfg.routes.clone(),
             exit_nodes: cfg.exit_nodes.clone(),
             port_forwards: Vec::new(),
@@ -739,6 +740,52 @@ impl EasyTierManager {
         self.query_rpc_status(instance_id, rpc_port).await
     }
 
+    /// 获取 Mesh 可达的子网代理路由（桌面端: 通过 RPC 查询 collect_network_info 并提取 proxy_cidrs）
+    pub async fn get_mesh_routes(&self, instance_id: &Uuid) -> Option<Vec<String>> {
+        let rpc_port = self.get_instance_rpc_port(instance_id)?;
+        self.query_mesh_routes(instance_id, rpc_port).await
+    }
+
+    /// 通过 RPC 查询 mesh routes（复用 collect_network_info）
+    async fn query_mesh_routes(&self, instance_id: &Uuid, rpc_port: u16) -> Option<Vec<String>> {
+        use easytier::proto::rpc_impl::standalone::StandAloneClient;
+        use easytier::proto::rpc_types::controller::BaseController;
+        use easytier::tunnel::tcp::TcpTunnelConnector;
+        use easytier::proto::api::manage::WebClientServiceClientFactory;
+
+        let url_str = format!("tcp://127.0.0.1:{}", rpc_port);
+        let url = url_str.parse().ok()?;
+        let connector = TcpTunnelConnector::new(url);
+        let mut client = StandAloneClient::new(connector);
+
+        let ctrl = BaseController::default();
+        let web_service = client
+            .scoped_client::<WebClientServiceClientFactory<BaseController>>("".to_string())
+            .await
+            .ok()?;
+
+        let proto_uuid: easytier::proto::common::Uuid = (*instance_id).into();
+        let inst_id_str = instance_id.to_string();
+
+        let req = easytier::proto::api::manage::CollectNetworkInfoRequest {
+            inst_ids: vec![proto_uuid],
+        };
+
+        let resp = web_service.collect_network_info(ctrl, req).await.ok()?;
+        let running_info = resp.info.as_ref()?.map.get(&inst_id_str)?;
+
+        let mut mesh_routes_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+        
+        // 从所有 Route.proxy_cidrs 提取
+        for route in &running_info.routes {
+            for cidr in &route.proxy_cidrs {
+                mesh_routes_set.insert(cidr.clone());
+            }
+        }
+
+        Some(mesh_routes_set.into_iter().collect())
+    }
+
     /// 运行时修改配置（重启子进程应用新配置）
     pub async fn patch_config(
         &self,
@@ -917,6 +964,7 @@ impl EasyTierManager {
         cfg: &config::NetworkConfig,
         instance_id: Uuid,
         initial_config: Option<String>,
+        app_handle: Option<tauri::AppHandle>,
     ) -> Result<Uuid, String> {
         crate::log_info!(format!("EasyTierManager: 启动网络实例 (Mobile), network_name={}, id={}", cfg.network_name, instance_id));
 
@@ -925,12 +973,26 @@ impl EasyTierManager {
             self.stop_network(&instance_id).await?;
         }
 
-        // 使用库方式启动
-        let running = launcher_internal::start_easytier(cfg, instance_id, &self.config_dir, initial_config).await?;
-        self.instances.insert(instance_id, running);
-
-        crate::log_info!(format!("EasyTierManager: 网络实例已启动 (Mobile), id={}", instance_id));
-        Ok(instance_id)
+        // 重试启动：前一次实例可能未完全清理（Drop 不保证资源即时释放），最多重试 3 次
+        let mut last_error = String::new();
+        for attempt in 0..3 {
+            if attempt > 0 {
+                crate::log_warn!(format!("EasyTierManager: 启动重试 {}/3, id={}", attempt, instance_id));
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+            match launcher_internal::start_easytier(cfg, instance_id, &self.config_dir, initial_config.clone(), app_handle.clone()).await {
+                Ok(running) => {
+                    self.instances.insert(instance_id, running);
+                    crate::log_info!(format!("EasyTierManager: 网络实例已启动 (Mobile), id={}", instance_id));
+                    return Ok(instance_id);
+                }
+                Err(e) => {
+                    last_error = format!("尝试 {}/3 失败: {}", attempt + 1, e);
+                    crate::log_warn!(last_error.clone());
+                }
+            }
+        }
+        Err(format!("启动网络实例失败 (Mobile, 重试耗尽): {}", last_error))
     }
 
     /// 停止网络实例
@@ -941,7 +1003,7 @@ impl EasyTierManager {
             crate::log_info!(format!("EasyTierManager: 网络实例已停止 (Mobile), id={}", instance_id));
             Ok(config)
         } else {
-            crate::log_warn!(format!("EasyTierManager: 实例未找到 (Mobile), id={}", instance_id));
+            crate::log_debug!(format!("EasyTierManager: 实例未找到 (Mobile, 可能已停止), id={}", instance_id));
             Ok(None)
         }
     }
@@ -963,9 +1025,10 @@ impl EasyTierManager {
 
     /// 获取 peer 列表
     pub async fn get_peers(&self, instance_id: &Uuid) -> Result<Vec<launcher_internal::PeerInfo>, String> {
-        let instance = self.instances.get(instance_id)
-            .ok_or_else(|| "Instance not found".to_string())?;
-        Ok(instance.get_peers().await)
+        match self.instances.get(instance_id) {
+            Some(instance) => Ok(instance.get_peers().await),
+            None => Ok(Vec::new()), // 实例不存在（过渡期）时返回空列表
+        }
     }
 
     /// 获取虚拟 IP
@@ -1008,6 +1071,20 @@ impl EasyTierManager {
         self.get_network_stats(instance_id).await
     }
 
+    /// 获取 Mesh 可达的子网代理路由（Mobile: 从实例状态获取）
+    pub async fn get_mesh_routes(&self, instance_id: &Uuid) -> Option<Vec<String>> {
+        let instance = self.instances.get(instance_id)?;
+        Some(instance.get_mesh_routes().await)
+    }
+
+    /// 获取运行时快照（供 SpaceManager.connect 等待就绪使用）
+    /// 返回: (is_running, virtual_ip, connected_peers)
+    pub async fn get_runtime_snapshot(&self, instance_id: &Uuid) -> Option<(bool, Option<String>, u32)> {
+        let instance = self.instances.get(instance_id)?;
+        let (is_running, virtual_ip, connected_peers, _, _, _) = instance.get_runtime_stats().await;
+        Some((is_running, virtual_ip, connected_peers))
+    }
+
     /// 升级版本（Mobile 不支持）
     pub async fn upgrade(&self, _version: &str, _source: Option<BinarySource>) -> Result<(), String> {
         Err("Mobile 不支持版本升级".into())
@@ -1038,6 +1115,7 @@ mod launcher_internal {
     use tokio::sync::RwLock;
     use std::path::PathBuf;
     use uuid::Uuid;
+    use tauri::Emitter;
     use crate::types::NetworkStatus;
     use super::config;
 
@@ -1076,6 +1154,8 @@ mod launcher_internal {
         tx_bytes: u64,
         avg_latency_ms: f64,
         peers: Vec<PeerInfo>,
+        // Mesh 可达的子网代理路由（从所有 Route.proxy_cidrs 去重聚合）
+        mesh_routes: Vec<String>,
     }
 
     /// 启动 EasyTier 网络实例（库方式）
@@ -1084,6 +1164,7 @@ mod launcher_internal {
         instance_id: Uuid,
         config_dir: &PathBuf,
         initial_config: Option<String>,
+        app_handle: Option<tauri::AppHandle>,
     ) -> Result<RunningInstance, String> {
         use easytier::common::config::ConfigLoader;
         let network_name = cfg.network_name.clone();
@@ -1213,12 +1294,15 @@ mod launcher_internal {
             tx_bytes: 0,
             avg_latency_ms: 0.0,
             peers: Vec::new(),
+            mesh_routes: Vec::new(),
         }));
 
         let status_poll = status.clone();
         let stop_notifier = instance.get_stop_notifier();
+        let instance_id_for_poll = instance_id;
+        let app_handle_for_poll = app_handle.clone();
         tokio::spawn(async move {
-            poll_instance_status(status_poll, api_service).await;
+            poll_instance_status(status_poll, api_service, instance_id_for_poll, app_handle_for_poll).await;
         });
 
         let status_stop = status.clone();
@@ -1245,9 +1329,20 @@ mod launcher_internal {
     async fn poll_instance_status(
         status: Arc<RwLock<InstanceStatus>>,
         api_service: Option<Arc<dyn easytier::rpc_service::InstanceRpcService>>,
+        instance_id: Uuid,
+        app_handle: Option<tauri::AppHandle>,
     ) {
+        // 首次快速轮询（500ms），前 10s (20次) 每 500ms 快速轮询，后续每 2 秒轮询一次
+        let mut fast_poll_count = 0;
+        let mut last_mesh_routes: Vec<String> = Vec::new();
+
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            if fast_poll_count < 20 { // 前 10s (20 * 500ms) 快速轮询
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                fast_poll_count += 1;
+            } else {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
             let is_running = { status.read().await.is_running };
             if !is_running { break; }
 
@@ -1348,12 +1443,44 @@ mod launcher_internal {
                         la.partial_cmp(&lb).unwrap_or(std::cmp::Ordering::Equal)
                     });
 
+                    // 提取并去重 mesh 子网代理路由（所有 Route.proxy_cidrs 聚合）
+                    let mut mesh_routes_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+                    if let Ok(routes_resp) = &routes_resp {
+                        for r in &routes_resp.routes {
+                            for cidr in &r.proxy_cidrs {
+                                mesh_routes_set.insert(cidr.clone());
+                            }
+                        }
+                    }
+                    // 也包含本地节点的 proxy_cidrs
+                    if let Some(my_info) = &peers_resp.my_info {
+                        for cidr in &my_info.proxy_cidrs {
+                            mesh_routes_set.insert(cidr.clone());
+                        }
+                    }
+                    let mesh_routes: Vec<String> = mesh_routes_set.into_iter().collect();
+
+                    // 检测 mesh routes 变化并发送事件
+                    // 首次采集到非空 mesh_routes 时也强制触发（last_mesh_routes 初始为空）
+                    let is_first_non_empty = last_mesh_routes.is_empty() && !mesh_routes.is_empty();
+                    if mesh_routes != last_mesh_routes || is_first_non_empty {
+                        last_mesh_routes = mesh_routes.clone();
+                        if let Some(ref handle) = app_handle {
+                            let payload = serde_json::json!({
+                                "spaceId": instance_id.to_string(),
+                                "routes": mesh_routes,
+                            });
+                            let _ = handle.emit("mesh_routes_updated", payload);
+                        }
+                    }
+
                     let mut s = status.write().await;
                     s.connected_peers = peers_resp.peer_infos.len() as u32;
                     s.rx_bytes = total_rx;
                     s.tx_bytes = total_tx;
                     s.avg_latency_ms = avg_latency;
                     s.peers = peers;
+                    s.mesh_routes = mesh_routes;
                     if let Some(ip) = my_ip {
                         s.virtual_ip = Some(ip);
                     }
@@ -1394,6 +1521,11 @@ mod launcher_internal {
         pub async fn get_runtime_stats(&self) -> (bool, Option<String>, u32, u64, u64, f64) {
             let s = self.status.read().await;
             (s.is_running, s.virtual_ip.clone(), s.connected_peers, s.rx_bytes, s.tx_bytes, s.avg_latency_ms)
+        }
+
+        /// 获取 Mesh 可达的子网代理路由（去重后的所有 proxy_cidrs）
+        pub async fn get_mesh_routes(&self) -> Vec<String> {
+            self.status.read().await.mesh_routes.clone()
         }
 
         pub async fn stop(&mut self) -> Result<Option<String>, String> {

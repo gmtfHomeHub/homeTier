@@ -13,6 +13,17 @@ IOS_PLIST="src-tauri/gen/apple/homeTier_iOS/Info.plist"
 [ -f "$IOS_PLIST" ] || echo "[mobile-permissions] WARN: $IOS_PLIST 不存在（tauri ios init 未执行或结构变更）"
 
 if [ -f "$ANDROID_MANIFEST" ]; then
+    # 0. WiFi 权限（用于自动探测物理 LAN 子网：WifiManager.connectionInfo + NetworkInterface 枚举）
+    for perm in ACCESS_WIFI_STATE ACCESS_FINE_LOCATION ACCESS_COARSE_LOCATION; do
+        if ! grep -q "android.permission.$perm" "$ANDROID_MANIFEST"; then
+            sed -i "/<\/manifest>/i \\
+    <uses-permission android:name=\"android.permission.$perm\" />" "$ANDROID_MANIFEST"
+            echo "[mobile-permissions] Injected $perm permission into AndroidManifest.xml"
+        else
+            echo "[mobile-permissions] $perm permission already exists in AndroidManifest.xml"
+        fi
+    done
+
     # 1. CAMERA 权限（用于扫码）
     if ! grep -q 'android.permission.CAMERA' "$ANDROID_MANIFEST"; then
         sed -i '/<\/manifest>/i \
@@ -66,7 +77,7 @@ fi
 # 复制 Kotlin VpnService/插件/屏幕共享文件到生成的工程中
 # HomeTierVpnService.kt / HomeTierVpnServicePlugin.kt 在 com.hometier.app 包（根目录）
 # ScreenShareManager.kt 在 com.hometier.app.screen 包（screen/ 子目录）
-KOTLIN_SOURCES=("HomeTierVpnService.kt" "HomeTierVpnServicePlugin.kt")
+KOTLIN_SOURCES=("HomeTierVpnService.kt" "HomeTierVpnServicePlugin.kt" "TauriEventBus.kt" "LanSubnetDetector.kt")
 for KF in "${KOTLIN_SOURCES[@]}"; do
     KOTLIN_SOURCE="src-tauri/scripts/android/$KF"
     KOTLIN_DEST="$ANDROID_KOTLIN_DIR/$KF"

@@ -227,6 +227,67 @@ function strip(){try{var a=document.querySelectorAll("[autofocus],input[autofocu
 if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",strip,false)}else{strip()}
 })()"#;
 
+/// 跨源 iframe 内手势自管：touchmove 同步操作 documentElement.transform（scale+translate），
+/// 不经 postMessage 到 parent（消除跨 doc 延迟）。
+/// - 两指：pinch 缩放 + pan（center 位移）
+/// - 单指：threshold(8px) 区分 tap/drag——超阈值 pan 移动可视区；未超 iframe 原生 tap/滚动
+/// - parent 经 __ht_zoom_init {active,scale,cw,ch} 激活/停用（desktop 激活自管，mobile 不激活自适应）
+/// - parent 经 __ht_zoom_cmd {cmd:"in"|"out"|"reset"} 按钮缩放
+const TOUCH_BRIDGE_JS: &str = r#"
+;(function(){
+if(window.__htTouch)return;window.__htTouch=1;
+var active=false,zoom=0.5,ox=0,oy=0,cw=0,ch=0,TH=8,st=null,pan=false;
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function dist(e){var a=e.touches[0],b=e.touches[1];return Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY)}
+function center(e){return{x:(e.touches[0].clientX+e.touches[1].clientX)/2,y:(e.touches[0].clientY+e.touches[1].clientY)/2}}
+function clampO(x,y){var sw=1920*zoom,sh=1080*zoom;return{x:clamp(x,Math.min(cw-sw,0),Math.max(cw-sw,0)),y:clamp(y,Math.min(ch-sh,0),Math.max(ch-sh,0))}}
+function apply(){var el=document.documentElement;el.style.transformOrigin="top left";el.style.willChange="transform";el.style.transform="translate("+ox+"px,"+oy+"px) scale("+zoom+")"}
+function startDrag(x,y){st={mode:"drag",x:x,y:y,o:{x:ox,y:oy}};pan=false}
+function onTouchStart(e){
+  if(!active)return;
+  var n=e.touches.length;
+  if(n>=2){st={mode:"pinch",d:dist(e),z:zoom,o:{x:ox,y:oy},c:center(e)};e.preventDefault()}
+  else if(n===1){startDrag(e.touches[0].clientX,e.touches[0].clientY)}
+}
+function onTouchMove(e){
+  if(!active||!st)return;
+  var n=e.touches.length;
+  if(st.mode==="pinch"&&n>=2){
+    e.preventDefault();
+    var r=st.d>0?dist(e)/st.d:1;
+    zoom=clamp(st.z*r,0.2,2);
+    var c=center(e);
+    var o=clampO(st.o.x-(c.x-st.c.x),st.o.y-(c.y-st.c.y));
+    ox=o.x;oy=o.y;apply();
+  }else if(st.mode==="drag"&&n===1){
+    var dx=e.touches[0].clientX-st.x,dy=e.touches[0].clientY-st.y;
+    if(!pan&&Math.hypot(dx,dy)<TH)return;
+    pan=true;e.preventDefault();
+    var o=clampO(st.o.x-dx,st.o.y-dy);
+    ox=o.x;oy=o.y;apply();
+  }
+}
+function onTouchEnd(e){
+  if(!active)return;
+  if(e.touches.length===0){st=null;pan=false}
+  else if(e.touches.length===1&&st&&st.mode==="pinch"){startDrag(e.touches[0].clientX,e.touches[0].clientY)}
+}
+window.addEventListener("touchstart",onTouchStart,{passive:false});
+window.addEventListener("touchmove",onTouchMove,{passive:false});
+window.addEventListener("touchend",onTouchEnd,{passive:false});
+window.addEventListener("message",function(e){
+  var d=e.data;if(!d)return;
+  if(d.__ht_zoom_init){active=d.__ht_zoom_init.active;cw=d.__ht_zoom_init.cw||0;ch=d.__ht_zoom_init.ch||0;
+    if(active){zoom=d.__ht_zoom_init.scale||0.5;ox=0;oy=0;apply()}
+    else{document.documentElement.style.transform="";st=null;pan=false}}
+  if(d.__ht_zoom_cmd){var c=d.__ht_zoom_cmd;
+    if(c==="in")zoom=clamp(zoom+0.1,0.2,2);
+    else if(c==="out")zoom=clamp(zoom-0.1,0.2,2);
+    else if(c==="reset"){zoom=0.5;ox=0;oy=0}
+    var o=clampO(ox,oy);ox=o.x;oy=o.y;apply()}
+});
+})()"#;
+
 /// 注入移动端 viewport meta（缺失时）
 fn inject_viewport_meta(html: &mut String) {
     let lower = html.to_lowercase();
@@ -301,6 +362,8 @@ if is_mobile {
     js_content.push_str(NAV_BRIDGE_JS);
     js_content.push_str("\n");
     js_content.push_str(AUTOFOCUS_JS);
+    js_content.push_str("\n");
+    js_content.push_str(TOUCH_BRIDGE_JS);
 
     debug_assert!(!regex::Regex::new(r"\}\)\s*\(\s*function")
             .unwrap()

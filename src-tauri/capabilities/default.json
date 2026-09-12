@@ -6,13 +6,16 @@
   "permissions": [
     "core:default",
     "shell:allow-open",
+    "opener:default",
     "process:default",
     "clipboard-manager:default",
+    "clipboard-manager:allow-read-text",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "os:default",
     "notification:default",
     "dialog:default",
+    "barcode-scanner:default",
     "hometiervpnservice:default"
   ],
   "platforms": ["linux", "windows", "macOS", "android", "iOS"]

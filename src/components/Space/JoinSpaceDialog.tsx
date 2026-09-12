@@ -1,36 +1,29 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useSpaceStore } from "../../stores/spaceStore";
-import { parseShareLink } from "../../utils/api";
-import { detectDeviceMode } from "../../utils/device";
+import { resolveJoinShareInfo } from "../../utils/share";
 import type { ShareInfo } from "../../types";
-import { X, QrCode } from "lucide-react";
+import { X } from "lucide-react";
 import { Button, TextField, Flex } from "@radix-ui/themes";
 import { toastError } from "../../utils/toast";
+import { readText } from "@tauri-apps/plugin-clipboard-manager";
 
 interface JoinSpaceDialogProps {
+  /** 由外部（如 SpaceList 扫一扫分发器）预先解析好的 ShareInfo，传入即直接进入确认态 */
+  initialShare?: ShareInfo;
   onClose: () => void;
 }
 
-interface Html5QrcodeScanner {
-  stop(): Promise<void>;
-}
-
-export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
+export function JoinSpaceDialog({ initialShare, onClose }: JoinSpaceDialogProps) {
   const { t } = useTranslation();
   const [networkName, setNetworkName] = useState("");
   const [networkSecret, setNetworkSecret] = useState("");
-  const [pendingShare, setPendingShare] = useState<ShareInfo | null>(null);
+  const [pendingShare, setPendingShare] = useState<ShareInfo | null>(
+    initialShare ?? null
+  );
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [scanning, setScanning] = useState(false);
-  const [scanError, setScanError] = useState<string | null>(null);
-  const [decodeWarn, setDecodeWarn] = useState<string | null>(null);
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
-  const decodeErrorRef = useRef(0);
+  const [pastedLink, setPastedLink] = useState("");
   const joinSpace = useSpaceStore((s) => s.joinSpace);
-
-  const isMobile = detectDeviceMode() === "mobile";
 
   const buildConfigJson = useCallback((info: ShareInfo): string => {
     const config: Record<string, unknown> = {
@@ -50,7 +43,6 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
     e.preventDefault();
     if (!networkName.trim() || !networkSecret.trim()) return;
     setLoading(true);
-    setError(null);
     try {
       await joinSpace(
         JSON.stringify({
@@ -60,7 +52,6 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
       );
       onClose();
     } catch (e) {
-      setError(String(e));
       toastError(String(e));
     } finally {
       setLoading(false);
@@ -70,12 +61,10 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
   const handleConfirmShare = async () => {
     if (!pendingShare) return;
     setLoading(true);
-    setError(null);
     try {
       await joinSpace(buildConfigJson(pendingShare), pendingShare.name);
       onClose();
     } catch (e) {
-      setError(String(e));
       toastError(String(e));
     } finally {
       setLoading(false);
@@ -83,87 +72,27 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
   };
 
   const handlePasteLink = async () => {
-    setError(null);
     try {
-      const text = await navigator.clipboard.readText();
+      const text = await readText();
       if (!text.trim()) return;
-      const info = await parseShareLink(text.trim());
+      const info = await resolveJoinShareInfo(text.trim());
       setPendingShare(info);
     } catch (e) {
-      setError(String(e));
       toastError(String(e));
     }
   };
 
-  const applyShareInfo = useCallback((info: ShareInfo) => {
-    setPendingShare(info);
-  }, []);
-
-  const startScan = useCallback(async () => {
-    setScanning(true);
-    setScanError(null);
-    setDecodeWarn(null);
-    decodeErrorRef.current = 0;
+  // 粘贴/手填分享链接（兜底入口，相机不可用时必经）
+  const handleUseLink = useCallback(async () => {
+    const text = pastedLink.trim();
+    if (!text) return;
     try {
-      const { Html5Qrcode } = await import("html5-qrcode");
-      const scanner = new Html5Qrcode("qr-reader");
-      scannerRef.current = scanner;
-      await scanner.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 220, height: 220 } },
-        // onScanSuccess：区分“没解到”和“解到但解析失败”
-        async (decodedText: string) => {
-          console.log("[qr-scan] decoded:", decodedText);
-          try {
-            await scanner.stop();
-            setScanning(false);
-            const info = await parseShareLink(decodedText);
-            console.log("[qr-scan] parse ok:", info);
-            applyShareInfo(info);
-          } catch (err) {
-            console.error("[qr-scan] parse/stop failed:", err);
-            setError(String(err));
-            toastError(String(err));
-          }
-        },
-        // onScanFailure：记录解码失败次数，暴露“相机开着但解不到”的真实情况
-        () => {
-          decodeErrorRef.current += 1;
-          if (decodeErrorRef.current === 20) {
-            setDecodeWarn(t("space.scanNoResult"));
-          }
-        },
-      ).catch((err) => {
-        console.error("[qr-scan] start failed:", err);
-        setScanning(false);
-        setScanError(`${t("space.cameraUnavailable")}：${String(err)}`);
-      });
-    } catch (err) {
-      console.error("[qr-scan] init failed:", err);
-      setScanning(false);
-      setScanError(`${t("space.cameraUnavailable")}：${String(err)}`);
+      const info = await resolveJoinShareInfo(text);
+      setPendingShare(info);
+    } catch (e) {
+      toastError(String(e));
     }
-  }, [t, applyShareInfo]);
-
-  const stopScan = useCallback(async () => {
-    if (scannerRef.current) {
-      try {
-        await scannerRef.current.stop();
-      } catch (_) {
-        console.log(_);
-      }
-      scannerRef.current = null;
-    }
-    setScanning(false);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
-      }
-    };
-  }, []);
+  }, [pastedLink]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -172,39 +101,12 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
           <h2 className="text-lg font-semibold">
             {pendingShare ? t("space.confirmJoinTitle") : t("space.joinSpace")}
           </h2>
-          <div className="flex items-center gap-1">
-            {isMobile && !scanning && !pendingShare && (
-              <Button onClick={startScan} variant="ghost" size="2">
-                <QrCode size={20} />
-              </Button>
-            )}
-            <Button onClick={onClose} variant="ghost" size="2">
-              <X size={20} />
-            </Button>
-          </div>
+          <Button onClick={onClose} variant="ghost" size="2">
+            <X size={20} />
+          </Button>
         </div>
 
-        {scanning ? (
-          <div className="space-y-3">
-            <p className="text-sm text-center">
-              {t("space.scanToJoin")}
-            </p>
-            <div id="qr-reader" className="w-full h-[260px] overflow-hidden" />
-            {scanError && (
-              <p className="text-xs text-[var(--color-danger)] text-center">
-                {scanError}
-              </p>
-            )}
-            {decodeWarn && (
-              <p className="text-xs text-[var(--color-text-secondary)] text-center">
-                {decodeWarn}
-              </p>
-            )}
-            <Button onClick={stopScan} variant="outline" size="2" className="w-full">
-              {t("common.cancel")}
-            </Button>
-          </div>
-        ) : pendingShare ? (
+        {pendingShare ? (
           <div className="space-y-4">
             <div className="rounded-lg bg-[var(--color-surface-hover)] p-4 space-y-3">
               <div>
@@ -224,9 +126,6 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
                 </div>
               </div>
             </div>
-            {error && (
-              <p className="text-xs text-[var(--color-danger)]">{error}</p>
-            )}
             <Flex justify="end" gap="2" pt="2">
               <Button
                 type="button"
@@ -273,19 +172,45 @@ export function JoinSpaceDialog({ onClose }: JoinSpaceDialogProps) {
                 placeholder={t("space.networkSecretPlaceholder")}
               />
             </div>
-            <div className="flex items-center gap-2">
-              <Button type="button" onClick={handlePasteLink} variant="ghost" color="blue" size="1">
-                {t("space.pasteShareLink")}
-              </Button>
-              {isMobile && (
-                <span className="text-xs text-[var(--color-text-secondary)]">
-                  {t("space.scanToJoin")}
-                </span>
-              )}
+            <div>
+              <label className="block mb-1 text-sm font-medium">
+                {t("space.pasteLinkLabel")}
+              </label>
+              <div className="flex items-center gap-2">
+                <TextField.Root
+                  value={pastedLink}
+                  onChange={(e) => setPastedLink(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleUseLink();
+                    }
+                  }}
+                  placeholder={t("space.pasteLinkPlaceholder")}
+                />
+                <Button
+                  type="button"
+                  onClick={handleUseLink}
+                  variant="ghost"
+                  color="blue"
+                  size="2"
+                  disabled={!pastedLink.trim()}
+                >
+                  {t("common.confirm")}
+                </Button>
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <Button
+                  type="button"
+                  onClick={handlePasteLink}
+                  variant="ghost"
+                  color="blue"
+                  size="1"
+                >
+                  {t("space.pasteShareLink")}
+                </Button>
+              </div>
             </div>
-            {error && (
-              <p className="text-xs text-[var(--color-danger)]">{error}</p>
-            )}
             <Flex justify="end" gap="2" pt="2">
               <Button type="button" onClick={onClose} variant="outline" size="2">
                 {t("common.cancel")}

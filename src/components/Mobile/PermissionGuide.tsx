@@ -6,7 +6,6 @@ import { Box, Text, Button, Flex, Progress } from '@radix-ui/themes';
 import { useTranslation } from 'react-i18next';
 import {
   AlertCircleIcon,
-  CheckIcon,
   MonitorIcon,
   MicIcon,
   CameraIcon,

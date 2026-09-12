@@ -94,7 +94,6 @@ pub async fn get_message_history(
     db: State<'_, Arc<Database>>,
 ) -> Result<Vec<Message>, String> {
     let limit = limit.unwrap_or(50);
-    crate::log_debug!(format!("查询消息历史: space_id={}, limit={}", space_id, limit));
     let rows = db.get_messages(&space_id, limit)?;
 
     let messages = rows.iter().map(|r| {

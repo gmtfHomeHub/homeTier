@@ -53,7 +53,10 @@ export const leaveSpace = impl.leaveSpace;
 export const deleteSpace = impl.deleteSpace;
 export const listSpaces = impl.listSpaces;
 export const generateShareLink = impl.generateShareLink;
-export const parseShareLink = impl.parseShareLink;
+export const parseQR = impl.parseQR;
+export const parseShareData = impl.parseShareData;
+export const generateAddAppLink = impl.generateAddAppLink;
+export const importAddApps = impl.importAddApps;
 export const connectSpace = impl.connectSpace;
 export const disconnectSpace = impl.disconnectSpace;
 export const setTunFd = impl.setTunFd;
@@ -67,6 +70,8 @@ export const getPendingDownloads = impl.getPendingDownloads;
 export const syncTrayMenu = impl.syncTrayMenu;
 
 export const getNetworkStats = impl.getNetworkStats;
+export const getMeshRoutes = impl.getMeshRoutes;
+export const patchSpaceConfig = impl.patchSpaceConfig;
 
 export const sendMessage = impl.sendMessage;
 export const getMessageHistory = impl.getMessageHistory;

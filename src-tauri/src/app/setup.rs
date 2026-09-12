@@ -463,8 +463,7 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             .build(app)?;
     }
 
-    // 启动 HTTP 代理服务器（用于绕过 iframe 安全限制；移动端 webview 直载 dist 无需代理）
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    // 启动 HTTP 代理服务器（绕过 iframe 安全限制；移动端 iframe 加载应用同样需要代理）
     {
         let active_origin: ActiveOrigin = Arc::new(RwLock::new(None));
         let key_map: ProxyKeyMap = Arc::new(RwLock::new(HashMap::new()));

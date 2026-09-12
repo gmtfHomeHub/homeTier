@@ -103,6 +103,9 @@ pub struct NetworkConfig {
     pub peers: Vec<PeerConfig>,
     pub listeners: Vec<String>,
     pub proxy_networks: Vec<ProxyNetworkConfig>,
+    /// 标记 proxy_networks 是否包含自动探测的子网（用于 UI 区分来源）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy_networks_auto: Option<bool>,
     pub flags: HashMap<String, String>,
 }
 
@@ -217,6 +220,7 @@ impl Default for NetworkConfig {
             peers: Vec::new(),
             listeners: Vec::new(),
             proxy_networks: Vec::new(),
+            proxy_networks_auto: None,
             flags: HashMap::new(),
         }
     }
@@ -242,6 +246,63 @@ impl NetworkConfig {
                 &trimmed[..trimmed.len().min(200)]
             )
         })
+    }
+
+    /// 生效的代理子网列表（顺序保留 + 去重）
+    ///
+    /// proxy_cidrs（新版编辑器/自动探测写入的字段）优先；
+    /// proxy_networks 为旧版兼容字段，仅在 proxy_cidrs 为空时兜底。
+    /// `to_easytier_config`（移动端库 / 桌面调试 TOML）与桌面 RPC 的
+    /// `build_proto_config` 都走这里，避免两端代理路由语义分叉。
+    pub fn effective_proxy_cidrs(&self) -> Vec<String> {
+        let mut seen = std::collections::HashSet::new();
+        let mut out: Vec<String> = Vec::new();
+        let source: Vec<&String> = if !self.proxy_cidrs.is_empty() {
+            self.proxy_cidrs.iter().collect()
+        } else {
+            self.proxy_networks.iter().map(|p| &p.cidr).collect()
+        };
+        for cidr in source {
+            let c = cidr.trim();
+            if !c.is_empty() && seen.insert(c.to_string()) {
+                out.push(c.to_string());
+            }
+        }
+
+        // S2: 自动把本机虚拟网段（virtual_ipv4/network_length 的网络地址）加入
+        // proxy_cidrs，使对端（含 stock easytier-2.6.4 节点）经 run_proxy_cidrs_route_updater
+        // 自动添加到本网段的 OS 路由 → stock→homeTier 方向自动可达（B 机制）。
+        // 已验证安全：本网段内对端（homeTier↔homeTier）经 get_peer_id_by_ipv4 走 mesh 转发，
+        // 不触发 L4 子网代理；同 /24 对端添加自身已连接网段仅 EEXIST（trace，无副作用）。
+        if !self.virtual_ipv4.is_empty() && self.network_length > 0 && self.network_length <= 32 {
+            let inet_str = format!("{}/{}", self.virtual_ipv4, self.network_length);
+            if let Ok(inet) = inet_str.parse::<cidr::Ipv4Inet>() {
+                let own_cidr = inet.network().to_string();
+                if seen.insert(own_cidr.clone()) {
+                    out.push(own_cidr);
+                }
+            }
+        }
+        out
+    }
+
+    /// 去重 proxy_cidrs：trim + HashSet 保留首次出现；own_cidr（virtual_ipv4/network_length
+    /// 网络地址）置首位。供所有落库路径（update_space_config / HTTP handler / create / join）
+    /// 统一调用，避免 config_json 出现重复 CIDR。
+    pub fn dedupe_proxy_cidrs(&mut self) {
+        let mut seen = std::collections::HashSet::new();
+        self.proxy_cidrs.retain(|c| {
+            let t = c.trim().to_string();
+            !t.is_empty() && seen.insert(t)
+        });
+        if !self.virtual_ipv4.is_empty() && self.network_length > 0 && self.network_length <= 32 {
+            let inet_str = format!("{}/{}", self.virtual_ipv4, self.network_length);
+            if let Ok(inet) = inet_str.parse::<cidr::Ipv4Inet>() {
+                let own_cidr = inet.network().to_string();
+                self.proxy_cidrs.retain(|c| c.trim() != own_cidr);
+                self.proxy_cidrs.insert(0, own_cidr);
+            }
+        }
     }
 
     pub fn to_easytier_config(&self) -> Result<easytier::common::config::TomlConfigLoader, String> {
@@ -397,29 +458,11 @@ impl NetworkConfig {
             }
         }
 
-        // Proxy CIDRs
-        if !self.proxy_cidrs.is_empty() {
-            for cidr_str in &self.proxy_cidrs {
-                if !cidr_str.is_empty() {
-                    if let Ok(cidr) = cidr::Ipv4Cidr::from_str(cidr_str) {
-                        let _ = cfg.add_proxy_cidr(cidr, None);
-                    }
-                }
-            }
-        }
-
-        // Legacy proxy networks
-        if !self.proxy_networks.is_empty() && self.proxy_cidrs.is_empty() {
-            for proxy in &self.proxy_networks {
-                if !proxy.cidr.is_empty() {
-                    if let Ok(cidr) = cidr::Ipv4Cidr::from_str(&proxy.cidr) {
-                        let mapped = proxy
-                            .mapped_cidr
-                            .as_ref()
-                            .and_then(|m| cidr::Ipv4Cidr::from_str(m).ok());
-                        let _ = cfg.add_proxy_cidr(cidr, mapped);
-                    }
-                }
+        // Proxy CIDRs — proxy_cidrs 优先，proxy_networks 仅作兼容兜底
+        // （与桌面 build_proto_config 共用 effective_proxy_cidrs，保证两端语义一致）
+        for cidr_str in &self.effective_proxy_cidrs() {
+            if let Ok(cidr) = cidr::Ipv4Cidr::from_str(cidr_str) {
+                let _ = cfg.add_proxy_cidr(cidr, None);
             }
         }
 
@@ -591,5 +634,33 @@ impl NetworkConfig {
         cfg.set_flags(flags);
 
         Ok(cfg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn effective_proxy_cidrs_priority_and_dedup() {
+        let mut cfg = NetworkConfig::default();
+        cfg.proxy_cidrs = vec!["122.23.44.0/24".into(), "10.144.144.0/24".into(), "122.23.44.0/24".into()];
+        cfg.proxy_networks = vec![
+            ProxyNetworkConfig { cidr: "192.168.1.0/24".into(), mapped_cidr: None, allow: None },
+            ProxyNetworkConfig { cidr: "122.23.44.0/24".into(), mapped_cidr: None, allow: None },
+        ];
+        // proxy_cidrs 非空 → 优先使用 proxy_cidrs（旧字段不参与），且去重、忽略空串
+        assert_eq!(cfg.effective_proxy_cidrs(), vec!["122.23.44.0/24", "10.144.144.0/24"]);
+    }
+
+    #[test]
+    fn effective_proxy_cidrs_fallback_to_legacy() {
+        let mut cfg = NetworkConfig::default();
+        cfg.proxy_cidrs = vec![];
+        cfg.proxy_networks = vec![
+            ProxyNetworkConfig { cidr: " 192.168.1.0/24 ".into(), mapped_cidr: None, allow: None },
+            ProxyNetworkConfig { cidr: "192.168.1.0/24".into(), mapped_cidr: None, allow: None },
+        ];
+        assert_eq!(cfg.effective_proxy_cidrs(), vec!["192.168.1.0/24"]);
     }
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -10,14 +10,17 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { Button, Badge, TextField } from "@radix-ui/themes";
 import { listen } from "@tauri-apps/api/event";
 import { useAppTabsStore } from "../../stores/appTabsStore";
-import { open } from "@tauri-apps/plugin-shell";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import * as api from "../../utils/api";
 import { toastInfo } from "../../utils/toast";
-import { ProxyFrame, ProxyErrorFallback, sendFrameNavCmd, type FrameNavState } from "./ProxyFrame";
+import { useIsMobilePlatform } from "../../utils/device";
+import { ProxyFrame, ProxyErrorFallback, sendFrameNavCmd, type FrameNavState, type ProxyFrameHandle } from "./ProxyFrame";
 
 export function AppWorkspace() {
   const { t } = useTranslation();
@@ -33,6 +36,9 @@ export function AppWorkspace() {
   const setDeviceMode = useAppTabsStore((s) => s.setDeviceMode);
   const [refreshNonce, setRefreshNonce] = useState<Record<string, number>>({});
   const [navStates, setNavStates] = useState<Record<string, FrameNavState>>({});
+  const frameRefs = useRef<Record<string, ProxyFrameHandle | null>>({});
+  const mobilePlatform = useIsMobilePlatform();
+  const enableZoom = mobilePlatform && deviceMode === "desktop";
 
   const activeTab = openApps.find((tab) => tab.key === activeKey) ?? null;
   const spaceId = activeTab?.spaceId ?? openApps[0]?.spaceId ?? null;
@@ -52,7 +58,7 @@ export function AppWorkspace() {
   const handleOpenInBrowser = useCallback(async () => {
     if (!activeTab) return;
     try {
-      await open(activeTab.appUrl);
+      await openUrl(activeTab.appUrl);
     } catch {
       window.open(activeTab.appUrl, "_blank");
     }
@@ -75,20 +81,24 @@ export function AppWorkspace() {
     [activeKey]
   );
 
-  // 设备模式切换：同步后端（UA 注入/移动仿真）并整体刷新以重新注入脚本
-  const handleToggleDevice = useCallback(async () => {
+  // 设备模式切换：本地先行 + 后端异步同步（UA 注入/移动仿真）；所有打开标签一起重建 iframe
+  const handleToggleDevice = useCallback(() => {
     const next = deviceMode === "desktop" ? "mobile" : "desktop";
-    try {
-      await api.setDeviceMode(next);
-    } catch {
-      // 后端失败仍切换本地展示
-    }
     setDeviceMode(next);
-    setRefreshNonce((m) => {
-      const n: Record<string, number> = {};
-      for (const tab of openApps) n[tab.key] = (m[tab.key] ?? 0) + 1;
-      return n;
+    void api.setDeviceMode(next).catch(() => {
+      // 后端失败仍切换本地展示
     });
+    // 所有打开标签一起重载（key 含 refreshNonce 触发 iframe 重建），避免非活跃标签错位
+    const keys = openApps.map((t) => t.key);
+    if (keys.length > 0) {
+      setRefreshNonce((m) => {
+        const n = { ...m };
+        keys.forEach((k) => {
+          n[k] = (n[k] ?? 0) + 1;
+        });
+        return n;
+      });
+    }
     setNavStates({});
   }, [deviceMode, setDeviceMode, openApps]);
 
@@ -195,18 +205,33 @@ export function AppWorkspace() {
             </div>
           ))}
         </div>
-        <Button
-          onClick={handleToggleDevice}
-          variant="ghost"
-          size="2"
-          title={
-            deviceMode === "desktop"
-              ? t("common.switchToMobile")
-              : t("common.switchToDesktop")
-          }
-        >
-          {deviceMode === "desktop" ? <Smartphone size={16} /> : <Monitor size={16} />}
-        </Button>
+        {enableZoom && (
+          <div className="flex items-center gap-1">
+            <Button onClick={() => frameRefs.current[activeKey ?? ""]?.zoomOut()} variant="ghost" size="2" title={t("common.zoomOut")}>
+              <ZoomOut size={16} />
+            </Button>
+            <Button onClick={() => frameRefs.current[activeKey ?? ""]?.resetZoom()} variant="ghost" size="1" title={t("common.resetZoom")} className="px-2">
+              <span className="text-xs">{t("common.reset")}</span>
+            </Button>
+            <Button onClick={() => frameRefs.current[activeKey ?? ""]?.zoomIn()} variant="ghost" size="2" title={t("common.zoomIn")}>
+              <ZoomIn size={16} />
+            </Button>
+          </div>
+        )}
+        {!mobilePlatform && (
+          <Button
+            onClick={handleToggleDevice}
+            variant="ghost"
+            size="2"
+            title={
+              deviceMode === "desktop"
+                ? t("common.switchToMobile")
+                : t("common.switchToDesktop")
+            }
+          >
+            {deviceMode === "desktop" ? <Smartphone size={16} /> : <Monitor size={16} />}
+          </Button>
+        )}
         <Button onClick={handleOpenInBrowser} variant="ghost" size="2" title={t("common.openInBrowser")}>
           <ExternalLink size={16} />
         </Button>
@@ -237,8 +262,8 @@ export function AppWorkspace() {
       <div className="relative flex-1 bg-white">
         {spaceTabs.map((tab) => {
           const isActive = tab.key === activeKey;
-          const refreshKey = refreshNonce[tab.key] ?? 0;
           const showFrame = tab.proxyUrl && !tab.loadError;
+          const displayUrl = tab.proxyUrl;
           return (
             <div
               key={tab.key}
@@ -247,11 +272,13 @@ export function AppWorkspace() {
             >
               {showFrame ? (
                 <ProxyFrame
-                  key={refreshKey}
+                  key={`${tab.key}:${refreshNonce[tab.key] ?? 0}`}
+                  ref={(el) => { frameRefs.current[tab.key] = el; }}
                   tabKey={tab.key}
-                  proxyUrl={tab.proxyUrl}
+                  proxyUrl={displayUrl}
                   name={tab.app.name}
                   deviceMode={deviceMode}
+                  refreshNonce={refreshNonce[tab.key] ?? 0}
                   onOpenBrowser={handleOpenInBrowser}
                   onBack={handleBack}
                   onError={() => setLoadError(tab.key, true)}

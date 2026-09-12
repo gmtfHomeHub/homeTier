@@ -16,7 +16,7 @@ interface ChatStore {
   addMessage: (spaceId: string, message: Message) => void;
 }
 
-export const useChatStore = create<ChatStore>((set, get) => ({
+export const useChatStore = create<ChatStore>((set) => ({
   messages: {},
   loading: false,
   error: null,

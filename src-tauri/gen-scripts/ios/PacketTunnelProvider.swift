@@ -189,6 +189,9 @@ class HomeTierTunnelProvider: NEPacketTunnelProvider {
                 response["error"] = extractError(errPtr)
             }
 
+        case "rebuild_routes":
+            applyNetworkSettings(completionHandler: { _ in })
+
         default:
             response["error"] = "Unknown action: \(action)"
         }
@@ -203,8 +206,8 @@ class HomeTierTunnelProvider: NEPacketTunnelProvider {
     // MARK: - Private Methods
 
     private func applyNetworkSettings(completionHandler: @escaping (Error?) -> Void) {
-        // Build network settings
-        let settings = buildTunnelNetworkSettings()
+        // Build network settings from App Group config (includes mesh_routes)
+        let settings = buildTunnelNetworkSettingsFromConfig()
 
         // Set tunnel network settings - this will give us the packetFlow
         setTunnelNetworkSettings(settings) { [weak self] error in
@@ -221,35 +224,89 @@ class HomeTierTunnelProvider: NEPacketTunnelProvider {
         }
     }
 
-    private func buildTunnelNetworkSettings() -> NEPacketTunnelNetworkSettings {
+    private func buildTunnelNetworkSettingsFromConfig() -> NEPacketTunnelNetworkSettings {
+        // Read config from App Group
+        guard let configJson = readConfigFromAppGroup(),
+              let data = configJson.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            logError("Failed to read VPN config from App Group, using defaults")
+            return buildDefaultSettings()
+        }
+
+        // Parse virtual IP
+        let virtualIP = json["virtual_ip"] as? String ?? "10.144.144.1/24"
+        let ipv4Parts = virtualIP.split(separator: "/")
+        let ipv4Address = String(ipv4Parts[0])
+        let ipv4Prefix = Int(ipv4Parts[1]) ?? 24
+        let ipv4SubnetMask = IPv4CIDR.prefixToMask(ipv4Prefix)
+
         let settings = NEPacketTunnelNetworkSettings(
-            tunnelRemoteAddress: "10.144.144.1",
-            tunnelLocalAddress: "10.144.144.1",
-            tunnelSubnetMask: "255.255.255.0"
+            tunnelRemoteAddress: ipv4Address,
+            tunnelLocalAddress: ipv4Address,
+            tunnelSubnetMask: ipv4SubnetMask
         )
 
         // IPv6 (optional)
-        settings.ipv6Settings = NEIPv6Settings(
-            addresses: ["fd00::1"],
-            networkPrefixLengths: [128]
-        )
+        if let virtualIPv6 = json["virtual_ipv6"] as? String {
+            let ipv6Parts = virtualIPv6.split(separator: "/")
+            let ipv6Address = String(ipv6Parts[0])
+            let ipv6Prefix = Int(ipv6Parts[1]) ?? 128
+            settings.ipv6Settings = NEIPv6Settings(
+                addresses: [ipv6Address],
+                networkPrefixLengths: [ipv6Prefix]
+            )
+        }
 
         // MTU
-        settings.mtu = 1500
+        let mtu = json["mtu"] as? Int ?? 1500
+        settings.mtu = validateMTU(mtu)
 
         // DNS
-        let dnsSettings = NEDNSSettings(servers: ["10.144.144.1"])
+        let dnsServers = json["dns_servers"] as? [String] ?? ["10.144.144.1"]
+        let dnsSettings = NEDNSSettings(servers: parseDNSServers(dnsServers))
         dnsSettings.matchDomains = ["hometier.local"]
         settings.dnsSettings = dnsSettings
 
-        // Routes - only virtual network segment
-        let route = NEIPv4Route(destinationAddress: "10.144.144.0", subnetMask: "255.255.255.0")
-        settings.ipv4Settings?.includedRoutes = [route]
+        // Routes - from config (includes virtual subnet + mesh_routes)
+        let routes = json["routes"] as? [String] ?? ["10.144.144.0/24"]
+        let includedRoutes = buildIncludedRoutes(from: routes)
+        settings.ipv4Settings?.includedRoutes = includedRoutes
+
+        // IPv6 routes (if any)
+        let ipv6Routes = routes.compactMap { NEIPv6Route(cidr: $0) }
+        if !ipv6Routes.isEmpty {
+            settings.ipv6Settings?.includedRoutes = ipv6Routes
+        }
 
         // Exclude self
         settings.proxySettings = nil
 
         return settings
+    }
+
+    private func buildDefaultSettings() -> NEPacketTunnelNetworkSettings {
+        let settings = NEPacketTunnelNetworkSettings(
+            tunnelRemoteAddress: "10.144.144.1",
+            tunnelLocalAddress: "10.144.144.1",
+            tunnelSubnetMask: "255.255.255.0"
+        )
+        settings.ipv6Settings = NEIPv6Settings(
+            addresses: ["fd00::1"],
+            networkPrefixLengths: [128]
+        )
+        settings.mtu = 1500
+        let dnsSettings = NEDNSSettings(servers: ["10.144.144.1"])
+        dnsSettings.matchDomains = ["hometier.local"]
+        settings.dnsSettings = dnsSettings
+        let route = NEIPv4Route(destinationAddress: "10.144.144.0", subnetMask: "255.255.255.0")
+        settings.ipv4Settings?.includedRoutes = [route]
+        settings.proxySettings = nil
+        return settings
+    }
+
+    // Keep the old method for backward compatibility (unused now)
+    private func buildTunnelNetworkSettings() -> NEPacketTunnelNetworkSettings {
+        return buildDefaultSettings()
     }
 
     private func extractAndSetTunFd(completionHandler: @escaping (Error?) -> Void) {

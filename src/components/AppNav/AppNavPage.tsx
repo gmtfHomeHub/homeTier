@@ -8,15 +8,15 @@ import type { SpaceApp, SystemApp, Space } from "../../types";
 import { SpaceStatus } from "../../enum";
 import { AppFormDialog } from "./AppFormDialog";
 import { ShareAppDialog } from "./ShareAppDialog";
+import { AppShareDialog } from "./AppShareDialog";
 import { AppNavContainer, type NavApp, type NavGroup } from "./AppNavContainer";
 import { toastError } from "../../utils/toast";
+import { Share2 } from "lucide-react";
 
 interface AppNavPageProps {
   space: Space;
   isOwner: boolean;
 }
-
-const SYSTEM_GROUP_KEY = "__system__";
 
 function toNavApp(app: SpaceApp): NavApp {
   return { id: app.id, name: app.name, icon: app.icon, description: app.description, system: false };
@@ -37,6 +37,7 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
   const [showForm, setShowForm] = useState(false);
   const [editApp, setEditApp] = useState<SpaceApp | null>(null);
   const [shareApp, setShareApp] = useState<SpaceApp | null>(null);
+  const [showShareApp, setShowShareApp] = useState(false);
 
   const isRunning = space?.status === SpaceStatus.CED;
 
@@ -140,9 +141,9 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12 text-[var(--color-text-secondary)]">
+      <Flex align="center" justify="center" className="py-12 text-[var(--color-text-secondary)]">
         {t("common.loading")}
-      </div>
+      </Flex>
     );
   }
 
@@ -152,16 +153,29 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
         <Text size="2" weight="bold" className="text-[var(--color-text-secondary)]">
           {t("appNav.title")}
         </Text>
-        {isOwner && (
-          <Button
-            onClick={() => setEditing(!editing)}
-            variant="soft"
-            size="1"
-            color={editing ? "sky" : "blue"}
-          >
-            {editing ? t("common.done") : t("common.edit")}
-          </Button>
-        )}
+        <Flex align="center" gap="2">
+          {isRunning && (
+            <Button
+              onClick={() => setShowShareApp(true)}
+              variant="soft"
+              size="1"
+              color="green"
+            >
+              <Share2 size={16} />
+              {t("space.shareApps")}
+            </Button>
+          )}
+          {isOwner && (
+            <Button
+              onClick={() => setEditing(!editing)}
+              variant="soft"
+              size="1"
+              color={editing ? "sky" : "blue"}
+            >
+              {editing ? t("common.done") : t("common.edit")}
+            </Button>
+          )}
+        </Flex>
       </Flex>
 
       <AppNavContainer
@@ -177,14 +191,16 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
         emptyText={t("appNav.noApps")}
       />
 
-      <AppFormDialog
-        app={editApp}
-        spaceId={space.id}
-        existingCategories={existingCategories}
-        open={showForm}
-        onClose={() => setShowForm(false)}
-        onSubmit={handleFormSubmit}
-      />
+      {showForm && (
+        <AppFormDialog
+          app={editApp}
+          spaceId={space.id}
+          existingCategories={existingCategories}
+          open={true}
+          onClose={() => setShowForm(false)}
+          onSubmit={handleFormSubmit}
+        />
+      )}
 
       {shareApp && (
         <ShareAppDialog
@@ -192,6 +208,12 @@ export function AppNavPage({ space, isOwner }: AppNavPageProps) {
           currentSpaceId={space.id}
           onClose={() => setShareApp(null)}
           onShared={loadData}
+        />
+      )}
+      {showShareApp && (
+        <AppShareDialog
+          space={space}
+          onClose={() => setShowShareApp(false)}
         />
       )}
     </div>

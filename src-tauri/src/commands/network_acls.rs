@@ -22,7 +22,6 @@ pub async fn get_acl_rules(
     space_id: String,
     db: State<'_, Arc<Database>>,
 ) -> Result<Vec<AclRule>, String> {
-    crate::log_debug!(format!("获取 ACL 规则: space_id={}", space_id));
     let rows = db.get_acl_rules(&space_id)?;
     Ok(rows.into_iter().map(row_to_rule).collect())
 }
