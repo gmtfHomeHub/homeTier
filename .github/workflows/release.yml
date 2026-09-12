@@ -65,7 +65,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache easytier-core archives
+        id: cache-easytier
+        uses: actions/cache@v4
+        with:
+          # 只缓存版本化的 zip，绝不含 git-tracked 的 wintun.dll/packet.dll/
+          # WinDivert64.sys/aarch64/*——避免缓存用旧 DLL 覆盖 checkout 的新 DLL
+          # （DLL 变更但 easytier 版本不变时的 staleness bug）
+          path: src-tauri/resources/bin/easytier-*.zip
+          # 版本不变=hit（跳过下载/校验/trim）；版本 bump=miss（重下载）。
+          # 尾缀 -trim-v1 是 trim 逻辑版本号：将来改 trim 规则时 bump 到 -v2 强制重做。
+          # 刻意不设 restore-keys：前缀回退会恢复旧版本 zip 并误判跳过下载。
+          key: easytier-core-trimmed-${{ env.EASYTIER_CORE_VERSION }}-trim-v1
+
       - name: Download easytier-core archives
+        if: steps.cache-easytier.outputs.cache-hit != 'true'
         run: |
           set -e
           mkdir -p src-tauri/resources/bin
@@ -77,6 +91,7 @@ jobs:
           ls -la src-tauri/resources/bin/
 
       - name: Verify checksums (sha256 from GitHub Release API)
+        if: steps.cache-easytier.outputs.cache-hit != 'true'
         run: |
           set -e
           curl -s "https://api.github.com/repos/EasyTier/EasyTier/releases/tags/${EASYTIER_CORE_VERSION}" -o /tmp/easytier-release.json
@@ -91,6 +106,7 @@ jobs:
           done
 
       - name: Trim easytier archives (keep only easytier-core)
+        if: steps.cache-easytier.outputs.cache-hit != 'true'
         run: |
           set -e
           # Only easytier-core.exe is used at runtime; easytier-web.exe / easytier-cli.exe /
