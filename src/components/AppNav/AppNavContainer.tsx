@@ -1,6 +1,6 @@
 import { useState, Fragment } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Edit3, Trash2, Share2 } from "lucide-react";
+import { Plus, Edit3, Trash2, Share2 } from "../Common";
 import { Flex, Card, Box } from "@radix-ui/themes";
 import { Button, Text } from "../Common";
 import { Icon } from "@iconify/react";

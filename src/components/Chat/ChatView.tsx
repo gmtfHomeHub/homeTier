@@ -5,7 +5,7 @@ import { useSpaceStore } from "../../stores/spaceStore";
 import { setActiveChatSpace } from "../../services/realtime";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "../Common";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Button } from "../Common";

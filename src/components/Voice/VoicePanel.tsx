@@ -8,7 +8,7 @@ import {
   PhoneOff,
   ArrowLeft,
   Loader2,
-} from "lucide-react";
+} from "../Common";
 import { Button } from "../Common";
 import { useVoiceStore } from "../../stores/voiceStore";
 import { voiceService } from "../../services/voice";

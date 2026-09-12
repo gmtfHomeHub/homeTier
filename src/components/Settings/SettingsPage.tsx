@@ -5,7 +5,7 @@ import { EasyTierVersionManager } from "./EasyTierVersionManager";
 import { AppVersionManager } from "./AppVersionManager";
 import { ShortcutEditor } from "./ShortcutEditor";
 import { AppConfigEditor } from "./AppConfigEditor";
-import { Terminal, Palette, Languages, HelpCircle, Keyboard, FileCog, Network, Scaling } from "lucide-react";
+import { Terminal, Palette, Languages, HelpCircle, Keyboard, FileCog, Network, Scaling } from "../Common";
 import { getSystemConfig, setSystemConfig, getLogEnabled, setLogEnabled as setLogEnabledApi } from "../../utils/api";
 import { applyGlobalShortcuts } from "../../services/shortcuts";
 import { useSettingsStore } from "../../stores/settingsStore";

@@ -7,7 +7,7 @@ import * as api from "../../utils/api";
 import type { FileInfo } from "../../types";
 import { Dialog, TextField, Progress, Flex, AlertDialog } from "@radix-ui/themes";
 import { Button, Text } from "../Common";
-import { Download, Lock, FileText, ArrowLeft, Upload, Trash2, CheckCircle2, Loader2 } from "lucide-react";
+import { Download, Lock, FileText, ArrowLeft, Upload, Trash2, CheckCircle2, Loader2 } from "../Common";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { open, save } from "@tauri-apps/plugin-dialog";

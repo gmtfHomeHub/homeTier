@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { Mic, MicOff, Volume2, VolumeX } from "lucide-react";
+import { Mic, MicOff, Volume2, VolumeX } from ".";
 import { AnimatePresence, motion } from "framer-motion";
 import { useShortcutOsdStore } from "../../stores/shortcutOsdStore";
 

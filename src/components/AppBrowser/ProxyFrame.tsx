@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useEffect, useLayoutEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { useTranslation } from "react-i18next";
-import { ShieldAlert, Loader2 } from "lucide-react";
+import { ShieldAlert, Loader2 } from "../Common";
 import { Flex, Card } from "@radix-ui/themes";
 import { Button, Text } from "../Common";
 import { listen } from "@tauri-apps/api/event";

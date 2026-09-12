@@ -9,7 +9,7 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { TextField, Flex, Callout } from "@radix-ui/themes";
 import { Button, Text } from "../Common";
-import { FileCog, RefreshCw, AlertTriangle } from "lucide-react";
+import { FileCog, RefreshCw, AlertTriangle } from "../Common";
 import { toastError } from "../../utils/toast";
 import { useSettingsStore } from "../../stores/settingsStore";
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import jsQR from "jsqr";
-import { Loader2 } from "lucide-react";
+import { Loader2 } from "../Common";
 
 interface ScanQRPanelProps {
   onResult: (text: string) => void;

@@ -1,4 +1,4 @@
-import { Menu, Settings, House } from "lucide-react";
+import { Menu, Settings, House } from "../Common";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Grid, Flex, Separator } from "@radix-ui/themes";

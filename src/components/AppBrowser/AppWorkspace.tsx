@@ -12,7 +12,7 @@ import {
   ChevronRight,
   ZoomIn,
   ZoomOut,
-} from "lucide-react";
+} from "../Common";
 import { Badge, TextField } from "@radix-ui/themes";
 import { Button } from "../Common";
 import { listen } from "@tauri-apps/api/event";

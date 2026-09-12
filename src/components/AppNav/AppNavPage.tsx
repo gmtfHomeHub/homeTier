@@ -12,7 +12,7 @@ import { ShareAppDialog } from "./ShareAppDialog";
 import { AppShareDialog } from "./AppShareDialog";
 import { AppNavContainer, type NavApp, type NavGroup } from "./AppNavContainer";
 import { toastError } from "../../utils/toast";
-import { Share2 } from "lucide-react";
+import { Share2 } from "../Common";
 
 interface AppNavPageProps {
   space: Space;

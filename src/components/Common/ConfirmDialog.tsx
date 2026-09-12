@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, AlertTriangle } from "lucide-react";
+import { X, AlertTriangle } from ".";
 import { Dialog, Flex } from "@radix-ui/themes";
 import { Button } from ".";
 import { useTranslation } from "react-i18next";

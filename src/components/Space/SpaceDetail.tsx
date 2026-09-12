@@ -6,7 +6,7 @@ import {
   MoreHorizontal,
   Terminal,
   Trash2,
-} from "lucide-react";
+} from "../Common";
 import { Flex, DropdownMenu } from "@radix-ui/themes";
 import { Button } from "../Common";
 import { useSpaceStore } from "../../stores/spaceStore";

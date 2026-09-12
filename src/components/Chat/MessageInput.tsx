@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Send, Image } from "lucide-react";
+import { Send, Image } from "../Common";
 import { TextArea, Flex } from "@radix-ui/themes";
 import { Button } from "../Common";
 

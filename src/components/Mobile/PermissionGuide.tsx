@@ -12,7 +12,7 @@ import {
   CameraIcon,
   ChevronLeftIcon,
   XIcon,
-} from 'lucide-react';
+} from "../Common";
 import { invoke } from '@tauri-apps/api/core';
 import './PermissionGuide.css';
 

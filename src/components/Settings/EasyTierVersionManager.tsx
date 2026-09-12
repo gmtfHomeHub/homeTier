@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { getEasyTierVersion, checkEasyTierUpdate, upgradeEasyTierWithProgress, getAppConfig } from "../../utils/api";
 import { Flex, Select, Switch, Progress } from "@radix-ui/themes";
 import { Button, Text } from "../Common";
-import { Cpu, ArrowUpCircle } from "lucide-react";
+import { Cpu, ArrowUpCircle } from "../Common";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { toastSuccess, toastError } from "../../utils/toast";
 import { isMobile } from "../../utils/platform";

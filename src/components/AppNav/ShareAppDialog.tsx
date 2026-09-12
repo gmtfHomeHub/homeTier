@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Share2, X } from "lucide-react";
+import { Share2, X } from "../Common";
 import { Dialog, Flex, Box } from "@radix-ui/themes";
 import { Button, Text } from "../Common";
 import * as api from "../../utils/api";

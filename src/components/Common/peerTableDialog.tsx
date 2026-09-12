@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { X } from "lucide-react";
+import { X } from ".";
 import { formatBytes } from "../../utils/format";
 import { Badge, Dialog, ScrollArea } from "@radix-ui/themes";
 import { Button, Text } from ".";

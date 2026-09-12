@@ -13,7 +13,7 @@ import {
   MonitorOffIcon,
   XIcon,
   SettingsIcon,
-} from 'lucide-react';
+} from "../Common";
 import { useMobileVoiceStore } from '../../stores/mobileVoiceStore';
 import { useMobileScreenStore } from '../../stores/mobileScreenStore';
 import { toastInfo, toastError } from '../../utils/toast';

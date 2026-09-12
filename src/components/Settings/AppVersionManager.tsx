@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { upgradeApp, isTauri } from "../../utils/api";
 import { Badge, Flex, Progress } from "@radix-ui/themes";
 import { Button, Text } from "../Common";
-import { Package, ArrowUpCircle } from "lucide-react";
+import { Package, ArrowUpCircle } from "../Common";
 import { useUpdateStore } from "../../stores/updateStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { toastSuccess, toastError } from "../../utils/toast";

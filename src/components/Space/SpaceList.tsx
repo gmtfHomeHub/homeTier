@@ -1,7 +1,7 @@
 import { useSpaceStore } from "../../stores/spaceStore";
 import { useSpaceConnect } from "../../hooks/useSpaceConnect";
 import { useNavigate } from "react-router-dom";
-import { Share2, Trash2, Settings, X, LogIn, Plus, Ellipsis, ScanLine } from "lucide-react";
+import { Share2, Trash2, Settings, X, LogIn, Plus, Ellipsis, ScanLine } from "../Common";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { ShareSpaceDialog } from "../Common/ShareSpaceDialog";

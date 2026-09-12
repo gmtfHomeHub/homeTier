@@ -7,4 +7,5 @@
 export { default as Button } from "./Button";
 export { default as Text } from "./Text";
 export { default as Tip } from "./Tip";
+export * from "./Icon";
 export type { ButtonProps, TextProps } from "@radix-ui/themes";
