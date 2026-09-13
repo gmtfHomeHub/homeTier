@@ -1,7 +1,8 @@
-import { Menu, Settings, House } from "lucide-react";
+import { Menu, Settings, House } from "../Common";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Button, Grid, Flex, Separator } from "@radix-ui/themes";
+import { Grid, Flex, Separator } from "@radix-ui/themes";
+import { Button } from "../Common";
 import { useLayoutStore } from "../../stores/layoutStore";
 
 export function TitleBar() {

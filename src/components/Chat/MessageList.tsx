@@ -2,7 +2,7 @@ import type { Message } from "../../types";
 import { formatTimestamp } from "../../utils/format";
 import { useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, CheckCheck, Loader2, XCircle } from "lucide-react";
+import { Check, CheckCheck, Loader2, XCircle } from "../Common";
 
 interface MessageListProps {
   messages: Message[];

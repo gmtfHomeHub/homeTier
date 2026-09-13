@@ -1,6 +1,7 @@
 // src/components/Space/VpnStatusBadge.tsx - VPN 状态徽章组件
 import { useTranslation } from "react-i18next";
-import { Badge, Box, Text } from "@radix-ui/themes";
+import { Badge, Box } from "@radix-ui/themes";
+import { Text } from "../Common";
 import Tip from "../Common/Tip";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { SpaceStatus } from "../../enum";

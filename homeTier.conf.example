@@ -30,5 +30,8 @@ GITHUB_MIRROR=https://ghproxy.top
 # 中继网络前缀（配合 EasyTier 转发白名单）（默认值: homeTier_；字符串）
 RELAY_NETWORK_PREFIX=homeTier_
 
+# 分享链接加密密钥种子（默认值: homeTier-qr-v1；修改后新生成链接生效，旧链接将无法解析）
+SHARE_LINK_SECRET=homeTier-qr-v1
+
 # 日志开关（默认值: 1；枚举：1=开启，0=关闭）
 LOG_ENABLED=1

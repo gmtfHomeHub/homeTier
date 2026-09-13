@@ -2,9 +2,10 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { NetworkConfig, PortForwardConfig } from "../../types/network";
 import { addRow, removeRow, computeNetworkCidr } from "../../types/network";
-import { Button, TextField, Checkbox, Text, Select, Flex , Grid } from "@radix-ui/themes";
+import { TextField, Checkbox, Select, Flex, Grid } from "@radix-ui/themes";
+import { Button, Text } from "../Common";
 import { CollapsibleSection } from "../Common/CollapsibleSection";
-import { Eye, EyeOff, Trash2, Globe } from "lucide-react";
+import { Eye, EyeOff, Trash2, Globe } from "../Common";
 
 interface Props {
   value: Partial<NetworkConfig>;

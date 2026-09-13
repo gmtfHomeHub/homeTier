@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback, useRef, useLayoutEffect, useMemo, typ
 import { useTranslation } from "react-i18next";
 import { queryLogs, queryDaemonLogs, getLogModules, clearLogsFiltered, exportLogs, isTauri } from "../../utils/api";
 import type { LogEntry } from "../../types";
-import { RefreshCw, Trash2, Filter, Search, Download, Copy, Clock, ChevronDown } from "lucide-react";
-import { Button, Select, Checkbox, Text, Flex, Badge, Dialog, DropdownMenu, ButtonProps } from "@radix-ui/themes";
+import { RefreshCw, Trash2, Filter, Search, Download, Copy, Clock, ChevronDown } from "../Common";
+import { Select, Checkbox, Flex, Badge, Dialog, DropdownMenu } from "@radix-ui/themes";
+import { Button, Text, ButtonProps } from "../Common";
 import { List, useDynamicRowHeight, type RowComponentProps } from "react-window";
 import { toastSuccess, toastError } from "../../utils/toast";
 import { isMobile } from "../../utils/platform";

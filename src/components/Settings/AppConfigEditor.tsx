@@ -7,8 +7,9 @@ import {
   getConfigTemplatePath,
 } from "../../utils/api";
 import { listen } from "@tauri-apps/api/event";
-import { Button, TextField, Text, Flex, Callout } from "@radix-ui/themes";
-import { FileCog, RefreshCw, AlertTriangle } from "lucide-react";
+import { TextField, Flex, Callout } from "@radix-ui/themes";
+import { Button, Text } from "../Common";
+import { FileCog, RefreshCw, AlertTriangle } from "../Common";
 import { toastError } from "../../utils/toast";
 import { useSettingsStore } from "../../stores/settingsStore";
 

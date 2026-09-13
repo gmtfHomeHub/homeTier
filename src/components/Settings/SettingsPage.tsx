@@ -5,14 +5,14 @@ import { EasyTierVersionManager } from "./EasyTierVersionManager";
 import { AppVersionManager } from "./AppVersionManager";
 import { ShortcutEditor } from "./ShortcutEditor";
 import { AppConfigEditor } from "./AppConfigEditor";
-import { Terminal, Palette, Languages, HelpCircle, Keyboard, FileCog, Network } from "lucide-react";
+import { Terminal, Palette, Languages, HelpCircle, Keyboard, FileCog, Network, Scaling } from "../Common";
 import { getSystemConfig, setSystemConfig, getLogEnabled, setLogEnabled as setLogEnabledApi } from "../../utils/api";
 import { applyGlobalShortcuts } from "../../services/shortcuts";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { NetworkConfig } from "../../types/network";
 import { useTranslation } from "react-i18next";
-import { Tabs, Button, Flex, Text, Switch, Card, Select , Grid } from "@radix-ui/themes";
-import Tip from "../Common/Tip";
+import { Tabs, Slider, Flex, Switch, Card, Select , Grid } from "@radix-ui/themes";
+import { Tip, Button, Text } from "../Common";
 import { SettingTabEnum, LanguageEnum, ThemeEnum } from "../../enum";
 import { toastSuccess, toastError } from "../../utils/toast";
 import { isMobile } from "../../utils/platform";
@@ -25,6 +25,8 @@ export function SettingsPage() {
     setLanguage,
     settingsTab: activeTab,
     setSettingsTab,
+    adaptiveLevel,
+    setAdaptiveLevel,
     logEnabled,
     setLogEnabled: setStoreLogEnabled,
     configEnabled,
@@ -38,6 +40,7 @@ export function SettingsPage() {
   const [easytierConfig, setEasytierConfig] = useState<Partial<NetworkConfig>>({});
   const [saving, setSaving] = useState(false);
   const [mobile, setMobile] = useState(false);
+  const [sliderVal, setSliderVal] = useState(() => [33, 67, 100][adaptiveLevel - 1] ?? 67);
   const { t, i18n } = useTranslation();
 
   useEffect(() => {
@@ -181,6 +184,39 @@ export function SettingsPage() {
                         ))}
                       </Select.Content>
                     </Select.Root>
+                </Flex>
+              </Card>
+
+              {/* 自适应密度 */}
+              <Card size="3">
+                <Flex align="center" justify="between" gap="3">
+                  <Flex align="center" gap="3">
+                    <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
+                      <Scaling size={18} />
+                    </span>
+                    <Flex direction="column">
+                      <Text size="3" weight="medium">{t("settings.adaptive")}</Text>
+                      <Text size="1" color="gray">{t("settings.adaptiveDesc")}</Text>
+                    </Flex>
+                  </Flex>
+                  <Flex align="center" gap="2">
+                    <Text size="1" color="gray">{t("settings.adaptiveCompact")}</Text>
+                    <Slider
+                      value={[sliderVal]}
+                      min={0}
+                      max={100}
+                      step={1}
+                      onValueChange={(v) => {
+                        const stops = [33, 67, 100];
+                        const nearest = stops.reduce((a, b) => (Math.abs(b - v[0]) < Math.abs(a - v[0]) ? b : a));
+                        setSliderVal(nearest);
+                        setAdaptiveLevel(stops.indexOf(nearest) + 1);
+                      }}
+                      style={{ width: 120 }}
+                      aria-label={t("settings.adaptive")}
+                    />
+                    <Text size="1" color="gray">{t("settings.adaptiveLarge")}</Text>
+                  </Flex>
                 </Flex>
               </Card>
 

@@ -3,8 +3,9 @@ import { useTranslation } from "react-i18next";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { resolveJoinShareInfo } from "../../utils/share";
 import type { ShareInfo } from "../../types";
-import { X } from "lucide-react";
-import { Button, TextField, Flex } from "@radix-ui/themes";
+import { X } from "../Common";
+import { TextField, Flex } from "@radix-ui/themes";
+import { Button } from "../Common";
 import { toastError } from "../../utils/toast";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
 

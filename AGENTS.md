@@ -4,7 +4,7 @@
 - **Desktop/mobile**: Tauri 2.x (Rust backend + React/TS frontend via Vite 5)
 - **Package manager**: pnpm 9+ (not npm)
 - **Frontend**: React 18, TypeScript 5.5 strict, Zustand, Tailwind 3 + Radix Themes, react-i18next (default locale `zh`), React Router 6, `@/*` → `./src/*`
-- **Backend**: Rust 2021 edition with Tokio, vendored EasyTier at `third_libs/easytier/` (Rust 2024 ed., MSRV 1.95)
+- **Backend**: Rust 2021 edition with Tokio, vendored EasyTier at `src-tauri/resources/easytier_lib/easytier` (Rust 2024 ed., MSRV 1.95)
 - **No linter or formatter** is configured. Only quality gate is `tsc --noEmit` in `pnpm build`.
 
 ## Key commands

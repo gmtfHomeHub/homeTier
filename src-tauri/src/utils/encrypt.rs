@@ -6,13 +6,16 @@
 use aes_gcm::aead::Aead;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use rand::Rng;
+use std::sync::OnceLock;
 
+use crate::config;
 use crate::crypto::{sha256, NONCE_LEN};
 
 /// AES-256-GCM 认证 tag 长度（附加在密文尾部）。
 pub const TAG_LEN: usize = 16;
 
 /// 固定密钥 AES-256-GCM 加解密器。
+#[derive(Clone)]
 pub struct FixedKeyGcm {
     key: [u8; 32],
 }
@@ -58,8 +61,15 @@ impl FixedKeyGcm {
 }
 
 /// 通用二维码专用密钥（版本化种子，便于未来轮换）。
+/// 读取配置 SHARE_LINK_SECRET，默认 "homeTier-qr-v1"。
 pub fn qr_key() -> FixedKeyGcm {
-    FixedKeyGcm::new_from_seed(b"homeTier-qr-v1")
+    static CACHED: OnceLock<FixedKeyGcm> = OnceLock::new();
+    CACHED.get_or_init(|| {
+        let seed = config::global()
+            .map(|c| c.get_str(config::KEY_SHARE_LINK_SECRET, config::DEFAULT_SHARE_LINK_SECRET))
+            .unwrap_or_else(|| config::DEFAULT_SHARE_LINK_SECRET.to_string());
+        FixedKeyGcm::new_from_seed(seed.as_bytes())
+    }).clone()
 }
 
 #[cfg(test)]

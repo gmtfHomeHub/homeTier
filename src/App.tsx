@@ -16,7 +16,7 @@ import { AppLoadingScreen, AppErrorScreen } from "./components/Common/AppLoading
 import { useSpaceStore } from "./stores/spaceStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useUpdateStore } from "./stores/updateStore";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Theme } from "@radix-ui/themes";
 import { isDaemonReady, getDaemonErrorReason } from "./utils/api";
 import { listen } from "@tauri-apps/api/event";
@@ -31,9 +31,21 @@ import type { FileInfo } from "./types";
 const POLL_INTERVAL_MS = 1000;
 const POLL_MAX_ATTEMPTS = 30;
 
+// 自适应密度：按档位缩放 Radix --space-*（gap/padding），不影响 --font-size-*（字号由 Button/Text wrapper 偏移控制）。
+// 档位 1=紧凑(0.85×) / 2=标准(1.0×) / 3=宽松(1.2×)。注入 <Theme style>，对 Radix Flex/Grid gap 与组件 padding 全局生效。
+const ADAPTIVE_SPACE_MULT: Record<number, number> = { 1: 0.85, 2: 1.0, 3: 1.2 };
+const RADIX_SPACE_BASE_PX = [0, 4, 8, 12, 16, 24, 32, 40, 48, 64]; // --space-1..9 基值
+function adaptiveSpaceStyle(level: number): CSSProperties {
+  const m = ADAPTIVE_SPACE_MULT[level] ?? 1;
+  const s: CSSProperties = {};
+  for (let i = 1; i <= 9; i++) (s as Record<string, string>)[`--space-${i}`] = `${RADIX_SPACE_BASE_PX[i] * m}px`;
+  return s;
+}
+
 export default function App() {
   const loadSpaces = useSpaceStore((s) => s.loadSpaces);
   const theme = useSettingsStore((s) => s.theme);
+  const adaptiveLevel = useSettingsStore((s) => s.adaptiveLevel);
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia("(prefers-color-scheme: dark)").matches
   );
@@ -218,7 +230,7 @@ export default function App() {
 
   if (!appReady && !appError) {
     return (
-      <Theme accentColor="blue" grayColor="slate" radius="medium" appearance={appearance} hasBackground>
+      <Theme accentColor="blue" grayColor="slate" radius="medium" appearance={appearance} hasBackground style={adaptiveSpaceStyle(adaptiveLevel)}>
         <AppLoadingScreen />
       </Theme>
     );
@@ -226,14 +238,14 @@ export default function App() {
 
   if (appError) {
     return (
-      <Theme accentColor="blue" grayColor="slate" radius="medium" appearance={appearance} hasBackground>
+      <Theme accentColor="blue" grayColor="slate" radius="medium" appearance={appearance} hasBackground style={adaptiveSpaceStyle(adaptiveLevel)}>
         <AppErrorScreen message={appError} onRetry={() => { setAppError(""); setAppReady(false); loadSpaces(); }} />
       </Theme>
     );
   }
 
   return (
-    <Theme accentColor="blue" grayColor="slate" radius="medium" appearance={appearance} hasBackground>
+    <Theme accentColor="blue" grayColor="slate" radius="medium" appearance={appearance} hasBackground style={adaptiveSpaceStyle(adaptiveLevel)}>
       <BrowserRouter>
         <AppLayout>
           <TrayBridge />

@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, X, Wifi, Copy, HelpCircle } from "lucide-react";
-import { Button, TextField, Flex, Text, Badge, ScrollArea, Box } from "@radix-ui/themes";
+import { Check, X, Wifi, Copy, HelpCircle } from "../Common";
+import { TextField, Flex, Badge, ScrollArea, Box } from "@radix-ui/themes";
+import { Button, Text } from "../Common";
 import Tip from "../Common/Tip";
 import { toastSuccess, toastError } from "../../utils/toast";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
