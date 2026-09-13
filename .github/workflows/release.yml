@@ -26,7 +26,7 @@ on:
       build_android:
         description: '打包 Android（apk）'
         required: false
-        default: false
+        default: true
         type: boolean
       build_ios:
         description: '打包 iOS（无签名构建，未完成平台隔离，默认跳过）'
@@ -36,12 +36,12 @@ on:
       build_docker:
         description: '构建 Docker 镜像并推送到 GHCR'
         required: false
-        default: false
+        default: true
         type: boolean
       debug_mode:
         description: '所有平台启用 debug 构建（调试/免签名直装；false=release 正式构建）'
         required: false
-        default: true
+        default: false
         type: boolean
   push:
     tags:
