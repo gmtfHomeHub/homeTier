@@ -1,9 +1,10 @@
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, TextField, Flex } from "@radix-ui/themes";
+import { TextField, Flex } from "@radix-ui/themes";
+import { Button } from ".";
 import Tip from "../Common/Tip";
-import { X, Copy, Check, HelpCircle } from "lucide-react";
+import { X, Copy, Check, HelpCircle } from ".";
 import { toastSuccess, toastError } from "../../utils/toast";
 import { generateShareLink } from "../../utils/api";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";

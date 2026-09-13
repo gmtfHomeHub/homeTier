@@ -1,7 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { useSpaceStore } from "../../stores/spaceStore";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Button, Badge } from "@radix-ui/themes";
+import { Badge } from "@radix-ui/themes";
+import { Button } from "../Common";
 import { useLayoutStore } from "../../stores/layoutStore";
 import { useSwipe } from "../../hooks/useSwipe";
 import { getSpaceIp } from "../../utils";

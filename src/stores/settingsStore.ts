@@ -6,6 +6,7 @@ interface SettingsStore {
   theme: ThemeEnum;
   language: LanguageEnum;
   settingsTab: SettingTabEnum;
+  adaptiveLevel: number;
   useProxy: boolean;
   logEnabled: boolean;
   configEnabled: boolean;
@@ -21,6 +22,7 @@ interface SettingsStore {
   setSpeakerShortcut: (v: string) => void;
   setShortcutEditing: (v: boolean) => void;
   setSettingsTab: (tab: SettingTabEnum) => void;
+  setAdaptiveLevel: (v: number) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -35,6 +37,7 @@ export const useSettingsStore = create<SettingsStore>()(
       speakerShortcut: "Ctrl+T",
       shortcutEditing: false,
       settingsTab: SettingTabEnum.BASIC,
+      adaptiveLevel: 2,
       setTheme: (theme) => set({ theme }),
       setLanguage: (language) => set({ language }),
       setUseProxy: (useProxy) => set({ useProxy }),
@@ -44,6 +47,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setSpeakerShortcut: (speakerShortcut) => set({ speakerShortcut }),
       setShortcutEditing: (shortcutEditing) => set({ shortcutEditing }),
       setSettingsTab: (settingsTab) => set({ settingsTab }),
+      setAdaptiveLevel: (adaptiveLevel) => set({ adaptiveLevel }),
     }),
     {
       name: 'settings-store',
@@ -54,6 +58,7 @@ export const useSettingsStore = create<SettingsStore>()(
         micShortcut: state.micShortcut,
         speakerShortcut: state.speakerShortcut,
         settingsTab: state.settingsTab,
+        adaptiveLevel: state.adaptiveLevel,
         configEnabled: state.configEnabled,
       }),
     }

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Kbd, Flex, Text } from "@radix-ui/themes";
+import { Kbd, Flex } from "@radix-ui/themes";
+import { Text } from "../Common";
 import { useSettingsStore } from "../../stores/settingsStore";
 
 interface ShortcutEditorProps {

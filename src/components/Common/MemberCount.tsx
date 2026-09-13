@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Users } from "lucide-react";
+import { Users } from ".";
 import { getSpacePeers } from "../../utils/api";
-import { Button } from "@radix-ui/themes";
+import { Button } from ".";
 import type { PeerInfo } from "../../types";
 import { PeerTableDialog } from "./peerTableDialog";
 

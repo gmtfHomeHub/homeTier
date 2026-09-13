@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Flex, Text } from "@radix-ui/themes";
+import { Flex } from "@radix-ui/themes";
+import { Button, Text } from "../Common";
 import { useNavigate } from "react-router-dom";
 import * as api from "../../utils/api";
 import { useAppTabsStore } from "../../stores/appTabsStore";
@@ -11,7 +12,7 @@ import { ShareAppDialog } from "./ShareAppDialog";
 import { AppShareDialog } from "./AppShareDialog";
 import { AppNavContainer, type NavApp, type NavGroup } from "./AppNavContainer";
 import { toastError } from "../../utils/toast";
-import { Share2 } from "lucide-react";
+import { Share2 } from "../Common";
 
 interface AppNavPageProps {
   space: Space;

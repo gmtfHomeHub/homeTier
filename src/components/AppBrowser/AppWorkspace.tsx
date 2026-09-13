@@ -12,8 +12,9 @@ import {
   ChevronRight,
   ZoomIn,
   ZoomOut,
-} from "lucide-react";
-import { Button, Badge, TextField } from "@radix-ui/themes";
+} from "../Common";
+import { Badge, TextField } from "@radix-ui/themes";
+import { Button } from "../Common";
 import { listen } from "@tauri-apps/api/event";
 import { useAppTabsStore } from "../../stores/appTabsStore";
 import { openUrl } from "@tauri-apps/plugin-opener";

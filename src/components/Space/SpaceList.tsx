@@ -1,14 +1,15 @@
 import { useSpaceStore } from "../../stores/spaceStore";
 import { useSpaceConnect } from "../../hooks/useSpaceConnect";
 import { useNavigate } from "react-router-dom";
-import { Share2, Trash2, Settings, X, LogIn, Plus, Ellipsis, ScanLine } from "lucide-react";
+import { Share2, Trash2, Settings, X, LogIn, Plus, Ellipsis, ScanLine } from "../Common";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { ShareSpaceDialog } from "../Common/ShareSpaceDialog";
 import { ConfirmDialog } from "../Common/ConfirmDialog";
 import { EasyTierConfigEditor } from "../Network/EasyTierConfigEditor";
 import { MemberCount } from "../Common/MemberCount";
-import { Button, Flex, Grid, Badge, DropdownMenu } from "@radix-ui/themes";
+import { Flex, Grid, Badge, DropdownMenu } from "@radix-ui/themes";
+import { Button } from "../Common";
 import { getSystemConfig, updateSpaceConfig, parseQR, parseShareData, importAddApps } from "../../utils/api";
 import { toastError, toastSuccess } from "../../utils/toast";
 import type { NetworkConfig } from "../../types/network";

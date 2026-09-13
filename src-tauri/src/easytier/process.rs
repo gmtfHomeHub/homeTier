@@ -57,7 +57,7 @@ impl EasyTierProcess {
             }
         }
 
-        for dll in &dlls {
+        for dll in dlls {
             let target = target_dir.join(dll);
             if target.exists() {
                 // 已存在且足够大，视为有效

@@ -8,8 +8,8 @@ import {
   PhoneOff,
   ArrowLeft,
   Loader2,
-} from "lucide-react";
-import { Button } from "@radix-ui/themes";
+} from "../Common";
+import { Button } from "../Common";
 import { useVoiceStore } from "../../stores/voiceStore";
 import { voiceService } from "../../services/voice";
 import { toastError } from "../../utils/toast";
