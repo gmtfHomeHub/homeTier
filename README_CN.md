@@ -459,7 +459,7 @@ homeTier/
 - 后端日志使用自定义 `log_*!` 宏写入内存日志，而非直接 `println!` / stdout。
 - GUI 与 daemon 是两个独立进程，日志各自独立。
 - UI 统一用项目的 `Tip` 组件封装，而非直接引入 Radix `Tooltip`。
-- **`patch_config` 禁止用于运行时改配置**（存在丢字段 bug，见待做任务列表 P0）。
+- `patch_config` 已修复（`src-tauri/src/easytier/mod.rs` 引入 JSON 伴随文件全量序列化），现可安全用于运行时改配置。
 
 ---
 
@@ -470,9 +470,8 @@ homeTier/
 | 任务 | 证据 | 影响 | 工作量 |
 |---|---|---|---|
 | iOS 系统级 VPN 启动桥接（host app → NetworkExtension） | `src-tauri/src/commands/ios_vpn.rs:69-72` 只 emit `ios:start-vpn` 无接收方；`src/services/mobileVpn.ts:143` 无条件调用仅 Android 存在的 `plugin:hometiervpnservice\|start_vpn`；`src-tauri/gen-scripts/ios/` 只有 NE extension 文件，无 host `@main` / AppDelegate / `NETunnelProviderManager.startVPNTunnel` 调用方 | iOS 上 VPN 无法建立 | L |
-| 修复 `EasyTierManager::patch_config` 丢字段 bug | `src-tauri/src/easytier/mod.rs:850-882` 的 `read_network_config` 只解析 TOML `[network_identity]`；`:790-848` 缺 `proxy_cidrs` 分支并用残缺配置覆盖 TOML 后重启实例。可达路径 `src-tauri/src/server/routes.rs:355-364`、`src-tauri/src/commands/space.rs:160-166`、`src-tauri/src/daemon/mod.rs:447-451`（前端暂无调用） | 任何一次调用都会丢掉 peers/listeners/ipv4 并断网 | M |
 
-> 修法：用 serde 完整反序列化 + 补 `proxy_cidrs` 分支。依赖 Xcode 工程 + Apple Developer 账号 + 真机（iOS 桥接）。
+> 依赖 Xcode 工程 + Apple Developer 账号 + 真机（iOS 桥接）。
 
 ### P1（核心功能缺失）
 

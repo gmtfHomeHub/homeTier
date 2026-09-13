@@ -446,7 +446,7 @@ Notes:
 - Custom `log_info!` / `log_warn!` / `log_error!` / `log_debug!` macros write into the in-memory log store (and forwarding targets), **not** to stdout.
 - The daemon and the GUI are separate processes with separate logs; use the log viewer's `source` switch (`source=gui` / `source=daemon`) instead of assuming a single stream.
 - Use the shared `Tip` wrapper (`src/components/Common/Tip.tsx`) instead of raw Radix `Tooltip`.
-- **Do not use `patch_config` for runtime config changes** — it is lossy and disconnects the space (see the P0 item in [TODO / Roadmap](#todo--roadmap)).
+- `patch_config` is now safe for runtime config changes (fixed in `src-tauri/src/easytier/mod.rs` with JSON-backed full config serialization).
 
 ---
 
@@ -455,7 +455,6 @@ Notes:
 | Priority | Item | Evidence / Impact | Size |
 |---|---|---|---|
 | P0 | iOS system VPN start bridge (host app → NetworkExtension) | `src-tauri/src/commands/ios_vpn.rs:69-72` only emits `ios:start-vpn` with no receiver; `src/services/mobileVpn.ts:143` always calls the Android-only `plugin:hometiervpnservice\|start_vpn`; `src-tauri/gen-scripts/ios/` contains only NE-extension files, no host `@main`/AppDelegate/`NETunnelProviderManager.startVPNTunnel` caller. Impact: VPN never comes up on iOS. Depends on Xcode project + Apple Developer account + device. | L |
-| P0 | Fix `EasyTierManager::patch_config` field-loss bug | `src-tauri/src/easytier/mod.rs:850-882` `read_network_config` only parses TOML `[network_identity]`; `:790-848` lacks a `proxy_cidrs` branch and rewrites the TOML with defaults then restarts the instance. Reachable from `src-tauri/src/server/routes.rs:355-364`, `src-tauri/src/commands/space.rs:160-166`, `src-tauri/src/daemon/mod.rs:447-451` (no frontend caller yet). Impact: any call drops peers/listeners/ipv4 and disconnects the space. Fix = full serde deserialization + `proxy_cidrs` branch. | M |
 | P1 | Mobile voice calling | `src-tauri/src/voice/mobile/android.rs:75-160` JNI targets a Kotlin `VoiceManager` that does not exist in the repo; `src-tauri/src/voice/mobile/ios.rs` is all TODO; `src/stores/mobileVoiceStore.ts:46-49` has the `invoke` calls commented out. | L |
 | P1 | Mobile screen sharing | `src-tauri/scripts/android/screen/ScreenShareManager.kt:90-104` creates the VirtualDisplay with `Surface = null` (no capture); the frame callback in `src-tauri/src/screen/mobile/android.rs:262-275` is still a placeholder (`后续实现`); `src-tauri/src/screen/mobile.rs:192` TODO ReplayKit; `src/stores/mobileScreenStore.ts:31-46` invoke calls commented out. | L |
 | P2 | Mobile easytier-core update path is a stub | `src-tauri/src/commands/mobile_vpn.rs:16` placeholder `get_vpn_status`; update UI hidden on mobile (`src/components/Settings/EasyTierVersionManager.tsx:114`). | M |
