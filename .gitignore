@@ -13,3 +13,4 @@
 .env
 # 本地设计文档，不纳入远程仓库
 /docs/
+/.codegraph/

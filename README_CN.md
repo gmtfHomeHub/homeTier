@@ -27,7 +27,6 @@
 - [CI/CD](#cicd)
 - [开发约定](#开发约定)
 - [待做任务列表（TODO / Roadmap）](#待做任务列表todo--roadmap)
-- [文档导航](#文档导航)
 - [License](#license)
 
 ---
@@ -327,7 +326,7 @@ SQLite 文件位于 `{app_data_dir}/homeTier.db`（服务器模式为 `{server-d
 
 ### 分享链接
 
-格式：`homeTier://join?v=1&d={base64url}`。载荷流程：ShareInfo **二进制编码（小端序、单字节长度前缀、可选字段 bitmask）** → **自适应压缩（zstd level 3；压缩后不小于原文则走 raw）** → **AES-256-GCM 加密**（密钥 = SHA-256("homeTier-share-link-v1")）→ base64url（无 padding）。聊天消息使用空间 `network_secret` 做 HMAC-SHA256 签名校验；密码保护文件使用 PBKDF2 派生密钥加密。
+格式：`homeTier://join?v=1&d={base64url}`。载荷流程：ShareInfo **二进制编码（小端序、单字节长度前缀、可选字段 bitmask）** → **自适应压缩（zstd level 3；压缩后不小于原文则走 raw）** → **AES-256-GCM 加密**（密钥 = SHA-256(配置 `SHARE_LINK_SECRET`，默认 `homeTier-qr-v1`)）→ base64url（无 padding）。聊天消息使用空间 `network_secret` 做 HMAC-SHA256 签名校验；密码保护文件使用 PBKDF2 派生密钥加密。
 
 ---
 
@@ -502,29 +501,10 @@ homeTier/
 | CI 未运行任何测试 | `.github/workflows/ci.yml:12-60` 只有 `pnpm lint` / `pnpm build` + `cargo check --all-targets`，而仓库已有约 35 个 Rust `#[test]` / `#[tokio::test]` | 回归风险 | M |
 | 移动端真机测试 checklist 未执行 | `docs/MOBILE_VPN_TEST_CHECKLIST.md` 结果栏为空 | 移动端质量未知 | M |
 | 死代码 | `src-tauri/src/voice/interop.rs`、`voice/opus.rs` 未参与编译（`src-tauri/src/voice/mod.rs:1-6`），`rusty-opus`（`src-tauri/Cargo.toml:38`）未被使用 | 维护噪音 | S |
-| 文档漂移 | 配置中心端口（本次 README 已修）、`AGENTS.md` 命令数 151→115、`AGENTS.md` 引用不存在的 `third_libs/easytier/`（实际 `src-tauri/resources/easytier_lib/easytier`）与不存在的 `src/types/config.ts` | 误导开发者 | S |
+| 文档漂移 | 配置中心端口（本次 README 已修）、`AGENTS.md` 命令数 151→115、`AGENTS.md` 引用不存在的 `src/types/config.ts`（实际 `src/types/` 仅有 `index.ts`、`network.ts`） | 误导开发者 | S |
 | 移动端 AppBrowser 文档过时 | 本地代理在移动端无条件启动（`src-tauri/src/app/setup.rs:466`） | 文档与实现不一致 | S |
 
-> 已完成项不再列入；`easytier_lib/`、`third_libs/` 内的上游 TODO 已排除。
-
----
-
-## 文档导航
-
-`docs/` 为本地文档，已不再跟踪进远程仓库，GitHub 上不会显示。共 12 个文件：
-
-- `docs/需求文档.md`
-- `docs/设计文档.md`
-- `docs/开发文档.md`
-- `docs/服务器化改造.md`
-- `docs/分布式配置文件存储服务设计文档.md`
-- `docs/接入三方应用设计文档.md`
-- `docs/mobile_vpn.md`
-- `docs/MOBILE_VPN_DEV_GUIDE.md`
-- `docs/MOBILE_VPN_TEST_CHECKLIST.md`
-- `docs/LICENSE_COMPLIANCE_CHECK.md`
-- `docs/workflow.md`
-- `docs/tasks.md`
+> 已完成项不再列入；`easytier_lib/` 内的上游 TODO 已排除。
 
 ---
 

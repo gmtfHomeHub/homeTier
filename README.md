@@ -27,7 +27,6 @@
 - [CI/CD](#cicd)
 - [Development Conventions](#development-conventions)
 - [TODO / Roadmap](#todo--roadmap)
-- [Documentation](#documentation)
 
 ---
 
@@ -316,7 +315,7 @@ SQLite file at `{app_data_dir}/homeTier.db` (server mode: `{server-dir}/homeTier
 
 ### Share Links
 
-Format: `homeTier://join?v=1&d={base64url}`. Payload flow: ShareInfo **binary-encoded (little-endian, 1-byte length prefixes, optional-field bitmask)** → **adaptive compress (zstd level 3; falls back to raw when compressed ≥ original)** → **AES-256-GCM encrypt** (key = SHA-256("homeTier-share-link-v1")) → base64url (no padding). Chat messages use the space `network_secret` for HMAC-SHA256 signature verification; password-protected files use PBKDF2-derived key encryption.
+Format: `homeTier://join?v=1&d={base64url}`. Payload flow: ShareInfo **binary-encoded (little-endian, 1-byte length prefixes, optional-field bitmask)** → **adaptive compress (zstd level 3; falls back to raw when compressed ≥ original)** → **AES-256-GCM encrypt** (key = SHA-256(config `SHARE_LINK_SECRET`, default `homeTier-qr-v1`)) → base64url (no padding). Chat messages use the space `network_secret` for HMAC-SHA256 signature verification; password-protected files use PBKDF2-derived key encryption.
 
 ---
 
@@ -470,31 +469,10 @@ Notes:
 | P3 | CI runs no tests | `.github/workflows/ci.yml:12-60` only `pnpm lint` / `pnpm build` + `cargo check --all-targets`, while the repo already has ~35 Rust `#[test]` / `#[tokio::test]` functions. | M |
 | P3 | Mobile real-device checklist never executed | `docs/MOBILE_VPN_TEST_CHECKLIST.md` result cells empty. | M |
 | P3 | Dead code | `src-tauri/src/voice/interop.rs` and `voice/opus.rs` are not part of the compilation unit (`src-tauri/src/voice/mod.rs:1-6`) and `rusty-opus` (`src-tauri/Cargo.toml:38`) is unused. | S |
-| P3 | Documentation drift | Config-store port (fixed by this README update), stale command counts in `AGENTS.md` (151 → 115), `AGENTS.md` cites non-existent `third_libs/easytier/` (truth: `src-tauri/resources/easytier_lib/easytier`) and non-existent `src/types/config.ts`. | S |
+| P3 | Documentation drift | Config-store port (fixed by this README update), stale command counts in `AGENTS.md` (151 → 115), `AGENTS.md` cites non-existent `src/types/config.ts` (truth: `src/types/` only has `index.ts`, `network.ts`). | S |
 | P3 | Mobile AppBrowser doc is outdated | The local proxy starts unconditionally on mobile: `src-tauri/src/app/setup.rs:466`. | S |
 
-Items already done are intentionally absent. Upstream TODOs inside `easytier_lib/` / `third_libs/` are excluded from this list.
-
----
-
-## Documentation
-
-`docs/` is kept locally only and is no longer tracked in the remote repository — the GitHub copy of these files is intentionally absent.
-
-| Document | Description |
-|---|---|
-| `docs/需求文档.md` | Product requirements |
-| `docs/设计文档.md` | System design |
-| `docs/开发文档.md` | Dev environment setup and guide |
-| `docs/服务器化改造.md` | Server mode design |
-| `docs/分布式配置文件存储服务设计文档.md` | Config storage service design |
-| `docs/接入三方应用设计文档.md` | Third-party app integration |
-| `docs/mobile_vpn.md` | Mobile VPN architecture and implementation notes |
-| `docs/MOBILE_VPN_DEV_GUIDE.md` | Mobile VPN development guide |
-| `docs/MOBILE_VPN_TEST_CHECKLIST.md` | Mobile VPN real-device test checklist |
-| `docs/LICENSE_COMPLIANCE_CHECK.md` | Dependency license compliance review |
-| `docs/workflow.md` | CI/CD and release workflow design |
-| `docs/tasks.md` | Implementation task tracking |
+Items already done are intentionally absent. Upstream TODOs inside `easytier_lib/` are excluded from this list.
 
 ---
 

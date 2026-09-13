@@ -288,6 +288,13 @@ impl EasyTierManager {
         std::fs::write(&config_path, &config_content)
             .map_err(|e| format!("写入配置文件失败: {}", e))?;
 
+        // 同步写入 JSON（完整 NetworkConfig，用于运行时 patch 读取）
+        let json_path = self.config_dir.join(format!("{}.json", instance_id));
+        let json_content = serde_json::to_string_pretty(cfg)
+            .map_err(|e| format!("序列化 NetworkConfig 失败: {}", e))?;
+        std::fs::write(&json_path, json_content)
+            .map_err(|e| format!("写入 JSON 配置失败: {}", e))?;
+
         crate::log_info!(format!("EasyTierManager: 配置文件已生成, 内容:\n{}", config_content));
         Ok(config_path)
     }
@@ -794,20 +801,11 @@ impl EasyTierManager {
     ) -> Result<(), String> {
         crate::log_info!(format!("EasyTierManager: patch_config, id={}", instance_id));
 
-        // 读取现有配置文件
-        let config_path = self.config_dir.join(format!("{}.toml", instance_id));
-        if !config_path.exists() {
-            return Err(format!("配置文件不存在: {}", config_path.display()));
-        }
-
-        // 读取现有 NetworkConfig（从 TOML 反序列化）
-        let _toml_content = std::fs::read_to_string(&config_path)
-            .map_err(|e| format!("读取配置文件失败: {}", e))?;
-
-        // 解析 patch 中的字段并应用
-        // patch 格式: { "network_name": "...", "network_secret": "...", "flags": {...}, ... }
+        // 读取现有 NetworkConfig（优先 JSON，回退 TOML）
         let mut network_config = self.read_network_config(instance_id)?;
 
+        // 解析 patch 中的字段并应用
+        // patch 格式: { "network_name": "...", "network_secret": "...", "proxy_cidrs": [...], "flags": {...}, ... }
         if let Some(name) = patch.get("network_name").and_then(|v| v.as_str()) {
             network_config.network_name = name.to_string();
         }
@@ -819,6 +817,48 @@ impl EasyTierManager {
         }
         if let Some(ipv4) = patch.get("ipv4").and_then(|v| v.as_str()) {
             network_config.ipv4 = Some(ipv4.to_string());
+        }
+        if let Some(ipv6) = patch.get("ipv6").and_then(|v| v.as_str()) {
+            network_config.ipv6 = Some(ipv6.to_string());
+        }
+        if let Some(hostname) = patch.get("hostname").and_then(|v| v.as_str()) {
+            network_config.hostname = Some(hostname.to_string());
+        }
+        if let Some(virtual_ipv4) = patch.get("virtual_ipv4").and_then(|v| v.as_str()) {
+            network_config.virtual_ipv4 = virtual_ipv4.to_string();
+        }
+        if let Some(network_length) = patch.get("network_length").and_then(|v| v.as_u64()) {
+            network_config.network_length = network_length as u8;
+        }
+        if let Some(credential_file) = patch.get("credential_file").and_then(|v| v.as_str()) {
+            network_config.credential_file = Some(credential_file.to_string());
+        }
+        if let Some(networking_method) = patch.get("networking_method").and_then(|v| v.as_i64()) {
+            network_config.networking_method = networking_method as i32;
+        }
+        if let Some(public_server_url) = patch.get("public_server_url").and_then(|v| v.as_str()) {
+            network_config.public_server_url = public_server_url.to_string();
+        }
+        if let Some(peer_urls) = patch.get("peer_urls").and_then(|v| v.as_array()) {
+            network_config.peer_urls = peer_urls.iter().filter_map(|p| p.as_str().map(|s| s.to_string())).collect();
+        }
+        if let Some(listener_urls) = patch.get("listener_urls").and_then(|v| v.as_array()) {
+            network_config.listener_urls = listener_urls.iter().filter_map(|p| p.as_str().map(|s| s.to_string())).collect();
+        }
+        if let Some(mapped_listeners) = patch.get("mapped_listeners").and_then(|v| v.as_array()) {
+            network_config.mapped_listeners = mapped_listeners.iter().filter_map(|p| p.as_str().map(|s| s.to_string())).collect();
+        }
+        if let Some(proxy_cidrs) = patch.get("proxy_cidrs").and_then(|v| v.as_array()) {
+            network_config.proxy_cidrs = proxy_cidrs.iter().filter_map(|p| p.as_str().map(|s| s.to_string())).collect();
+        }
+        if let Some(relay_network_whitelist) = patch.get("relay_network_whitelist").and_then(|v| v.as_array()) {
+            network_config.relay_network_whitelist = relay_network_whitelist.iter().filter_map(|p| p.as_str().map(|s| s.to_string())).collect();
+        }
+        if let Some(routes) = patch.get("routes").and_then(|v| v.as_array()) {
+            network_config.routes = routes.iter().filter_map(|p| p.as_str().map(|s| s.to_string())).collect();
+        }
+        if let Some(exit_nodes) = patch.get("exit_nodes").and_then(|v| v.as_array()) {
+            network_config.exit_nodes = exit_nodes.iter().filter_map(|p| p.as_str().map(|s| s.to_string())).collect();
         }
         if let Some(peers) = patch.get("peers").and_then(|v| v.as_array()) {
             network_config.peers = peers.iter().filter_map(|p| {
@@ -834,8 +874,106 @@ impl EasyTierManager {
                 }
             }
         }
+        // 布尔标志位
+        if let Some(enable_vpn_portal) = patch.get("enable_vpn_portal").and_then(|v| v.as_bool()) {
+            network_config.enable_vpn_portal = enable_vpn_portal;
+        }
+        if let Some(disable_ipv6) = patch.get("disable_ipv6").and_then(|v| v.as_bool()) {
+            network_config.disable_ipv6 = disable_ipv6;
+        }
+        if let Some(disable_p2p) = patch.get("disable_p2p").and_then(|v| v.as_bool()) {
+            network_config.disable_p2p = disable_p2p;
+        }
+        if let Some(enable_kcp_proxy) = patch.get("enable_kcp_proxy").and_then(|v| v.as_bool()) {
+            network_config.enable_kcp_proxy = enable_kcp_proxy;
+        }
+        if let Some(enable_quic_proxy) = patch.get("enable_quic_proxy").and_then(|v| v.as_bool()) {
+            network_config.enable_quic_proxy = enable_quic_proxy;
+        }
+        if let Some(latency_first) = patch.get("latency_first").and_then(|v| v.as_bool()) {
+            network_config.latency_first = latency_first;
+        }
+        if let Some(use_smoltcp) = patch.get("use_smoltcp").and_then(|v| v.as_bool()) {
+            network_config.use_smoltcp = use_smoltcp;
+        }
+        if let Some(no_tun) = patch.get("no_tun").and_then(|v| v.as_bool()) {
+            network_config.no_tun = no_tun;
+        }
+        if let Some(enable_exit_node) = patch.get("enable_exit_node").and_then(|v| v.as_bool()) {
+            network_config.enable_exit_node = enable_exit_node;
+        }
+        if let Some(enable_socks5) = patch.get("enable_socks5").and_then(|v| v.as_bool()) {
+            network_config.enable_socks5 = enable_socks5;
+        }
+        if let Some(enable_udp_broadcast_relay) = patch.get("enable_udp_broadcast_relay").and_then(|v| v.as_bool()) {
+            network_config.enable_udp_broadcast_relay = enable_udp_broadcast_relay;
+        }
+        if let Some(enable_magic_dns) = patch.get("enable_magic_dns").and_then(|v| v.as_bool()) {
+            network_config.enable_magic_dns = enable_magic_dns;
+        }
+        if let Some(enable_private_mode) = patch.get("enable_private_mode").and_then(|v| v.as_bool()) {
+            network_config.enable_private_mode = enable_private_mode;
+        }
+        if let Some(enable_relay_network_whitelist) = patch.get("enable_relay_network_whitelist").and_then(|v| v.as_bool()) {
+            network_config.enable_relay_network_whitelist = enable_relay_network_whitelist;
+        }
+        if let Some(enable_manual_routes) = patch.get("enable_manual_routes").and_then(|v| v.as_bool()) {
+            network_config.enable_manual_routes = enable_manual_routes;
+        }
+        if let Some(bind_device) = patch.get("bind_device").and_then(|v| v.as_bool()) {
+            network_config.bind_device = bind_device;
+        }
+        if let Some(p2p_only) = patch.get("p2p_only").and_then(|v| v.as_bool()) {
+            network_config.p2p_only = p2p_only;
+        }
+        if let Some(lazy_p2p) = patch.get("lazy_p2p").and_then(|v| v.as_bool()) {
+            network_config.lazy_p2p = lazy_p2p;
+        }
+        if let Some(multi_thread) = patch.get("multi_thread").and_then(|v| v.as_bool()) {
+            network_config.multi_thread = multi_thread;
+        }
+        if let Some(proxy_forward_by_system) = patch.get("proxy_forward_by_system").and_then(|v| v.as_bool()) {
+            network_config.proxy_forward_by_system = proxy_forward_by_system;
+        }
+        if let Some(disable_encryption) = patch.get("disable_encryption").and_then(|v| v.as_bool()) {
+            network_config.disable_encryption = disable_encryption;
+        }
+        if let Some(disable_tcp_hole_punching) = patch.get("disable_tcp_hole_punching").and_then(|v| v.as_bool()) {
+            network_config.disable_tcp_hole_punching = disable_tcp_hole_punching;
+        }
+        if let Some(disable_udp_hole_punching) = patch.get("disable_udp_hole_punching").and_then(|v| v.as_bool()) {
+            network_config.disable_udp_hole_punching = disable_udp_hole_punching;
+        }
+        if let Some(disable_upnp) = patch.get("disable_upnp").and_then(|v| v.as_bool()) {
+            network_config.disable_upnp = disable_upnp;
+        }
+        if let Some(disable_sym_hole_punching) = patch.get("disable_sym_hole_punching").and_then(|v| v.as_bool()) {
+            network_config.disable_sym_hole_punching = disable_sym_hole_punching;
+        }
+        // 数值型
+        if let Some(vpn_portal_listen_port) = patch.get("vpn_portal_listen_port").and_then(|v| v.as_u64()) {
+            network_config.vpn_portal_listen_port = vpn_portal_listen_port as u16;
+        }
+        if let Some(vpn_portal_client_network_len) = patch.get("vpn_portal_client_network_len").and_then(|v| v.as_u64()) {
+            network_config.vpn_portal_client_network_len = vpn_portal_client_network_len as u8;
+        }
+        if let Some(vpn_portal_client_network_addr) = patch.get("vpn_portal_client_network_addr").and_then(|v| v.as_str()) {
+            network_config.vpn_portal_client_network_addr = vpn_portal_client_network_addr.to_string();
+        }
+        if let Some(socks5_port) = patch.get("socks5_port").and_then(|v| v.as_u64()) {
+            network_config.socks5_port = socks5_port as u16;
+        }
+        if let Some(mtu) = patch.get("mtu").and_then(|v| v.as_u64()) {
+            network_config.mtu = Some(mtu as u32);
+        }
+        if let Some(instance_recv_bps_limit) = patch.get("instance_recv_bps_limit").and_then(|v| v.as_u64()) {
+            network_config.instance_recv_bps_limit = Some(instance_recv_bps_limit);
+        }
+        if let Some(dev_name) = patch.get("dev_name").and_then(|v| v.as_str()) {
+            network_config.dev_name = dev_name.to_string();
+        }
 
-        // 重新生成配置文件
+        // 重新生成配置文件（同时写入 TOML + JSON）
         let _ = self.generate_config(&network_config, instance_id, None)?;
 
         // 通过 RPC 重新启动网络实例（覆盖已有）
@@ -848,6 +986,17 @@ impl EasyTierManager {
 
     /// 读取空间的 NetworkConfig
     fn read_network_config(&self, instance_id: &Uuid) -> Result<config::NetworkConfig, String> {
+        // 优先读取 JSON（完整 NetworkConfig 序列化）
+        let json_path = self.config_dir.join(format!("{}.json", instance_id));
+        if json_path.exists() {
+            let json_content = std::fs::read_to_string(&json_path)
+                .map_err(|e| format!("读取 JSON 配置失败: {}", e))?;
+            let network_config: config::NetworkConfig = serde_json::from_str(&json_content)
+                .map_err(|e| format!("反序列化 NetworkConfig 失败: {}", e))?;
+            return Ok(network_config);
+        }
+
+        // 回退：读取 TOML 并仅解析 network_identity（兼容旧数据）
         let config_path = self.config_dir.join(format!("{}.toml", instance_id));
         if !config_path.exists() {
             return Err(format!("配置文件不存在: {}", config_path.display()));
@@ -856,13 +1005,9 @@ impl EasyTierManager {
         let toml_content = std::fs::read_to_string(&config_path)
             .map_err(|e| format!("读取配置文件失败: {}", e))?;
 
-        // 从 TOML 反序列化为 NetworkConfig
-        // 由于 TOML 格式与 NetworkConfig 不完全兼容，这里使用简单解析
         let mut network_config = config::NetworkConfig::default();
 
-        // 解析 network_identity
         if let Some(_ni) = toml_content.lines().find(|l| l.starts_with("[network_identity]")) {
-            // 简单解析 TOML section
             for line in toml_content.lines().skip_while(|l| !l.starts_with("[network_identity]")).take_while(|l| !l.starts_with('[')) {
                 if let Some((key, value)) = line.split_once('=') {
                     let key = key.trim();
