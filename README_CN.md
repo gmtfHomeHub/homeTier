@@ -200,11 +200,6 @@ pnpm tauri build                 # 平台安装包（tsc + vite build + Rust rel
 cd src-tauri && cargo check --all-targets    # 需要本机 cc linker（Windows/macOS 自带）
 ```
 
-> **Linux 宿主无 cc linker 时**：使用项目 Docker 开发容器验证编译：
-> ```bash
-> docker exec -w /workspace/homeTier/src-tauri rust-dev cargo check --bin homeTier
-> ```
-
 ### 子路径部署
 
 前端静态资源公共前缀由 `VITE_PUBLIC_BASE` 控制（`.env.example:7`、`vite.config.ts:5-13`），默认 `/`。部署到 nginx 子路径/反向代理子目录时改为如 `/hometier/` 的前缀；**桌面/移动端构建必须保持 `/`**（Tauri 以根路径加载 dist）。
@@ -380,7 +375,6 @@ homeTier/
 │   ├── resources/bin/          # easytier-core 兜底二进制
 │   ├── tauri.conf.json         # Tauri 配置（identifier: com.hometier.app, v0.1.0）
 │   └── Cargo.toml
-├── docs/                       # 本地设计文档（不入远程仓库，GitHub 不显示）
 ├── deploy/hometier-server.service  # systemd 部署单元
 ├── Dockerfile                  # 服务器模式容器镜像
 ├── homeTier.conf.example       # 配置模板
@@ -438,7 +432,7 @@ homeTier/
 
 - 平台适配器只做配置/日志目录解析（`src-tauri/src/platform/mod.rs:19`）。
 - 未接入 Tauri 官方 updater，应用自更新走 GitHub Release（`src-tauri/src/commands/update_app.rs`）。
-- Android/iOS 的 VPN 接口 IP 必须等于 EasyTier 节点身份 IP，且不得使用 `10.144.144.1`（移动端兜底 `.10`）。
+- Android/iOS 的 VPN 接口 IP 默认等于 EasyTier 节点身份 IP，且不支持使用 `10.144.144.1`（移动端兜底 `.10`）。
 - 移动端媒体与真机验证缺口详见「待做任务列表」。
 
 ---
@@ -485,23 +479,10 @@ homeTier/
 | 任务 | 证据 | 影响 | 工作量 |
 |---|---|---|---|
 | 移动端 easytier-core 更新/守护为 stub | `src-tauri/src/commands/mobile_vpn.rs:16` 占位 `get_vpn_status`；移动端隐藏更新入口（`src/components/Settings/EasyTierVersionManager.tsx:114`） | 移动端无法管理内核版本 | M |
-| 移动端全局快捷键为空壳（入口已隐藏） | `src/components/Settings/SettingsPage.tsx:314` | 移动端无快捷键 | S |
-| 移动端聊天/文件传输需真机验证 | `src-tauri/src/chat/`、`src-tauri/src/file/` 无移动端分支 | 移动端聊天/传输未验证 | S |
 | Windows ARM64 桌面包缺失 | `docs/workflow.md:298` | 无 Windows ARM64 安装包 | M |
 | macOS 公证 + Windows 代码签名 | `docs/workflow.md:136`、`:254-271`（暂缓） | 首次安装有安全提示 | L |
 | iOS NE 签名与上架合规（TUN fd 走 KVC 私有 API 的风险） | `docs/mobile_vpn.md:1152-1159` | 可能被 App Store 拒审 | L |
 | server 模式 P2P 传输进度查询未实现 | `src-tauri/src/server/routes.rs:1566` 返回 NOT_IMPLEMENTED | Web 模式无法查询传输进度 | S |
-| 原生 EasyTier(stock) → homeTier 跨 /24 需 stock 侧手动配 `proxy_cidr` | `src-tauri/src/easytier/config.rs:257-303` | 需补用户 FAQ | S |
-
-### P3（工程化/文档/发布）
-
-| 任务 | 证据 | 影响 | 工作量 |
-|---|---|---|---|
-| CI 未运行任何测试 | `.github/workflows/ci.yml:12-60` 只有 `pnpm lint` / `pnpm build` + `cargo check --all-targets`，而仓库已有约 35 个 Rust `#[test]` / `#[tokio::test]` | 回归风险 | M |
-| 移动端真机测试 checklist 未执行 | `docs/MOBILE_VPN_TEST_CHECKLIST.md` 结果栏为空 | 移动端质量未知 | M |
-| 死代码 | `src-tauri/src/voice/interop.rs`、`voice/opus.rs` 未参与编译（`src-tauri/src/voice/mod.rs:1-6`），`rusty-opus`（`src-tauri/Cargo.toml:38`）未被使用 | 维护噪音 | S |
-| 文档漂移 | 配置中心端口（本次 README 已修）、`AGENTS.md` 命令数 151→115、`AGENTS.md` 引用不存在的 `src/types/config.ts`（实际 `src/types/` 仅有 `index.ts`、`network.ts`） | 误导开发者 | S |
-| 移动端 AppBrowser 文档过时 | 本地代理在移动端无条件启动（`src-tauri/src/app/setup.rs:466`） | 文档与实现不一致 | S |
 
 > 已完成项不再列入；`easytier_lib/` 内的上游 TODO 已排除。
 

@@ -199,11 +199,6 @@ Mobile build helpers live in `scripts/`: `fix-android-mainactivity.sh`, `fix-and
 cd src-tauri && cargo check --all-targets   # Same check CI runs (requires local cc linker)
 ```
 
-> **Linux host without cc linker**: Use the project Docker dev container:
-> ```bash
-> docker exec -w /workspace/homeTier/src-tauri rust-dev cargo check --bin homeTier
-> ```
-
 ---
 
 ## Server Mode
@@ -368,7 +363,6 @@ homeTier/
 │   ├── resources/bin/          # easytier-core fallback binaries + Windows DLLs (wintun/WinDivert/wpcap)
 │   ├── tauri.conf.json         # Tauri config (identifier: com.hometier.app, v0.1.0)
 │   └── Cargo.toml
-├── docs/                       # Local design documents — not tracked in the remote repository
 ├── deploy/hometier-server.service  # systemd deployment unit
 ├── Dockerfile                  # Server mode container image
 ├── homeTier.conf.example       # Config template
@@ -423,7 +417,7 @@ Notes:
 
 - **Platform adapters are thin**: `PlatformAdapter` implementations only resolve config/log directories and the machine ID (`src-tauri/src/platform/mod.rs:19`); all networking and process code is shared.
 - **No official Tauri updater**: the app self-updates by checking its own GitHub Releases (`src-tauri/src/commands/update_app.rs`).
-- **Mobile VPN interface IP**: Android/iOS require the VPN interface IP to equal the EasyTier node IP; do not use `10.144.144.1` for the TUN interface (the mobile fallback is the `.10` address).
+- **Mobile VPN interface IP**: The default IP address of the VPN interface for Android/iOS is equal to the IP address of the EasyTier node, and it does not support using `10.144.144.1` (with `.10` as the fallback for mobile devices).
 
 ---
 
@@ -458,18 +452,12 @@ Notes:
 | P1 | Mobile voice calling | `src-tauri/src/voice/mobile/android.rs:75-160` JNI targets a Kotlin `VoiceManager` that does not exist in the repo; `src-tauri/src/voice/mobile/ios.rs` is all TODO; `src/stores/mobileVoiceStore.ts:46-49` has the `invoke` calls commented out. | L |
 | P1 | Mobile screen sharing | `src-tauri/scripts/android/screen/ScreenShareManager.kt:90-104` creates the VirtualDisplay with `Surface = null` (no capture); the frame callback in `src-tauri/src/screen/mobile/android.rs:262-275` is still a placeholder (`后续实现`); `src-tauri/src/screen/mobile.rs:192` TODO ReplayKit; `src/stores/mobileScreenStore.ts:31-46` invoke calls commented out. | L |
 | P2 | Mobile easytier-core update path is a stub | `src-tauri/src/commands/mobile_vpn.rs:16` placeholder `get_vpn_status`; update UI hidden on mobile (`src/components/Settings/EasyTierVersionManager.tsx:114`). | M |
-| P2 | Mobile global shortcuts are an empty shell | Entry hidden in the UI: `src/components/Settings/SettingsPage.tsx:314`. | S |
-| P2 | Verify mobile chat/file transfer on real devices | `src-tauri/src/chat/`, `src-tauri/src/file/` have no mobile-specific branches. | S |
 | P2 | Windows ARM64 desktop bundle missing from the release matrix | `docs/workflow.md:298`. | M |
 | P2 | macOS notarization + Windows code signing | `docs/workflow.md:136` and `:254-271` (deferred). | L |
 | P2 | iOS NE signing / App Store compliance | KVC private-API risk for the TUN fd: `docs/mobile_vpn.md:1152-1159`. | L |
 | P2 | Server mode: P2P transfer progress not implemented | `src-tauri/src/server/routes.rs:1566` returns NOT_IMPLEMENTED. | S |
 | P2 | stock EasyTier → homeTier cross-/24 needs a manual `proxy_cidr` on the stock side | Native EasyTier behavior; needs a user-facing FAQ. `src-tauri/src/easytier/config.rs:257-303`. | S |
 | P3 | CI runs no tests | `.github/workflows/ci.yml:12-60` only `pnpm lint` / `pnpm build` + `cargo check --all-targets`, while the repo already has ~35 Rust `#[test]` / `#[tokio::test]` functions. | M |
-| P3 | Mobile real-device checklist never executed | `docs/MOBILE_VPN_TEST_CHECKLIST.md` result cells empty. | M |
-| P3 | Dead code | `src-tauri/src/voice/interop.rs` and `voice/opus.rs` are not part of the compilation unit (`src-tauri/src/voice/mod.rs:1-6`) and `rusty-opus` (`src-tauri/Cargo.toml:38`) is unused. | S |
-| P3 | Documentation drift | Config-store port (fixed by this README update), stale command counts in `AGENTS.md` (151 → 115), `AGENTS.md` cites non-existent `src/types/config.ts` (truth: `src/types/` only has `index.ts`, `network.ts`). | S |
-| P3 | Mobile AppBrowser doc is outdated | The local proxy starts unconditionally on mobile: `src-tauri/src/app/setup.rs:466`. | S |
 
 Items already done are intentionally absent. Upstream TODOs inside `easytier_lib/` are excluded from this list.
 
