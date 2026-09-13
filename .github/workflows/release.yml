@@ -519,36 +519,52 @@ jobs:
         run: bash scripts/mobile-permissions.sh
       - name: Verify Android injection
         run: bash scripts/verify-android-injection.sh
-      - name: Build APK
-        run: pnpm tauri android build --apk --target aarch64 --target armv7 --target x86_64 ${{ inputs.debug_mode && '--debug' || '' }}
-      - name: Verify APK contents (native libs per ABI)
+      - name: Build APK (per ABI)
         run: |
-          APK=$(find src-tauri/gen/android -maxdepth 8 -name "*.apk" | head -1)
-          if [ -z "$APK" ]; then echo "ERROR: no APK produced"; exit 1; fi
-          echo "APK: $APK"
-          unzip -l "$APK" | grep -E "lib/(arm64-v8a|armeabi-v7a|x86|x86_64)/.*\.so" || { echo "ERROR: no native libs found in APK"; exit 1; }
-      - name: Verify APK contains ML Kit barcode classes
+          set -e
+          for abi in aarch64 armv7 x86_64; do
+            echo "=== Building APK for $abi ==="
+            pnpm tauri android build --apk --target $abi ${{ inputs.debug_mode && '--debug' || '' }}
+            APK=$(find src-tauri/gen/android -maxdepth 8 -name "*.apk" -newer /tmp/build_marker 2>/dev/null | head -1)
+            if [ -z "$APK" ]; then
+              APK=$(find src-tauri/gen/android -maxdepth 8 -name "*.apk" | head -1)
+            fi
+            if [ -n "$APK" ]; then
+              DEST="src-tauri/gen/android/app-${abi}.apk"
+              cp "$APK" "$DEST"
+              echo "Saved $abi APK to $DEST ($(du -h $DEST | cut -f1))"
+            fi
+            touch /tmp/build_marker
+          done
+          echo "=== All ABI APKs built ==="
+          ls -lh src-tauri/gen/android/app-*.apk
+      - name: Verify APKs (per ABI)
         run: |
-          APK=$(find src-tauri/gen/android -maxdepth 8 -name "*.apk" | head -1)
-          if [ -z "$APK" ]; then echo "ERROR: no APK produced"; exit 1; fi
-          echo "APK: $APK"
-          # 1) 资产层面：bundled model 通常以 assets 下的模型文件存在（如 mlkit/ 或 com_google_mlkit_* 前缀）
-          ASSET_HITS=$(unzip -l "$APK" | grep -iE "assets/(mlkit|.*mlkit.*|.*barcode.*model|com_google_mlkit)" | head -5)
-          echo "ML Kit asset candidates:"
-          echo "$ASSET_HITS"
-          # 2) DEX 层面：barcode 相关类必须存在（无论 bundled 实现还是 GMS 桥接实现）
-          DEX_BARCODE=$(unzip -p "$APK" "classes*.dex" 2>/dev/null | grep -ac "com/google/mlkit/vision/barcode" || true)
-          DEX_THIN=$(unzip -p "$APK" "classes*.dex" 2>/dev/null | grep -ac "com/google/android/gms/internal/mlkit_vision_barcode" || true)
-          echo "DEX barcode classes found: $DEX_BARCODE"
-          echo "DEX thin-model(GMS) bridge classes found: $DEX_THIN"
-          if [ "$DEX_BARCODE" -eq 0 ]; then
-            echo "ERROR: APK 中完全找不到 ML Kit barcode 类 —— 依赖未打入，扫码必失败"
-            exit 1
-          fi
-          if [ "$DEX_THIN" -gt 0 ] && [ -z "$ASSET_HITS" ]; then
-            echo "WARN: DEX 含 GMS 桥接类且 assets 无模型文件 —— 疑似仍为 thin model（依赖 GMS），请核实 fix-android-build-gradle.sh 的 exclude 是否生效"
-          fi
-          echo "OK: ML Kit barcode classes present in APK"
+          set -e
+          for abi in aarch64 armv7 x86_64; do
+            APK="src-tauri/gen/android/app-${abi}.apk"
+            if [ ! -f "$APK" ]; then
+              echo "ERROR: $abi APK not found at $APK"; exit 1
+            fi
+            echo "=== Verifying $abi APK: $APK ==="
+            # 1) native libs for this ABI
+            ABI_MAP="aarch64:arm64-v8a armv7:armeabi-v7a x86_64:x86_64"
+            TARGET_ABI=$(echo "$ABI_MAP" | sed -n "s/.*$abi:\([^ ]*\).*/\1/p")
+            unzip -l "$APK" | grep -E "lib/${TARGET_ABI}/.*\.so" || { echo "ERROR: no native libs for $TARGET_ABI in $abi APK"; exit 1; }
+            # 2) ML Kit barcode classes
+            ASSET_HITS=$(unzip -l "$APK" | grep -iE "assets/(mlkit|.*mlkit.*|.*barcode.*model|com_google_mlkit)" | head -5)
+            echo "ML Kit asset candidates: $ASSET_HITS"
+            DEX_BARCODE=$(unzip -p "$APK" "classes*.dex" 2>/dev/null | grep -ac "com/google/mlkit/vision/barcode" || true)
+            DEX_THIN=$(unzip -p "$APK" "classes*.dex" 2>/dev/null | grep -ac "com/google/android/gms/internal/mlkit_vision_barcode" || true)
+            echo "DEX barcode classes: $DEX_BARCODE, thin-model(GMS) bridge: $DEX_THIN"
+            if [ "$DEX_BARCODE" -eq 0 ]; then
+              echo "ERROR: $abi APK 无 ML Kit barcode 类"; exit 1
+            fi
+            if [ "$DEX_THIN" -gt 0 ] && [ -z "$ASSET_HITS" ]; then
+              echo "WARN: $abi APK 疑似 thin model (GMS 依赖)"
+            fi
+            echo "OK: $abi APK verified"
+          done
       - name: Stage artifact
         shell: bash
         run: |
@@ -556,10 +572,10 @@ jobs:
           find src-tauri/gen/android -maxdepth 8 -name "*.apk" -exec cp {} dist/ \;
           echo "Staged Android artifacts:"
           ls -lh dist/
-      - name: Upload APK
+      - name: Upload APKs (per ABI)
         uses: actions/upload-artifact@v4
         with:
-          name: homeTier-android.apk
+          name: homeTier-android-apks
           path: dist/*.apk
           if-no-files-found: error
 
