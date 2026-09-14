@@ -1,5 +1,7 @@
 #!/bin/bash
-# Fix Android build.gradle.kts by properly integrating signing config and ABI splits
+# Final fix: keep stable Android Gradle config for Tauri builds.
+# This version intentionally avoids ABI splits because Tauri's Android task wiring
+# still depends on the default universal variant.
 
 set -euo pipefail
 
@@ -18,21 +20,28 @@ fi
 
 echo "[fix-android-build-gradle] Patching $BUILD_GRADLE..."
 
-# Backup
 cp "$BUILD_GRADLE" "$BUILD_GRADLE.bak"
 
 # --- NDK version fix ---
-if [ -n "${NDK_HOME:-}" ] && [ -d "$NDK_HOME" ]; then
-    ACTUAL_NDK=$(basename "$NDK_HOME")
+NDK_PATH="${NDK_HOME:-}"
+if [ -z "$NDK_PATH" ] || [ ! -d "$NDK_PATH" ]; then
+    NDK_PATH="${ANDROID_NDK_HOME:-}"
+fi
+if [ -z "$NDK_PATH" ] || [ ! -d "$NDK_PATH" ]; then
+    NDK_PATH="$(ls -d /usr/local/lib/android/sdk/ndk/*/ 2>/dev/null | sort -V | tail -1 | sed 's:/*$::')"
+fi
+
+if [ -n "$NDK_PATH" ] && [ -d "$NDK_PATH" ]; then
+    ACTUAL_NDK=$(basename "$NDK_PATH")
     CURRENT_NDK=$(sed -n 's/.*ndkVersion = "\([^"]*\)".*/\1/p' "$BUILD_GRADLE" | head -1)
-    if [ "$CURRENT_NDK" != "$ACTUAL_NDK" ]; then
+    if [ -n "$CURRENT_NDK" ] && [ "$CURRENT_NDK" != "$ACTUAL_NDK" ]; then
         sed -i "s/ndkVersion = \"$CURRENT_NDK\"/ndkVersion = \"$ACTUAL_NDK\"/" "$BUILD_GRADLE"
         echo "[fix-android-build-gradle] Updated ndkVersion: $CURRENT_NDK -> $ACTUAL_NDK"
     else
-        echo "[fix-android-build-gradle] ndkVersion already correct: $ACTUAL_NDK"
+        echo "[fix-android-build-gradle] ndkVersion already correct: ${CURRENT_NDK:-<empty>}"
     fi
 else
-    echo "[fix-android-build-gradle] NDK_HOME not set, skipping NDK version fix"
+    echo "[fix-android-build-gradle] NDK path not found, skipping NDK version fix"
 fi
 
 # 将 keystore 复制到生成的 android 工程内
@@ -60,15 +69,16 @@ else
     echo "[fix-android-build-gradle] usesCleartextTraffic placeholder not found or already true"
 fi
 
-# --- 使用 Python 进行所有结构化修改 ---
+# --- Python structural edits ---
 python3 << 'PYEOF'
 import re
-import sys
+import os
 
-with open('src-tauri/gen/android/app/build.gradle.kts', 'r') as f:
+path = 'src-tauri/gen/android/app/build.gradle.kts'
+with open(path, 'r') as f:
     content = f.read()
 
-# ===== 1. ML Kit: 切换到内置模型 =====
+# ML Kit bundled model (no GMS dependency)
 if 'com.google.mlkit:barcode-scanning' not in content:
     mlkit_config = '''
     // --- ML Kit bundled model (no Google Play Services dependency) ---
@@ -84,65 +94,28 @@ if 'com.google.mlkit:barcode-scanning' not in content:
         old_dep = dep_match.group(1)
         new_dep = old_dep.replace('dependencies {', 'dependencies {\n' + mlkit_config.strip())
         content = content.replace(old_dep, new_dep)
-        print("[fix-android-build-gradle] Added ML Kit bundled model to dependencies")
+        print('[fix-android-build-gradle] Added ML Kit bundled model to dependencies')
     else:
-        android_end = content.rfind('}')
-        if android_end >= 0:
-            content = content[:android_end] + '\n' + mlkit_config + '\n' + content[android_end:]
-            print("[fix-android-build-gradle] Added ML Kit bundled model after android block")
-        else:
-            print("[fix-android-build-gradle] WARNING: Could not find place to insert ML Kit config")
+        content += '\n' + mlkit_config + '\n'
+        print('[fix-android-build-gradle] Appended ML Kit bundled model config')
 
-# ===== 2. ABI splits: 插入到现有 android { } 块内部 =====
-if 'splits {' not in content:
-    abi_splits_config = '''
-    // --- ABI splits: 生成 per-ABI APK，避免 universal APK 过大 ---
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a", "armeabi-v7a", "x86_64")
-            isUniversalApk = false
-        }
-    }
-'''
-    android_start = content.find('android {')
-    if android_start >= 0:
-        brace_count = 0
-        insert_pos = -1
-        for i, ch in enumerate(content[android_start:], start=android_start):
-            if ch == '{':
-                brace_count += 1
-            elif ch == '}':
-                brace_count -= 1
-                if brace_count == 0:
-                    insert_pos = i
-                    break
-        if insert_pos >= 0:
-            content = content[:insert_pos] + '\n' + abi_splits_config + '\n' + content[insert_pos:]
-            print("[fix-android-build-gradle] Added ABI splits inside android block")
-        else:
-            print("[fix-android-build-gradle] WARNING: Could not find android block end")
-    else:
-        print("[fix-android-build-gradle] WARNING: Could not find android block start")
-
-# ===== 3. 创建消费者 ProGuard 规则目录和空文件 =====
-import os
-CONSUMER_RULES_DIR = "src-tauri/gen/android/app/consumer-proguard-rules"
-os.makedirs(CONSUMER_RULES_DIR, exist_ok=True)
-
-for plugin in ["tauri-plugin-clipboard-manager", "tauri-plugin-dialog", "tauri-plugin-notification", "tauri-plugin-shell"]:
-    rules_file = os.path.join(CONSUMER_RULES_DIR, f"{plugin}.pro")
+# Keep consumer-rules.pro placeholders to suppress missing-file warnings.
+consumer_dir = 'src-tauri/gen/android/app/consumer-proguard-rules'
+os.makedirs(consumer_dir, exist_ok=True)
+for plugin in [
+    'tauri-plugin-clipboard-manager',
+    'tauri-plugin-dialog',
+    'tauri-plugin-notification',
+    'tauri-plugin-shell',
+]:
+    rules_file = os.path.join(consumer_dir, f'{plugin}.pro')
     if not os.path.exists(rules_file):
         with open(rules_file, 'w') as f:
-            f.write(f"# Empty consumer ProGuard rules for {plugin} (no special rules needed)\n")
-        print(f"[fix-android-build-gradle] Created empty consumer rules: {rules_file}")
+            f.write(f'# Empty consumer ProGuard rules for {plugin}\n')
+        print(f'[fix-android-build-gradle] Created empty consumer rules: {rules_file}')
 
-# ===== 4. 写回文件 =====
-with open('src-tauri/gen/android/app/build.gradle.kts', 'w') as f:
+with open(path, 'w') as f:
     f.write(content)
-
-print("[fix-android-build-gradle] Python modifications completed")
 PYEOF
 
 # --- Check if signing config already exists ---
@@ -154,53 +127,41 @@ fi
 # Read signing config content
 SIGNING_CONFIG=$(cat "$SIGNING_CONFIG_FILE")
 
-# Use Python to properly insert the signing config before the tauri apply line
+# Insert the signing config before the tauri apply line.
 cat > /tmp/insert_signing.py << 'PYEOF'
 import sys
 
 with open('src-tauri/gen/android/app/build.gradle.kts', 'r') as f:
     content = f.read()
 
-# Read signing config
 with open('src-tauri/resources/gradle/signing_config.gradle.kts', 'r') as f:
     signing_config = f.read()
 
-# Check if already present
 if 'signingConfigs' in content:
-    print("Signing config already present")
+    print('Signing config already present')
     sys.exit(0)
 
-# Insert signing config before the apply(from = "tauri.build.gradle.kts") line
 lines = content.split('\n')
 new_lines = []
 inserted = False
 
 for line in lines:
     if 'apply(from = "tauri.build.gradle.kts")' in line and not inserted:
-        new_lines.append("")
+        new_lines.append('')
         new_lines.append(signing_config)
-        new_lines.append("")
-        # 清空 ndk.abiFilters，交给 ABI splits 管理，避免冲突
-        new_lines.append("")
-        new_lines.append("android {")
-        new_lines.append("    defaultConfig {")
-        new_lines.append("        ndk {")
-        new_lines.append("            abiFilters.clear()")
-        new_lines.append("        }")
-        new_lines.append("    }")
-        new_lines.append("}")
+        new_lines.append('')
         inserted = True
     new_lines.append(line)
 
 if not inserted:
-    print("WARNING: Could not find apply line, appending at end")
-    new_lines.append("")
+    print('WARNING: Could not find apply line, appending at end')
+    new_lines.append('')
     new_lines.append(signing_config)
 
 with open('src-tauri/gen/android/app/build.gradle.kts', 'w') as f:
     f.write('\n'.join(new_lines))
 
-print("Successfully patched build.gradle.kts")
+print('Successfully patched build.gradle.kts')
 PYEOF
 
 python3 /tmp/insert_signing.py
