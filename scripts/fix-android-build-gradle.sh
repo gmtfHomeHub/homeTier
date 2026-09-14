@@ -1,6 +1,6 @@
 #!/bin/bash
 # Fix Android build.gradle.kts for per-ABI APK splits (robust version)
-# Key: clear ndk.abiFilters AFTER tauri.apply using simple assignment syntax
+# Key: clear ndk.abiFilters AFTER tauri.apply using abiFilters.clear()
 
 set -euo pipefail
 
@@ -99,7 +99,6 @@ if 'com.google.mlkit:barcode-scanning' not in content:
         print('[fix-android-build-gradle] Appended ML Kit bundled model config')
 
 # ===== 2. ABI splits: 插入到现有 android { } 块内部 =====
-# 注意：这里只加 splits，不清空 abiFilters（清空在 tauri.apply 之后单独注入）
 if 'splits {' not in content:
     abi_splits_config = '''
     // --- ABI splits: 生成 per-ABI APK，避免 universal APK 过大 ---
@@ -162,7 +161,7 @@ fi
 # Read signing config content
 SIGNING_CONFIG=$(cat "$SIGNING_CONFIG_FILE")
 
-# Insert signing config + abiFilters clear AFTER tauri.apply line
+# Insert signing config + abiFilters.clear() AFTER tauri.apply line
 cat > /tmp/insert_signing_and_clear.py << 'PYEOF'
 import sys
 
@@ -177,7 +176,6 @@ if 'signingConfigs' in content:
     sys.exit(0)
 
 # Insert AFTER apply(from = "tauri.build.gradle.kts")
-# This ensures Tauri's abiFilters are set first, then we clear them
 lines = content.split('\n')
 new_lines = []
 inserted = False
@@ -188,11 +186,12 @@ for line in lines:
         new_lines.append('')
         new_lines.append(signing_config)
         new_lines.append('')
-        # CRITICAL: Clear abiFilters AFTER tauri.apply using simple assignment
+        # CRITICAL: Clear abiFilters AFTER tauri.apply using abiFilters.clear()
+        # abiFilters is a val MutableSet<String>, cannot reassign, must call clear()
         new_lines.append('android {')
         new_lines.append('    defaultConfig {')
         new_lines.append('        ndk {')
-        new_lines.append('            abiFilters = emptyList()')
+        new_lines.append('            abiFilters.clear()')
         new_lines.append('        }')
         new_lines.append('    }')
         new_lines.append('}')
@@ -206,7 +205,7 @@ if not inserted:
     new_lines.append('android {')
     new_lines.append('    defaultConfig {')
     new_lines.append('        ndk {')
-    new_lines.append('            abiFilters = emptyList()')
+    new_lines.append('            abiFilters.clear()')
     new_lines.append('        }')
     new_lines.append('    }')
     new_lines.append('}')
@@ -214,7 +213,7 @@ if not inserted:
 with open('src-tauri/gen/android/app/build.gradle.kts', 'w') as f:
     f.write('\n'.join(new_lines))
 
-print('Successfully patched build.gradle.kts with signing config and abiFilters = emptyList()')
+print('Successfully patched build.gradle.kts with signing config and abiFilters.clear()')
 PYEOF
 
 python3 /tmp/insert_signing_and_clear.py
