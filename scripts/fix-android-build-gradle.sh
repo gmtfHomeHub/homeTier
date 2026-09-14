@@ -1,5 +1,5 @@
 #!/bin/bash
-# Fix Android build.gradle.kts by properly integrating signing config
+# Fix Android build.gradle.kts by properly integrating signing config and ABI splits
 
 set -euo pipefail
 
@@ -21,8 +21,7 @@ echo "[fix-android-build-gradle] Patching $BUILD_GRADLE..."
 # Backup
 cp "$BUILD_GRADLE" "$BUILD_GRADLE.bak"
 
-# --- NDK version fix: Tauri 默认写入的 ndkVersion 可能与 CI 实际安装的 NDK 不一致，
-# 导致 Gradle 找不到指定 NDK 版本而失败。根据 NDK_HOME 自动校正。 ---
+# --- NDK version fix ---
 if [ -n "${NDK_HOME:-}" ] && [ -d "$NDK_HOME" ]; then
     ACTUAL_NDK=$(basename "$NDK_HOME")
     CURRENT_NDK=$(sed -n 's/.*ndkVersion = "\([^"]*\)".*/\1/p' "$BUILD_GRADLE" | head -1)
@@ -36,7 +35,7 @@ else
     echo "[fix-android-build-gradle] NDK_HOME not set, skipping NDK version fix"
 fi
 
-# 将 keystore 复制到生成的 android 工程内（file("../keystore/release.keystore") 相对 app 模块）
+# 将 keystore 复制到生成的 android 工程内
 if [ -f "src-tauri/keystore/release.keystore" ]; then
     mkdir -p src-tauri/gen/android/keystore
     cp src-tauri/keystore/release.keystore src-tauri/gen/android/keystore/release.keystore
@@ -45,7 +44,7 @@ else
     echo "[fix-android-build-gradle] WARN: src-tauri/keystore/release.keystore 不存在，跳过复制"
 fi
 
-# 复制 proguard-rules.pro 到 app 模块目录（signing_config.gradle.kts 引用相对路径）
+# 复制 proguard-rules.pro 到 app 模块目录
 if [ -f "src-tauri/resources/gradle/proguard-rules.pro" ]; then
     cp src-tauri/resources/gradle/proguard-rules.pro src-tauri/gen/android/app/proguard-rules.pro
     echo "[fix-android-build-gradle] Copied proguard-rules.pro to gen/android/app/"
@@ -53,9 +52,7 @@ else
     echo "[fix-android-build-gradle] WARN: proguard-rules.pro 不存在，跳过复制"
 fi
 
-# 启用 cleartext traffic：HTTP 代理走 127.0.0.1 明文，Tauri 默认 release 继承 defaultConfig 的 "false"，
-# 会导致 WebView 加载 http://127.0.0.1:port/__proxy__ 报 net::ERROR_CLEARTEXT_NOT_PERMITTED。
-# 改 defaultConfig placeholder 为 true（debug 本就 true，release 继承 defaultConfig 即生效）。
+# 启用 cleartext traffic
 if grep -q 'manifestPlaceholders\["usesCleartextTraffic"\] = "false"' "$BUILD_GRADLE"; then
     sed -i 's/manifestPlaceholders\["usesCleartextTraffic"\] = "false"/manifestPlaceholders["usesCleartextTraffic"] = "true"/' "$BUILD_GRADLE"
     echo "[fix-android-build-gradle] Enabled cleartext traffic for localhost proxy (usesCleartextTraffic=true)"
@@ -63,84 +60,153 @@ else
     echo "[fix-android-build-gradle] usesCleartextTraffic placeholder not found or already true"
 fi
 
-# --- ML Kit: 切换到内置模型（不依赖 Google Play Services） ---
-# tauri-plugin-barcode-scanner 默认依赖 play-services-mlkit-barcode-scanning（轻量模型），
-# 需要 Google Play Services。在无 GMS 的设备上（华为/国产 ROM），scan() 能打开相机但永远
-# 无法识别二维码——ML Kit 条码模型从 GMS 加载失败，scanner.process() 静默失败。
-# 解决：排除轻量模型，改用 com.google.mlkit:barcode-scanning（内置模型，~3MB，全设备可用）。
-if ! grep -q 'com.google.mlkit:barcode-scanning' "$BUILD_GRADLE"; then
-    cat >> "$BUILD_GRADLE" << 'MLKIT_EOF'
+# --- 使用 Python 进行所有结构化修改 ---
+python3 << 'PYEOF'
+import re
+import sys
 
-// --- ML Kit bundled model (no Google Play Services dependency) ---
-// Replaces play-services-mlkit-barcode-scanning (thin model, requires GMS)
-// with com.google.mlkit:barcode-scanning (bundled model, works on all devices)
-configurations.all {
-    exclude(group = "com.google.android.gms", module = "play-services-mlkit-barcode-scanning")
-}
-dependencies {
-    implementation("com.google.mlkit:barcode-scanning:17.2.0")
-}
-MLKIT_EOF
-    echo "[fix-android-build-gradle] Switched ML Kit to bundled model (no GMS dependency)"
-else
-    echo "[fix-android-build-gradle] ML Kit bundled model already present"
-fi
+with open('src-tauri/gen/android/app/build.gradle.kts', 'r') as f:
+    content = f.read()
 
-# --- ABI splits: 生成 per-ABI APK，替代 universal APK ---
-if ! grep -q 'splits {' "$BUILD_GRADLE"; then
-    cat >> "$BUILD_GRADLE" << 'ABI_SPLITS_EOF'
+# ===== 1. ML Kit: 切换到内置模型 =====
+if 'com.google.mlkit:barcode-scanning' not in content:
+    # 找到 dependencies { } 块，在里面添加
+    mlkit_config = '''
+    // --- ML Kit bundled model (no Google Play Services dependency) ---
+    // Replaces play-services-mlkit-barcode-scanning (thin model, requires GMS)
+    // with com.google.mlkit:barcode-scanning (bundled model, works on all devices)
+    configurations.all {
+        exclude(group = "com.google.android.gms", module = "play-services-mlkit-barcode-scanning")
+    }
+    dependencies {
+        implementation("com.google.mlkit:barcode-scanning:17.2.0")
+    }
+'''
+    # 尝试在现有 dependencies { } 内插入，或在 android { } 后添加
+    dep_match = re.search(r'(dependencies\s*\{[^}]*\})', content, re.DOTALL)
+    if dep_match:
+        # 在现有 dependencies 块内插入
+        old_dep = dep_match.group(1)
+        new_dep = old_dep.replace('dependencies {', 'dependencies {\n' + mlkit_config.strip())
+        content = content.replace(old_dep, new_dep)
+        print("[fix-android-build-gradle] Added ML Kit bundled model to dependencies")
+    else:
+        # 没有 dependencies 块，在 android { } 后添加
+        android_end = content.rfind('}')
+        if android_end >= 0:
+            content = content[:android_end] + '\n' + mlkit_config + '\n' + content[android_end:]
+            print("[fix-android-build-gradle] Added ML Kit bundled model after android block")
+        else:
+            print("[fix-android-build-gradle] WARNING: Could not find place to insert ML Kit config")
 
-// --- ABI splits: 生成 per-ABI APK，避免 universal APK 过大 ---
-android {
+# ===== 2. ABI splits: 插入到现有 android { } 块内部 =====
+if 'splits {' not in content:
+    # 找到 android { ... } 块，在最后一个 } 前插入 splits 配置
+    abi_splits_config = '''
+    // --- ABI splits: 生成 per-ABI APK，避免 universal APK 过大 ---
     splits {
         abi {
-            enable = true
+            isEnable = true
             reset()
             include("arm64-v8a", "armeabi-v7a", "x86_64")
-            universalApk = false
+            isUniversalApk = false
         }
     }
-}
-ABI_SPLITS_EOF
-    echo "[fix-android-build-gradle] Added ABI splits for per-ABI APKs"
-else
-    echo "[fix-android-build-gradle] ABI splits already present"
-fi
+'''
+    # 找到 android { 的最后一个匹配的 }
+    # 简单策略：找到 "android {" 然后找到匹配的闭合 }
+    android_start = content.find('android {')
+    if android_start >= 0:
+        # 从 android { 开始计算大括号平衡
+        brace_count = 0
+        insert_pos = -1
+        for i, ch in enumerate(content[android_start:], start=android_start):
+            if ch == '{':
+                brace_count += 1
+            elif ch == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    insert_pos = i
+                    break
+        if insert_pos >= 0:
+            content = content[:insert_pos] + '\n' + abi_splits_config + '\n' + content[insert_pos:]
+            print("[fix-android-build-gradle] Added ABI splits inside android block")
+        else:
+            print("[fix-android-build-gradle] WARNING: Could not find android block end")
+    else:
+        print("[fix-android-build-gradle] WARNING: Could not find android block start")
 
-# --- Consumer ProGuard rules for Tauri plugins missing consumer-rules.pro ---
-# 这些插件缺少 consumer-rules.pro，R8 会报警告；提供空规则文件避免警告
-CONSUMER_RULES_DIR="src-tauri/gen/android/app/consumer-proguard-rules"
-mkdir -p "$CONSUMER_RULES_DIR"
+# ===== 3. Consumer ProGuard rules: 创建目录和空文件 =====
+import os
+CONSUMER_RULES_DIR = "src-tauri/gen/android/app/consumer-proguard-rules"
+os.makedirs(CONSUMER_RULES_DIR, exist_ok=True)
 
-# 为缺少 consumer-rules.pro 的插件创建空规则文件
-for plugin in "tauri-plugin-clipboard-manager" "tauri-plugin-dialog" "tauri-plugin-notification" "tauri-plugin-shell"; do
-    RULES_FILE="$CONSUMER_RULES_DIR/${plugin}.pro"
-    if [ ! -f "$RULES_FILE" ]; then
-        echo "# Empty consumer ProGuard rules for $plugin (no special rules needed)" > "$RULES_FILE"
-        echo "[fix-android-build-gradle] Created empty consumer rules: $RULES_FILE"
-    fi
-done
+for plugin in ["tauri-plugin-clipboard-manager", "tauri-plugin-dialog", "tauri-plugin-notification", "tauri-plugin-shell"]:
+    rules_file = os.path.join(CONSUMER_RULES_DIR, f"{plugin}.pro")
+    if not os.path.exists(rules_file):
+        with open(rules_file, 'w') as f:
+            f.write(f"# Empty consumer ProGuard rules for {plugin} (no special rules needed)\n")
+        print(f"[fix-android-build-gradle] Created empty consumer rules: {rules_file}")
 
-# 在 build.gradle.kts 中添加 consumerProguardFiles 指向这些规则
-if ! grep -q 'consumerProguardFiles' "$BUILD_GRADLE"; then
-    cat >> "$BUILD_GRADLE" << 'CONSUMER_PROGUARD_EOF'
-
-// --- Consumer ProGuard rules for plugins missing consumer-rules.pro ---
-tasks.withType(com.android.build.gradle.tasks.R8Task).configureEach {
+# 在 android { } 内添加 consumerProguardFiles
+if 'consumerProguardFiles' not in content:
+    consumer_config = '''
+    // --- Consumer ProGuard rules for plugins missing consumer-rules.pro ---
     consumerProguardFiles(
         file("../consumer-proguard-rules/tauri-plugin-clipboard-manager.pro"),
         file("../consumer-proguard-rules/tauri-plugin-dialog.pro"),
         file("../consumer-proguard-rules/tauri-plugin-notification.pro"),
         file("../consumer-proguard-rules/tauri-plugin-shell.pro")
     )
-}
-CONSUMER_PROGUARD_EOF
-    echo "[fix-android-build-gradle] Added consumerProguardFiles for missing plugin rules"
-else
-    echo "[fix-android-build-gradle] consumerProguardFiles already present"
-fi
+'''
+    # 在 android { } 块内插入（在 splits 后面或 android 结束前）
+    if 'splits {' in content:
+        # 找到 splits { } 结束的位置，在后面插入
+        splits_end = content.find('splits {')
+        if splits_end >= 0:
+            brace_count = 0
+            splits_block_end = -1
+            for i, ch in enumerate(content[splits_end:], start=splits_end):
+                if ch == '{':
+                    brace_count += 1
+                elif ch == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        splits_block_end = i + splits_end + 1
+                        break
+            if splits_block_end >= 0:
+                content = content[:splits_block_end] + '\n' + consumer_config + '\n' + content[splits_block_end:]
+                print("[fix-android-build-gradle] Added consumerProguardFiles after splits")
+            else:
+                print("[fix-android-build-gradle] WARNING: Could not find splits block end")
+    else:
+        # 没有 splits，在 android 结束前插入
+        android_start = content.find('android {')
+        if android_start >= 0:
+            brace_count = 0
+            insert_pos = -1
+            for i, ch in enumerate(content[android_start:], start=android_start):
+                if ch == '{':
+                    brace_count += 1
+                elif ch == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        insert_pos = i
+                        break
+            if insert_pos >= 0:
+                content = content[:insert_pos] + '\n' + consumer_config + '\n' + content[insert_pos:]
+                print("[fix-android-build-gradle] Added consumerProguardFiles before android end")
+            else:
+                print("[fix-android-build-gradle] WARNING: Could not find android block end for consumerProguardFiles")
 
-# Check if signing config already exists
+# ===== 4. 写回文件 =====
+with open('src-tauri/gen/android/app/build.gradle.kts', 'w') as f:
+    f.write(content)
+
+print("[fix-android-build-gradle] Python modifications completed")
+PYEOF
+
+# --- Check if signing config already exists ---
 if grep -q "signingConfigs" "$BUILD_GRADLE"; then
     echo "[fix-android-build-gradle] Signing config already present, skipping"
     exit 0
@@ -166,14 +232,12 @@ if 'signingConfigs' in content:
     sys.exit(0)
 
 # Insert signing config before the apply(from = "tauri.build.gradle.kts") line
-# Find the line with apply(from = "tauri.build.gradle.kts")
 lines = content.split('\n')
 new_lines = []
 inserted = False
 
 for line in lines:
     if 'apply(from = "tauri.build.gradle.kts")' in line and not inserted:
-        # Insert signing config before this line
         new_lines.append("")
         new_lines.append(signing_config)
         new_lines.append("")
