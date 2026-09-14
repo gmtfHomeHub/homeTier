@@ -74,15 +74,39 @@ fi
 # NDK 29+ doesn't support i686, so we must prevent Tauri from creating rustBuildX86Release task
 if [ -f "$TAURI_BUILD_GRADLE" ]; then
     echo "[fix-android-build-gradle] Patching $TAURI_BUILD_GRADLE to remove x86 from abiFilters..."
-    # Remove "x86" from abiFilters list (handle various formats)
-    sed -i 's/"x86",\?\s*//g' "$TAURI_BUILD_GRADLE"
-    sed -i 's/,\s*"x86"//g' "$TAURI_BUILD_GRADLE"
-    # Also handle space-separated without quotes (just in case)
-    sed -i 's/\bx86\b//g' "$TAURI_BUILD_GRADLE"
-    # Clean up any double commas or trailing commas
-    sed -i 's/,,/,/g' "$TAURI_BUILD_GRADLE"
-    sed -i 's/,\s*)/)/g' "$TAURI_BUILD_GRADLE"
-    echo "[fix-android-build-gradle] Patched tauri.build.gradle.kts: removed x86 from abiFilters"
+    python3 << 'PYEOF'
+import re
+
+tauri_path = 'src-tauri/gen/android/tauri.build.gradle.kts'
+with open(tauri_path, 'r') as f:
+    content = f.read()
+
+# Pattern: abiFilters = listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+# Or: abiFilters = mutableListOf(...)
+# Remove "x86" from the list (handle various quote styles and spacing)
+def remove_x86(match):
+    prefix = match.group(1)
+    items_str = match.group(2)
+    # Split by comma, filter out x86, rejoin
+    items = [item.strip() for item in items_str.split(',')]
+    filtered = [item for item in items if 'x86' not in item.replace('"', '').replace("'", "")]
+    return prefix + ', '.join(filtered) + ')'
+
+# Match both listOf and mutableListOf
+new_content = re.sub(
+    r'(abiFilters\s*=\s*(?:listOf|mutableListOf)\s*\()([^)]+)\)',
+    remove_x86,
+    content
+)
+
+if new_content != content:
+    with open(tauri_path, 'w') as f:
+        f.write(new_content)
+    print("[fix-android-build-gradle] Patched tauri.build.gradle.kts: removed x86 from abiFilters")
+else:
+    print("[fix-android-build-gradle] WARN: abiFilters pattern not found in tauri.build.gradle.kts")
+    print("  Content preview:", content[:500])
+PYEOF
 else
     echo "[fix-android-build-gradle] WARN: $TAURI_BUILD_GRADLE not found, skipping patch"
 fi
@@ -180,7 +204,7 @@ fi
 # Read signing config content
 SIGNING_CONFIG=$(cat "$SIGNING_CONFIG_FILE")
 
-# Insert signing config AFTER tauri.apply line (no abiFilters.clear needed anymore)
+# Insert signing config AFTER tauri.apply line
 cat > /tmp/insert_signing.py << 'PYEOF'
 import sys
 
