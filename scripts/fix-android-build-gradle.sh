@@ -1,130 +1,162 @@
 #!/bin/bash
-# Fix Android build.gradle.kts by properly integrating signing config
+# 修正 `pnpm tauri android init` 生成的 Android 工程：
+#   1. 对齐实际安装的 NDK 版本（CI runner 上是 29.x，而非 workflow 里声明的 25.x）
+#   2. 注入 release 签名配置（hometier keystore）
+#   3. 启用 cleartext traffic（WebView 访问 127.0.0.1 内部代理）
+#   4. 使用 ML Kit 内置条码模型（不依赖 Google Play Services）
+#
+# ⚠️ 不修改 buildSrc/.../RustPlugin.kt：
+#   模板里 ABI product flavor 列表用 defaultArchList（android init 时硬编码），
+#   而 rustBuild 任务接线用 archList（构建期 `-ParchList=`，来自 CLI 的 --target），
+#   两者用 targetPair.index 交叉索引。删掉 defaultArchList 里的 x86 会让 archList
+#   的下标越过 flavor 列表 → tasks["mergeX86...JniLibFolders"] 找不到 → 配置期崩溃。
+#   保留 x86 flavor 无害：它只能产出一个不带 native 库的空 APK，CI 侧按 ABI 过滤丢弃。
+#
+# ⚠️ per-ABI 拆分由 Tauri CLI 原生 flag 完成：
+#     pnpm tauri android build --apk --target aarch64 armv7 x86_64 --split-per-abi
+#   CLI 会向 Gradle 传 `-PabiList/-ParchList/-PtargetList`，而 Tauri 模板的
+#   buildSrc/.../RustPlugin.kt 正是用 findProperty() 读取这三个属性来决定
+#   生成哪些 rustBuild<Arch><Profile> 任务与 ABI product flavor。
+#   因此**绝对不要**在 app/build.gradle.kts 里手写 ndk.abiFilters 或 splits.abi：
+#   Tauri 模板已用 ABI product flavor 实现 per-ABI，两者同时存在会直接报
+#   "Conflicting configuration: ... in ndk abiFilters cannot be present when splits abi filters are set"。
 
 set -euo pipefail
 
 BUILD_GRADLE="src-tauri/gen/android/app/build.gradle.kts"
-SIGNING_CONFIG_FILE="src-tauri/resources/gradle/signing_config.gradle.kts"
+PROGUARD_SRC="src-tauri/resources/gradle/proguard-rules.pro"
 
 if [ ! -f "$BUILD_GRADLE" ]; then
-    echo "ERROR: $BUILD_GRADLE not found"
+    echo "ERROR: $BUILD_GRADLE not found（tauri android init 未执行？）"
     exit 1
 fi
 
-if [ ! -f "$SIGNING_CONFIG_FILE" ]; then
-    echo "ERROR: $SIGNING_CONFIG_FILE not found"
-    exit 1
+echo "[fix-android-build-gradle] Patching $BUILD_GRADLE ..."
+
+# --- 1. NDK 版本对齐（NDK_HOME / ANDROID_NDK_HOME / 最新安装的 NDK） ---
+NDK_PATH="${NDK_HOME:-}"
+if [ -z "$NDK_PATH" ] || [ ! -d "$NDK_PATH" ]; then
+    NDK_PATH="${ANDROID_NDK_HOME:-}"
+fi
+if [ -z "$NDK_PATH" ] || [ ! -d "$NDK_PATH" ]; then
+    NDK_PATH="$(ls -d /usr/local/lib/android/sdk/ndk/*/ 2>/dev/null | sort -V | tail -1 | sed 's:/*$::')"
 fi
 
-echo "[fix-android-build-gradle] Patching $BUILD_GRADLE..."
-
-# Backup
-cp "$BUILD_GRADLE" "$BUILD_GRADLE.bak"
-
-# --- NDK version fix: Tauri 默认写入的 ndkVersion 可能与 CI 实际安装的 NDK 不一致，
-# 导致 Gradle 找不到指定 NDK 版本而失败。根据 NDK_HOME 自动校正。 ---
-if [ -n "${NDK_HOME:-}" ] && [ -d "$NDK_HOME" ]; then
-    ACTUAL_NDK=$(basename "$NDK_HOME")
+if [ -n "$NDK_PATH" ] && [ -d "$NDK_PATH" ]; then
+    ACTUAL_NDK=$(basename "$NDK_PATH")
     CURRENT_NDK=$(sed -n 's/.*ndkVersion = "\([^"]*\)".*/\1/p' "$BUILD_GRADLE" | head -1)
-    if [ "$CURRENT_NDK" != "$ACTUAL_NDK" ]; then
+    if [ -n "$CURRENT_NDK" ] && [ "$CURRENT_NDK" != "$ACTUAL_NDK" ]; then
         sed -i "s/ndkVersion = \"$CURRENT_NDK\"/ndkVersion = \"$ACTUAL_NDK\"/" "$BUILD_GRADLE"
-        echo "[fix-android-build-gradle] Updated ndkVersion: $CURRENT_NDK -> $ACTUAL_NDK"
+        echo "[fix-android-build-gradle] ndkVersion: $CURRENT_NDK -> $ACTUAL_NDK"
     else
-        echo "[fix-android-build-gradle] ndkVersion already correct: $ACTUAL_NDK"
+        echo "[fix-android-build-gradle] ndkVersion 无需修改: ${CURRENT_NDK:-<empty>}"
     fi
 else
-    echo "[fix-android-build-gradle] NDK_HOME not set, skipping NDK version fix"
+    echo "[fix-android-build-gradle] WARN: 未找到 NDK，跳过 ndkVersion 对齐"
 fi
 
-# 将 keystore 复制到生成的 android 工程内（file("../keystore/release.keystore") 相对 app 模块）
+# --- 2. keystore 复制到生成的工程内（两种约定路径都覆盖，见下方 keystore.properties） ---
 if [ -f "src-tauri/keystore/release.keystore" ]; then
-    mkdir -p src-tauri/gen/android/keystore
+    mkdir -p src-tauri/gen/android/keystore src-tauri/gen/android/app/keystore
     cp src-tauri/keystore/release.keystore src-tauri/gen/android/keystore/release.keystore
-    echo "[fix-android-build-gradle] Copied keystore to gen/android/keystore/"
+    cp src-tauri/keystore/release.keystore src-tauri/gen/android/app/keystore/release.keystore
+    echo "[fix-android-build-gradle] keystore 已复制到 gen/android/{,app/}keystore/"
 else
     echo "[fix-android-build-gradle] WARN: src-tauri/keystore/release.keystore 不存在，跳过复制"
 fi
 
-# 启用 cleartext traffic：HTTP 代理走 127.0.0.1 明文，Tauri 默认 release 继承 defaultConfig 的 "false"，
-# 会导致 WebView 加载 http://127.0.0.1:port/__proxy__ 报 net::ERROR_CLEARTEXT_NOT_PERMITTED。
-# 改 defaultConfig placeholder 为 true（debug 本就 true，release 继承 defaultConfig 即生效）。
+# --- 3. proguard-rules.pro 复制到 app 模块（模板用 fileTree("**/*.pro") 收拢） ---
+if [ -f "$PROGUARD_SRC" ]; then
+    cp "$PROGUARD_SRC" src-tauri/gen/android/app/proguard-rules.pro
+    echo "[fix-android-build-gradle] proguard-rules.pro 已复制到 app/"
+else
+    echo "[fix-android-build-gradle] WARN: $PROGUARD_SRC 不存在，跳过复制"
+fi
+
+# --- 4. 启用 cleartext traffic ---
 if grep -q 'manifestPlaceholders\["usesCleartextTraffic"\] = "false"' "$BUILD_GRADLE"; then
     sed -i 's/manifestPlaceholders\["usesCleartextTraffic"\] = "false"/manifestPlaceholders["usesCleartextTraffic"] = "true"/' "$BUILD_GRADLE"
-    echo "[fix-android-build-gradle] Enabled cleartext traffic for localhost proxy (usesCleartextTraffic=true)"
+    echo "[fix-android-build-gradle] 已启用 usesCleartextTraffic=true"
 else
-    echo "[fix-android-build-gradle] usesCleartextTraffic placeholder not found or already true"
+    echo "[fix-android-build-gradle] usesCleartextTraffic 已是 true 或未找到 placeholder"
 fi
 
-# --- ML Kit: 切换到内置模型（不依赖 Google Play Services） ---
-# tauri-plugin-barcode-scanner 默认依赖 play-services-mlkit-barcode-scanning（轻量模型），
-# 需要 Google Play Services。在无 GMS 的设备上（华为/国产 ROM），scan() 能打开相机但永远
-# 无法识别二维码——ML Kit 条码模型从 GMS 加载失败，scanner.process() 静默失败。
-# 解决：排除轻量模型，改用 com.google.mlkit:barcode-scanning（内置模型，~3MB，全设备可用）。
-if ! grep -q 'com.google.mlkit:barcode-scanning' "$BUILD_GRADLE"; then
-    cat >> "$BUILD_GRADLE" << 'MLKIT_EOF'
-
-// --- ML Kit bundled model (no Google Play Services dependency) ---
-// Replaces play-services-mlkit-barcode-scanning (thin model, requires GMS)
-// with com.google.mlkit:barcode-scanning (bundled model, works on all devices)
-configurations.all {
-    exclude(group = "com.google.android.gms", module = "play-services-mlkit-barcode-scanning")
-}
-dependencies {
-    implementation("com.google.mlkit:barcode-scanning:17.2.0")
-}
-MLKIT_EOF
-    echo "[fix-android-build-gradle] Switched ML Kit to bundled model (no GMS dependency)"
-else
-    echo "[fix-android-build-gradle] ML Kit bundled model already present"
-fi
-
-# Check if signing config already exists
-if grep -q "signingConfigs" "$BUILD_GRADLE"; then
-    echo "[fix-android-build-gradle] Signing config already present, skipping"
-    exit 0
-fi
-
-# Read signing config content
-SIGNING_CONFIG=$(cat "$SIGNING_CONFIG_FILE")
-
-# Use Python to properly insert the signing config before the tauri apply line
-python3 << 'EOF'
+# --- 5. Python 结构化修改：去掉 x86 flavor / ML Kit 内置模型 / 签名+R8 注入 / keystore.properties ---
+python3 - <<'PYEOF'
+import os
+import re
 import sys
 
-with open('src-tauri/gen/android/app/build.gradle.kts', 'r') as f:
+BUILD_GRADLE = "src-tauri/gen/android/app/build.gradle.kts"
+SIGNING_SRC = "src-tauri/resources/gradle/signing_config.gradle.kts"
+MARKER = "// homeTier: injected signing + R8 config"
+
+
+def log(msg):
+    print(f"[fix-android-build-gradle] {msg}")
+
+
+# ---------- 5.1 ML Kit 内置条码模型 ----------
+with open(BUILD_GRADLE, encoding="utf-8") as f:
     content = f.read()
 
-# Read signing config
-with open('src-tauri/resources/gradle/signing_config.gradle.kts', 'r') as f:
-    signing_config = f.read()
+if "com.google.mlkit:barcode-scanning" in content:
+    log("ML Kit 内置模型已存在，跳过")
+else:
+    mlkit_cfg = (
+        '// --- ML Kit 内置模型（排除依赖 GMS 的 thin model） ---\n'
+        'configurations.all {\n'
+        '    exclude(group = "com.google.android.gms", module = "play-services-mlkit-barcode-scanning")\n'
+        '}\n\n'
+    )
+    m = re.search(r"^dependencies\s*\{", content, flags=re.M)
+    if not m:
+        log("WARN: 未找到 dependencies 块，无法注入 ML Kit")
+    else:
+        content = content[: m.start()] + mlkit_cfg + content[m.start():]
+        m2 = re.search(r"^dependencies\s*\{", content, flags=re.M)
+        ins = m2.end()
+        content = (
+            content[:ins]
+            + '\n    implementation("com.google.mlkit:barcode-scanning:17.2.0")'
+            + content[ins:]
+        )
+        log("已注入 ML Kit 内置模型 (com.google.mlkit:barcode-scanning:17.2.0)")
 
-# Check if already present
-if 'signingConfigs' in content:
-    print("Signing config already present")
-    sys.exit(0)
+# ---------- 5.2 注入签名 + R8 配置（apply(from=tauri.build.gradle.kts) 之后） ----------
+if MARKER in content:
+    log("签名/R8 配置已注入，跳过")
+elif os.path.exists(SIGNING_SRC):
+    with open(SIGNING_SRC, encoding="utf-8") as f:
+        signing = f.read()
+    target = 'apply(from = "tauri.build.gradle.kts")'
+    if target in content:
+        content = content.replace(target, target + "\n\n" + MARKER + "\n" + signing, 1)
+        log("签名/R8 配置已注入（apply 之后）")
+    else:
+        content += "\n\n" + MARKER + "\n" + signing + "\n"
+        log("WARN: 未找到 apply(from=...) 行，签名配置追加到文件末尾")
+else:
+    log(f"WARN: {SIGNING_SRC} 不存在，跳过签名注入")
 
-# Insert signing config before the apply(from = "tauri.build.gradle.kts") line
-# Find the line with apply(from = "tauri.build.gradle.kts")
-lines = content.split('\n')
-new_lines = []
-inserted = False
+with open(BUILD_GRADLE, "w", encoding="utf-8") as f:
+    f.write(content)
 
-for line in lines:
-    if 'apply(from = "tauri.build.gradle.kts")' in line and not inserted:
-        # Insert signing config before this line
-        new_lines.append("")
-        new_lines.append(signing_config)
-        new_lines.append("")
-        inserted = True
-    new_lines.append(line)
+# ---------- 5.3 keystore.properties（兼容模板自带的 signingConfigs 读取方式） ----------
+ks = "src-tauri/gen/android/keystore/release.keystore"
+if os.path.exists(ks):
+    store_pw = os.environ.get("KEYSTORE_PASSWORD", "")
+    key_pw = os.environ.get("KEY_PASSWORD", "")
+    with open("src-tauri/gen/android/keystore.properties", "w", encoding="utf-8") as f:
+        f.write(
+            "storeFile=keystore/release.keystore\n"
+            f"storePassword={store_pw}\n"
+            "keyAlias=hometier\n"
+            f"keyPassword={key_pw}\n"
+        )
+    log("已写入 gen/android/keystore.properties")
 
-if not inserted:
-    print("WARNING: Could not find apply line, appending at end")
-    new_lines.append("")
-    new_lines.append(signing_config)
+log("完成")
+PYEOF
 
-with open('src-tauri/gen/android/app/build.gradle.kts', 'w') as f:
-    f.write('\n'.join(new_lines))
-
-print("Successfully patched build.gradle.kts")
-EOF
+echo "[fix-android-build-gradle] 完成"

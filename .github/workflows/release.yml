@@ -519,47 +519,62 @@ jobs:
         run: bash scripts/mobile-permissions.sh
       - name: Verify Android injection
         run: bash scripts/verify-android-injection.sh
-      - name: Build APK
-        run: pnpm tauri android build --apk --target aarch64 --target armv7 --target x86_64 ${{ inputs.debug_mode && '--debug' || '' }}
-      - name: Verify APK contents (native libs per ABI)
-        run: |
-          APK=$(find src-tauri/gen/android -maxdepth 8 -name "*.apk" | head -1)
-          if [ -z "$APK" ]; then echo "ERROR: no APK produced"; exit 1; fi
-          echo "APK: $APK"
-          unzip -l "$APK" | grep -E "lib/(arm64-v8a|armeabi-v7a|x86|x86_64)/.*\.so" || { echo "ERROR: no native libs found in APK"; exit 1; }
-      - name: Verify APK contains ML Kit barcode classes
-        run: |
-          APK=$(find src-tauri/gen/android -maxdepth 8 -name "*.apk" | head -1)
-          if [ -z "$APK" ]; then echo "ERROR: no APK produced"; exit 1; fi
-          echo "APK: $APK"
-          # 1) 资产层面：bundled model 通常以 assets 下的模型文件存在（如 mlkit/ 或 com_google_mlkit_* 前缀）
-          ASSET_HITS=$(unzip -l "$APK" | grep -iE "assets/(mlkit|.*mlkit.*|.*barcode.*model|com_google_mlkit)" | head -5)
-          echo "ML Kit asset candidates:"
-          echo "$ASSET_HITS"
-          # 2) DEX 层面：barcode 相关类必须存在（无论 bundled 实现还是 GMS 桥接实现）
-          DEX_BARCODE=$(unzip -p "$APK" "classes*.dex" 2>/dev/null | grep -ac "com/google/mlkit/vision/barcode" || true)
-          DEX_THIN=$(unzip -p "$APK" "classes*.dex" 2>/dev/null | grep -ac "com/google/android/gms/internal/mlkit_vision_barcode" || true)
-          echo "DEX barcode classes found: $DEX_BARCODE"
-          echo "DEX thin-model(GMS) bridge classes found: $DEX_THIN"
-          if [ "$DEX_BARCODE" -eq 0 ]; then
-            echo "ERROR: APK 中完全找不到 ML Kit barcode 类 —— 依赖未打入，扫码必失败"
-            exit 1
-          fi
-          if [ "$DEX_THIN" -gt 0 ] && [ -z "$ASSET_HITS" ]; then
-            echo "WARN: DEX 含 GMS 桥接类且 assets 无模型文件 —— 疑似仍为 thin model（依赖 GMS），请核实 fix-android-build-gradle.sh 的 exclude 是否生效"
-          fi
-          echo "OK: ML Kit barcode classes present in APK"
-      - name: Stage artifact
+      - name: Build APKs (Tauri 原生 per-ABI 拆分，显式指定 Rust 目标，排除 i686)
+        run: pnpm tauri android build --apk --target aarch64 armv7 x86_64 --split-per-abi ${{ inputs.debug_mode && '--debug' || '' }}
+      - name: Verify & stage per-ABI APKs
         shell: bash
         run: |
+          set -euo pipefail
+          APK_ROOT="src-tauri/gen/android/app/build/outputs/apk"
+          if [ ! -d "$APK_ROOT" ]; then
+            echo "ERROR: APK output dir not found: $APK_ROOT"; exit 1
+          fi
+          echo "=== all APKs produced by Gradle ==="
+          find "$APK_ROOT" -name '*.apk' -exec ls -lh {} \;
+
           mkdir -p dist
-          find src-tauri/gen/android -maxdepth 8 -name "*.apk" -exec cp {} dist/ \;
-          echo "Staged Android artifacts:"
+          FOUND=""
+          BT_FILTER="${{ inputs.debug_mode && 'debug' || 'release' }}"
+          while IFS= read -r apk; do
+            # 只处理本次请求的构建类型（--split-per-abi 的 assemble 任务可能同时产出 debug/release）
+            case "$apk" in */"$BT_FILTER"/*) ;; *) echo "[skip] $apk: build type != $BT_FILTER"; continue;; esac
+            # APK 内 lib/<abi>/ 目录集合，用来识别该 APK 实际包含的 ABI
+            ABIS=$(unzip -l "$apk" 2>/dev/null | sed -nE 's#.*[[:space:]]lib/([^/]+)/.*#\1#p' | sort -u | tr '\n' ',' | sed 's/,$//')
+            BT="$BT_FILTER"
+            case "$ABIS" in
+              arm64-v8a|armeabi-v7a|x86_64)
+                DEST="dist/app-${ABIS}-${BT}.apk"
+                cp "$apk" "$DEST"
+                FOUND="$FOUND $ABIS"
+                echo "[stage] $apk -> $DEST ($(du -h "$apk" | cut -f1))"
+                # ML Kit 内置模型必须打进 dex，否则无 GMS 设备扫码静默失败
+                DEX_BARCODE=$(unzip -p "$apk" "classes*.dex" 2>/dev/null | grep -ac "com/google/mlkit/vision/barcode" || true)
+                if [ "${DEX_BARCODE:-0}" -eq 0 ]; then
+                  echo "ERROR: ${ABIS} APK 无 ML Kit barcode 类"; exit 1
+                fi
+                echo "[verify] ${ABIS}: native libs OK, ML Kit barcode classes=$DEX_BARCODE"
+                ;;
+              "")
+                echo "[skip] $apk: 无 native 库（非目标 ABI，如空 x86 flavor）"
+                ;;
+              *)
+                echo "[skip] $apk: 多 ABI（universal），不参与 per-ABI 发布"
+                ;;
+            esac
+          done < <(find "$APK_ROOT" -name '*.apk' -not -name '*unsigned*' | sort)
+
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            case " $FOUND " in
+              *" $abi "*) ;;
+              *) echo "ERROR: 未生成 $abi 的 per-ABI APK"; exit 1;;
+            esac
+          done
+          echo "=== staged Android artifacts ==="
           ls -lh dist/
-      - name: Upload APK
+      - name: Upload APKs (per ABI)
         uses: actions/upload-artifact@v4
         with:
-          name: homeTier-android.apk
+          name: homeTier-android-apks
           path: dist/*.apk
           if-no-files-found: error
 
