@@ -1,6 +1,6 @@
 #!/bin/bash
 # Fix Android build.gradle.kts for per-ABI APK splits (robust version)
-# Key: clear ndk.abiFilters in SAME android block as splits, BEFORE splits, using Property API
+# Key: clear ndk.abiFilters AFTER tauri.apply using simple assignment syntax
 
 set -euo pipefail
 
@@ -68,7 +68,7 @@ else
     echo "[fix-android-build-gradle] usesCleartextTraffic placeholder not found or already true"
 fi
 
-# --- Python structural edits: ML Kit, ABI splits + abiFilters clear in same block ---
+# --- Python structural edits: ML Kit, ABI splits ---
 python3 << 'PYEOF'
 import re
 import os
@@ -98,11 +98,20 @@ if 'com.google.mlkit:barcode-scanning' not in content:
         content += '\n' + mlkit_config + '\n'
         print('[fix-android-build-gradle] Appended ML Kit bundled model config')
 
-# ===== 2. ABI splits + abiFilters clear in SAME android block =====
-# Strategy: Find the main android { } block, inject defaultConfig.ndk.abiFilters.clear() BEFORE splits
-# Use Property API: abiFilters.set(emptyList()) for AGP 8.x compatibility
+# ===== 2. ABI splits: 插入到现有 android { } 块内部 =====
+# 注意：这里只加 splits，不清空 abiFilters（清空在 tauri.apply 之后单独注入）
 if 'splits {' not in content:
-    # Find android { } block and insert our config at the end of it (before closing brace)
+    abi_splits_config = '''
+    // --- ABI splits: 生成 per-ABI APK，避免 universal APK 过大 ---
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = true  // 保留 universal variant 任务，兼容 Tauri 引用
+        }
+    }
+'''
     android_start = content.find('android {')
     if android_start >= 0:
         brace_count = 0
@@ -115,28 +124,9 @@ if 'splits {' not in content:
                 if brace_count == 0:
                     insert_pos = i
                     break
-        
         if insert_pos >= 0:
-            # Config to inject: abiFilters clear + splits
-            abi_config = '''
-    // --- Clear ndk.abiFilters BEFORE splits (AGP 8.x Property API compatible) ---
-    defaultConfig {
-        ndk {
-            abiFilters.set(mutableListOf())
-        }
-    }
-    // --- ABI splits: 生成 per-ABI APK，避免 universal APK 过大 ---
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a", "armeabi-v7a", "x86_64")
-            isUniversalApk = true  // Keep true to satisfy Tauri's universal task references
-        }
-    }
-'''
-            content = content[:insert_pos] + '\n' + abi_config + '\n' + content[insert_pos:]
-            print("[fix-android-build-gradle] Added abiFilters.clear() + ABI splits inside android block")
+            content = content[:insert_pos] + '\n' + abi_splits_config + '\n' + content[insert_pos:]
+            print("[fix-android-build-gradle] Added ABI splits inside android block")
         else:
             print("[fix-android-build-gradle] WARNING: Could not find android block end")
     else:
@@ -172,8 +162,8 @@ fi
 # Read signing config content
 SIGNING_CONFIG=$(cat "$SIGNING_CONFIG_FILE")
 
-# Insert the signing config AFTER the tauri apply line (no abiFilters.clear here anymore)
-cat > /tmp/insert_signing.py << 'PYEOF'
+# Insert signing config + abiFilters clear AFTER tauri.apply line
+cat > /tmp/insert_signing_and_clear.py << 'PYEOF'
 import sys
 
 with open('src-tauri/gen/android/app/build.gradle.kts', 'r') as f:
@@ -186,29 +176,45 @@ if 'signingConfigs' in content:
     print('Signing config already present')
     sys.exit(0)
 
+# Insert AFTER apply(from = "tauri.build.gradle.kts")
+# This ensures Tauri's abiFilters are set first, then we clear them
 lines = content.split('\n')
 new_lines = []
 inserted = False
 
 for line in lines:
+    new_lines.append(line)
     if 'apply(from = "tauri.build.gradle.kts")' in line and not inserted:
-        new_lines.append(line)
         new_lines.append('')
         new_lines.append(signing_config)
         new_lines.append('')
+        # CRITICAL: Clear abiFilters AFTER tauri.apply using simple assignment
+        new_lines.append('android {')
+        new_lines.append('    defaultConfig {')
+        new_lines.append('        ndk {')
+        new_lines.append('            abiFilters = emptyList()')
+        new_lines.append('        }')
+        new_lines.append('    }')
+        new_lines.append('}')
         inserted = True
-    else:
-        new_lines.append(line)
 
 if not inserted:
     print('WARNING: Could not find apply line, appending at end')
     new_lines.append('')
     new_lines.append(signing_config)
+    new_lines.append('')
+    new_lines.append('android {')
+    new_lines.append('    defaultConfig {')
+    new_lines.append('        ndk {')
+    new_lines.append('            abiFilters = emptyList()')
+    new_lines.append('        }')
+    new_lines.append('    }')
+    new_lines.append('}')
 
 with open('src-tauri/gen/android/app/build.gradle.kts', 'w') as f:
     f.write('\n'.join(new_lines))
 
-print('Successfully patched build.gradle.kts with signing config')
+print('Successfully patched build.gradle.kts with signing config and abiFilters = emptyList()')
 PYEOF
 
-python3 /tmp/insert_signing.py
+python3 /tmp/insert_signing_and_clear.py
