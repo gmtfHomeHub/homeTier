@@ -74,6 +74,10 @@ fi
 # NDK 29+ doesn't support i686, so we must prevent Tauri from creating rustBuildX86Release task
 if [ -f "$TAURI_BUILD_GRADLE" ]; then
     echo "[fix-android-build-gradle] Patching $TAURI_BUILD_GRADLE to remove x86 from abiFilters..."
+    echo "=== BEFORE patch ==="
+    cat "$TAURI_BUILD_GRADLE"
+    echo "=== END ==="
+    
     python3 << 'PYEOF'
 import re
 
@@ -81,31 +85,85 @@ tauri_path = 'src-tauri/gen/android/tauri.build.gradle.kts'
 with open(tauri_path, 'r') as f:
     content = f.read()
 
-# Pattern: abiFilters = listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
-# Or: abiFilters = mutableListOf(...)
-# Remove "x86" from the list (handle various quote styles and spacing)
-def remove_x86(match):
-    prefix = match.group(1)
-    items_str = match.group(2)
-    # Split by comma, filter out x86, rejoin
-    items = [item.strip() for item in items_str.split(',')]
+print("=== tauri.build.gradle.kts content (first 3000 chars) ===")
+print(content[:3000])
+print("=== END ===")
+
+# Strategy 1: Find abiFilters assignment and remove x86 from the list
+# Match: abiFilters = listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+# Or: abiFilters = mutableListOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+# Or: abiFilters = listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86",)
+# Handle various spacing and quote styles
+
+def remove_x86_from_list(match):
+    """Remove x86 from a listOf/mutableListOf argument list"""
+    prefix = match.group(1)  # abiFilters = listOf(
+    items_str = match.group(2)  # "arm64-v8a", "armeabi-v7a", "x86_64", "x86"
+    
+    # Split by comma, filter out x86
+    items = []
+    current = ""
+    in_quotes = False
+    quote_char = None
+    
+    for char in items_str:
+        if char in ('"', "'") and not in_quotes:
+            in_quotes = True
+            quote_char = char
+            current += char
+        elif char == quote_char and in_quotes:
+            in_quotes = False
+            quote_char = None
+            current += char
+        elif char == ',' and not in_quotes:
+            items.append(current.strip())
+            current = ""
+        else:
+            current += char
+    
+    if current.strip():
+        items.append(current.strip())
+    
+    # Filter out x86
     filtered = [item for item in items if 'x86' not in item.replace('"', '').replace("'", "")]
+    
     return prefix + ', '.join(filtered) + ')'
 
-# Match both listOf and mutableListOf
-new_content = re.sub(
-    r'(abiFilters\s*=\s*(?:listOf|mutableListOf)\s*\()([^)]+)\)',
-    remove_x86,
-    content
-)
+# Pattern 1: abiFilters = listOf(...) or mutableListOf(...)
+pattern1 = r'(abiFilters\s*=\s*(?:listOf|mutableListOf)\s*\()([^)]+)\)'
+new_content = re.sub(pattern1, remove_x86_from_list, content)
+
+# Pattern 2: abiFilters = ["arm64-v8a", "armeabi-v7a", "x86_64", "x86"] (array literal)
+if new_content == content:
+    pattern2 = r'(abiFilters\s*=\s*\[)([^\]]+)(\])'
+    def remove_x86_from_array(match):
+        prefix = match.group(1)
+        items_str = match.group(2)
+        suffix = match.group(3)
+        items = [item.strip() for item in items_str.split(',')]
+        filtered = [item for item in items if 'x86' not in item.replace('"', '').replace("'", "")]
+        return prefix + ', '.join(filtered) + suffix
+    new_content = re.sub(pattern2, remove_x86_from_array, content)
+
+# Pattern 3: Simple string replacement as last resort
+if new_content == content:
+    # Replace "x86", "x86", etc. in the whole file
+    new_content = re.sub(r'"x86"\s*,?\s*', '', content)
+    new_content = re.sub(r',\s*"x86"', '', new_content)
+    new_content = re.sub(r"'x86'\s*,?\s*", '', new_content)
+    new_content = re.sub(r",\s*'x86'", '', new_content)
 
 if new_content != content:
     with open(tauri_path, 'w') as f:
         f.write(new_content)
     print("[fix-android-build-gradle] Patched tauri.build.gradle.kts: removed x86 from abiFilters")
 else:
-    print("[fix-android-build-gradle] WARN: abiFilters pattern not found in tauri.build.gradle.kts")
-    print("  Content preview:", content[:500])
+    print("[fix-android-build-gradle] WARNING: No abiFilters pattern matched, file unchanged")
+
+print("=== AFTER patch ===")
+with open(tauri_path, 'r') as f:
+    print(f.read()[:3000])
+print("=== END ===")
 PYEOF
 else
     echo "[fix-android-build-gradle] WARN: $TAURI_BUILD_GRADLE not found, skipping patch"
