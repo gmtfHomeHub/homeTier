@@ -82,7 +82,7 @@ if 'com.google.mlkit:barcode-scanning' not in content:
         implementation("com.google.mlkit:barcode-scanning:17.2.0")
     }
 '''
-    # 尝试在现有 dependencies { } 内插入，或在 android { } 后添加
+    # 尝试在现有 dependencies { } 块内插入，或在 android { } 后添加
     dep_match = re.search(r'(dependencies\s*\{[^}]*\})', content, re.DOTALL)
     if dep_match:
         # 在现有 dependencies 块内插入
@@ -114,10 +114,8 @@ if 'splits {' not in content:
     }
 '''
     # 找到 android { 的最后一个匹配的 }
-    # 简单策略：找到 "android {" 然后找到匹配的闭合 }
     android_start = content.find('android {')
     if android_start >= 0:
-        # 从 android { 开始计算大括号平衡
         brace_count = 0
         insert_pos = -1
         for i, ch in enumerate(content[android_start:], start=android_start):
@@ -136,7 +134,7 @@ if 'splits {' not in content:
     else:
         print("[fix-android-build-gradle] WARNING: Could not find android block start")
 
-# ===== 3. Consumer ProGuard rules: 创建目录和空文件 =====
+# ===== 3. 创建消费者 ProGuard 规则目录和空文件（仅为了消除警告）=====
 import os
 CONSUMER_RULES_DIR = "src-tauri/gen/android/app/consumer-proguard-rules"
 os.makedirs(CONSUMER_RULES_DIR, exist_ok=True)
@@ -147,57 +145,6 @@ for plugin in ["tauri-plugin-clipboard-manager", "tauri-plugin-dialog", "tauri-p
         with open(rules_file, 'w') as f:
             f.write(f"# Empty consumer ProGuard rules for {plugin} (no special rules needed)\n")
         print(f"[fix-android-build-gradle] Created empty consumer rules: {rules_file}")
-
-# 在 android { } 内添加 consumerProguardFiles
-if 'consumerProguardFiles' not in content:
-    consumer_config = '''
-    // --- Consumer ProGuard rules for plugins missing consumer-rules.pro ---
-    consumerProguardFiles(
-        file("../consumer-proguard-rules/tauri-plugin-clipboard-manager.pro"),
-        file("../consumer-proguard-rules/tauri-plugin-dialog.pro"),
-        file("../consumer-proguard-rules/tauri-plugin-notification.pro"),
-        file("../consumer-proguard-rules/tauri-plugin-shell.pro")
-    )
-'''
-    # 在 android { } 块内插入（在 splits 后面或 android 结束前）
-    if 'splits {' in content:
-        # 找到 splits { } 结束的位置，在后面插入
-        splits_end = content.find('splits {')
-        if splits_end >= 0:
-            brace_count = 0
-            splits_block_end = -1
-            for i, ch in enumerate(content[splits_end:], start=splits_end):
-                if ch == '{':
-                    brace_count += 1
-                elif ch == '}':
-                    brace_count -= 1
-                    if brace_count == 0:
-                        splits_block_end = i + splits_end + 1
-                        break
-            if splits_block_end >= 0:
-                content = content[:splits_block_end] + '\n' + consumer_config + '\n' + content[splits_block_end:]
-                print("[fix-android-build-gradle] Added consumerProguardFiles after splits")
-            else:
-                print("[fix-android-build-gradle] WARNING: Could not find splits block end")
-    else:
-        # 没有 splits，在 android 结束前插入
-        android_start = content.find('android {')
-        if android_start >= 0:
-            brace_count = 0
-            insert_pos = -1
-            for i, ch in enumerate(content[android_start:], start=android_start):
-                if ch == '{':
-                    brace_count += 1
-                elif ch == '}':
-                    brace_count -= 1
-                    if brace_count == 0:
-                        insert_pos = i
-                        break
-            if insert_pos >= 0:
-                content = content[:insert_pos] + '\n' + consumer_config + '\n' + content[insert_pos:]
-                print("[fix-android-build-gradle] Added consumerProguardFiles before android end")
-            else:
-                print("[fix-android-build-gradle] WARNING: Could not find android block end for consumerProguardFiles")
 
 # ===== 4. 写回文件 =====
 with open('src-tauri/gen/android/app/build.gradle.kts', 'w') as f:
