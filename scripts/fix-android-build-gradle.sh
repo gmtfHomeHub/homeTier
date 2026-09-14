@@ -179,7 +179,8 @@ if 'signingConfigs' in content:
     sys.exit(0)
 
 # Insert signing config before the apply(from = "tauri.build.gradle.kts") line
-lines = content.split('\n')
+lines = content.split('
+')
 new_lines = []
 inserted = False
 
@@ -188,6 +189,15 @@ for line in lines:
         new_lines.append("")
         new_lines.append(signing_config)
         new_lines.append("")
+        # 清空 ndk.abiFilters，交给 ABI splits 管理，避免冲突
+        new_lines.append("")
+        new_lines.append("android {")
+        new_lines.append("    defaultConfig {")
+        new_lines.append("        ndk {")
+        new_lines.append("            abiFilters.clear()")
+        new_lines.append("        }")
+        new_lines.append("    }")
+        new_lines.append("}")
         inserted = True
     new_lines.append(line)
 
@@ -197,7 +207,8 @@ if not inserted:
     new_lines.append(signing_config)
 
 with open('src-tauri/gen/android/app/build.gradle.kts', 'w') as f:
-    f.write('\n'.join(new_lines))
+    f.write('
+'.join(new_lines))
 
 print("Successfully patched build.gradle.kts")
 EOF
