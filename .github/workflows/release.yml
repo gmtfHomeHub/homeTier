@@ -519,38 +519,25 @@ jobs:
         run: bash scripts/mobile-permissions.sh
       - name: Verify Android injection
         run: bash scripts/verify-android-injection.sh
-      - name: Build APK (per ABI)
+      - name: Build APKs (via Gradle ABI splits)
+        run: pnpm tauri android build --apk ${{ inputs.debug_mode && '--debug' || '' }}
+      - name: Verify APKs (per ABI from splits)
         run: |
           set -e
-          for abi in aarch64 armv7 x86_64; do
-            echo "=== Building APK for $abi ==="
-            pnpm tauri android build --apk --target $abi ${{ inputs.debug_mode && '--debug' || '' }}
-            APK=$(find src-tauri/gen/android -maxdepth 8 -name "*.apk" -newer /tmp/build_marker 2>/dev/null | head -1)
-            if [ -z "$APK" ]; then
-              APK=$(find src-tauri/gen/android -maxdepth 8 -name "*.apk" | head -1)
-            fi
-            if [ -n "$APK" ]; then
-              DEST="src-tauri/gen/android/app-${abi}.apk"
-              cp "$APK" "$DEST"
-              echo "Saved $abi APK to $DEST ($(du -h $DEST | cut -f1))"
-            fi
-            touch /tmp/build_marker
-          done
-          echo "=== All ABI APKs built ==="
-          ls -lh src-tauri/gen/android/app-*.apk
-      - name: Verify APKs (per ABI)
-        run: |
-          set -e
-          for abi in aarch64 armv7 x86_64; do
-            APK="src-tauri/gen/android/app-${abi}.apk"
+          APK_DIR="src-tauri/gen/android/app/build/outputs/apk/release"
+          if [ ! -d "$APK_DIR" ]; then
+            echo "ERROR: APK output dir not found: $APK_DIR"; exit 1
+          fi
+          echo "=== APKs in $APK_DIR ==="
+          ls -lh "$APK_DIR"/
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            APK="$APK_DIR/app-${abi}-release.apk"
             if [ ! -f "$APK" ]; then
               echo "ERROR: $abi APK not found at $APK"; exit 1
             fi
             echo "=== Verifying $abi APK: $APK ==="
             # 1) native libs for this ABI
-            ABI_MAP="aarch64:arm64-v8a armv7:armeabi-v7a x86_64:x86_64"
-            TARGET_ABI=$(echo "$ABI_MAP" | sed -n "s/.*$abi:\([^ ]*\).*/\1/p")
-            unzip -l "$APK" | grep -E "lib/${TARGET_ABI}/.*\.so" || { echo "ERROR: no native libs for $TARGET_ABI in $abi APK"; exit 1; }
+            unzip -l "$APK" | grep -E "lib/${abi}/.*\.so" || { echo "ERROR: no native libs for $abi in APK"; exit 1; }
             # 2) ML Kit barcode classes
             ASSET_HITS=$(unzip -l "$APK" | grep -iE "assets/(mlkit|.*mlkit.*|.*barcode.*model|com_google_mlkit)" | head -5)
             echo "ML Kit asset candidates: $ASSET_HITS"
@@ -569,7 +556,12 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          find src-tauri/gen/android -maxdepth 8 -name "*.apk" -exec cp {} dist/ \;
+          APK_DIR="src-tauri/gen/android/app/build/outputs/apk/release"
+          if [ -d "" ]; then
+            cp ""/app-*-release.apk dist/ 2>/dev/null || true
+          fi
+          # Fallback: also check old locations
+          find src-tauri/gen/android -maxdepth 8 -name "*.apk" -exec cp {} dist/ \; 2>/dev/null || true
           echo "Staged Android artifacts:"
           ls -lh dist/
       - name: Upload APKs (per ABI)

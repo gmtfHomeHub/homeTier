@@ -45,6 +45,14 @@ else
     echo "[fix-android-build-gradle] WARN: src-tauri/keystore/release.keystore 不存在，跳过复制"
 fi
 
+# 复制 proguard-rules.pro 到 app 模块目录（signing_config.gradle.kts 引用相对路径）
+if [ -f "src-tauri/resources/gradle/proguard-rules.pro" ]; then
+    cp src-tauri/resources/gradle/proguard-rules.pro src-tauri/gen/android/app/proguard-rules.pro
+    echo "[fix-android-build-gradle] Copied proguard-rules.pro to gen/android/app/"
+else
+    echo "[fix-android-build-gradle] WARN: proguard-rules.pro 不存在，跳过复制"
+fi
+
 # 启用 cleartext traffic：HTTP 代理走 127.0.0.1 明文，Tauri 默认 release 继承 defaultConfig 的 "false"，
 # 会导致 WebView 加载 http://127.0.0.1:port/__proxy__ 报 net::ERROR_CLEARTEXT_NOT_PERMITTED。
 # 改 defaultConfig placeholder 为 true（debug 本就 true，release 继承 defaultConfig 即生效）。
@@ -76,6 +84,60 @@ MLKIT_EOF
     echo "[fix-android-build-gradle] Switched ML Kit to bundled model (no GMS dependency)"
 else
     echo "[fix-android-build-gradle] ML Kit bundled model already present"
+fi
+
+# --- ABI splits: 生成 per-ABI APK，替代 universal APK ---
+if ! grep -q 'splits {' "$BUILD_GRADLE"; then
+    cat >> "$BUILD_GRADLE" << 'ABI_SPLITS_EOF'
+
+// --- ABI splits: 生成 per-ABI APK，避免 universal APK 过大 ---
+android {
+    splits {
+        abi {
+            enable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            universalApk = false
+        }
+    }
+}
+ABI_SPLITS_EOF
+    echo "[fix-android-build-gradle] Added ABI splits for per-ABI APKs"
+else
+    echo "[fix-android-build-gradle] ABI splits already present"
+fi
+
+# --- Consumer ProGuard rules for Tauri plugins missing consumer-rules.pro ---
+# 这些插件缺少 consumer-rules.pro，R8 会报警告；提供空规则文件避免警告
+CONSUMER_RULES_DIR="src-tauri/gen/android/app/consumer-proguard-rules"
+mkdir -p "$CONSUMER_RULES_DIR"
+
+# 为缺少 consumer-rules.pro 的插件创建空规则文件
+for plugin in "tauri-plugin-clipboard-manager" "tauri-plugin-dialog" "tauri-plugin-notification" "tauri-plugin-shell"; do
+    RULES_FILE="$CONSUMER_RULES_DIR/${plugin}.pro"
+    if [ ! -f "$RULES_FILE" ]; then
+        echo "# Empty consumer ProGuard rules for $plugin (no special rules needed)" > "$RULES_FILE"
+        echo "[fix-android-build-gradle] Created empty consumer rules: $RULES_FILE"
+    fi
+done
+
+# 在 build.gradle.kts 中添加 consumerProguardFiles 指向这些规则
+if ! grep -q 'consumerProguardFiles' "$BUILD_GRADLE"; then
+    cat >> "$BUILD_GRADLE" << 'CONSUMER_PROGUARD_EOF'
+
+// --- Consumer ProGuard rules for plugins missing consumer-rules.pro ---
+tasks.withType(com.android.build.gradle.tasks.R8Task).configureEach {
+    consumerProguardFiles(
+        file("../consumer-proguard-rules/tauri-plugin-clipboard-manager.pro"),
+        file("../consumer-proguard-rules/tauri-plugin-dialog.pro"),
+        file("../consumer-proguard-rules/tauri-plugin-notification.pro"),
+        file("../consumer-proguard-rules/tauri-plugin-shell.pro")
+    )
+}
+CONSUMER_PROGUARD_EOF
+    echo "[fix-android-build-gradle] Added consumerProguardFiles for missing plugin rules"
+else
+    echo "[fix-android-build-gradle] consumerProguardFiles already present"
 fi
 
 # Check if signing config already exists
