@@ -519,50 +519,57 @@ jobs:
         run: bash scripts/mobile-permissions.sh
       - name: Verify Android injection
         run: bash scripts/verify-android-injection.sh
-      - name: Build APKs (via Gradle ABI splits)
-        run: pnpm tauri android build --apk ${{ inputs.debug_mode && '--debug' || '' }}
-      - name: Verify APKs (per ABI from splits)
-        run: |
-          set -e
-          APK_DIR="src-tauri/gen/android/app/build/outputs/apk/release"
-          if [ ! -d "$APK_DIR" ]; then
-            echo "ERROR: APK output dir not found: $APK_DIR"; exit 1
-          fi
-          echo "=== APKs in $APK_DIR ==="
-          ls -lh "$APK_DIR"/
-          for abi in arm64-v8a armeabi-v7a x86_64; do
-            APK="$APK_DIR/app-${abi}-release.apk"
-            if [ ! -f "$APK" ]; then
-              echo "ERROR: $abi APK not found at $APK"; exit 1
-            fi
-            echo "=== Verifying $abi APK: $APK ==="
-            # 1) native libs for this ABI
-            unzip -l "$APK" | grep -E "lib/${abi}/.*\.so" || { echo "ERROR: no native libs for $abi in APK"; exit 1; }
-            # 2) ML Kit barcode classes
-            ASSET_HITS=$(unzip -l "$APK" | grep -iE "assets/(mlkit|.*mlkit.*|.*barcode.*model|com_google_mlkit)" | head -5)
-            echo "ML Kit asset candidates: $ASSET_HITS"
-            DEX_BARCODE=$(unzip -p "$APK" "classes*.dex" 2>/dev/null | grep -ac "com/google/mlkit/vision/barcode" || true)
-            DEX_THIN=$(unzip -p "$APK" "classes*.dex" 2>/dev/null | grep -ac "com/google/android/gms/internal/mlkit_vision_barcode" || true)
-            echo "DEX barcode classes: $DEX_BARCODE, thin-model(GMS) bridge: $DEX_THIN"
-            if [ "$DEX_BARCODE" -eq 0 ]; then
-              echo "ERROR: $abi APK 无 ML Kit barcode 类"; exit 1
-            fi
-            if [ "$DEX_THIN" -gt 0 ] && [ -z "$ASSET_HITS" ]; then
-              echo "WARN: $abi APK 疑似 thin model (GMS 依赖)"
-            fi
-            echo "OK: $abi APK verified"
-          done
-      - name: Stage artifact
+      - name: Build APKs (Tauri 原生 per-ABI 拆分，显式指定 Rust 目标，排除 i686)
+        run: pnpm tauri android build --apk --target aarch64 armv7 x86_64 --split-per-abi ${{ inputs.debug_mode && '--debug' || '' }}
+      - name: Verify & stage per-ABI APKs
         shell: bash
         run: |
-          mkdir -p dist
-          APK_DIR="src-tauri/gen/android/app/build/outputs/apk/release"
-          if [ -d "" ]; then
-            cp ""/app-*-release.apk dist/ 2>/dev/null || true
+          set -euo pipefail
+          APK_ROOT="src-tauri/gen/android/app/build/outputs/apk"
+          if [ ! -d "$APK_ROOT" ]; then
+            echo "ERROR: APK output dir not found: $APK_ROOT"; exit 1
           fi
-          # Fallback: also check old locations
-          find src-tauri/gen/android -maxdepth 8 -name "*.apk" -exec cp {} dist/ \; 2>/dev/null || true
-          echo "Staged Android artifacts:"
+          echo "=== all APKs produced by Gradle ==="
+          find "$APK_ROOT" -name '*.apk' -exec ls -lh {} \;
+
+          mkdir -p dist
+          FOUND=""
+          BT_FILTER="${{ inputs.debug_mode && 'debug' || 'release' }}"
+          while IFS= read -r apk; do
+            # 只处理本次请求的构建类型（--split-per-abi 的 assemble 任务可能同时产出 debug/release）
+            case "$apk" in */"$BT_FILTER"/*) ;; *) echo "[skip] $apk: build type != $BT_FILTER"; continue;; esac
+            # APK 内 lib/<abi>/ 目录集合，用来识别该 APK 实际包含的 ABI
+            ABIS=$(unzip -l "$apk" 2>/dev/null | sed -nE 's#.*[[:space:]]lib/([^/]+)/.*#\1#p' | sort -u | tr '\n' ',' | sed 's/,$//')
+            BT="$BT_FILTER"
+            case "$ABIS" in
+              arm64-v8a|armeabi-v7a|x86_64)
+                DEST="dist/app-${ABIS}-${BT}.apk"
+                cp "$apk" "$DEST"
+                FOUND="$FOUND $ABIS"
+                echo "[stage] $apk -> $DEST ($(du -h "$apk" | cut -f1))"
+                # ML Kit 内置模型必须打进 dex，否则无 GMS 设备扫码静默失败
+                DEX_BARCODE=$(unzip -p "$apk" "classes*.dex" 2>/dev/null | grep -ac "com/google/mlkit/vision/barcode" || true)
+                if [ "${DEX_BARCODE:-0}" -eq 0 ]; then
+                  echo "ERROR: ${ABIS} APK 无 ML Kit barcode 类"; exit 1
+                fi
+                echo "[verify] ${ABIS}: native libs OK, ML Kit barcode classes=$DEX_BARCODE"
+                ;;
+              "")
+                echo "[skip] $apk: 无 native 库（非目标 ABI，如空 x86 flavor）"
+                ;;
+              *)
+                echo "[skip] $apk: 多 ABI（universal），不参与 per-ABI 发布"
+                ;;
+            esac
+          done < <(find "$APK_ROOT" -name '*.apk' -not -name '*unsigned*' | sort)
+
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            case " $FOUND " in
+              *" $abi "*) ;;
+              *) echo "ERROR: 未生成 $abi 的 per-ABI APK"; exit 1;;
+            esac
+          done
+          echo "=== staged Android artifacts ==="
           ls -lh dist/
       - name: Upload APKs (per ABI)
         uses: actions/upload-artifact@v4

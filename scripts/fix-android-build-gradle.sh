@@ -1,29 +1,39 @@
 #!/bin/bash
-# Fix Android build.gradle.kts for per-ABI APK splits (robust version)
-# Key: REPLACE entire abiFilters line in tauri.build.gradle.kts BEFORE apply
-# This prevents Tauri from creating rustBuildX86Release task which fails on NDK 29+
+# 修正 `pnpm tauri android init` 生成的 Android 工程：
+#   1. 对齐实际安装的 NDK 版本（CI runner 上是 29.x，而非 workflow 里声明的 25.x）
+#   2. 注入 release 签名配置（hometier keystore）
+#   3. 启用 cleartext traffic（WebView 访问 127.0.0.1 内部代理）
+#   4. 使用 ML Kit 内置条码模型（不依赖 Google Play Services）
+#
+# ⚠️ 不修改 buildSrc/.../RustPlugin.kt：
+#   模板里 ABI product flavor 列表用 defaultArchList（android init 时硬编码），
+#   而 rustBuild 任务接线用 archList（构建期 `-ParchList=`，来自 CLI 的 --target），
+#   两者用 targetPair.index 交叉索引。删掉 defaultArchList 里的 x86 会让 archList
+#   的下标越过 flavor 列表 → tasks["mergeX86...JniLibFolders"] 找不到 → 配置期崩溃。
+#   保留 x86 flavor 无害：它只能产出一个不带 native 库的空 APK，CI 侧按 ABI 过滤丢弃。
+#
+# ⚠️ per-ABI 拆分由 Tauri CLI 原生 flag 完成：
+#     pnpm tauri android build --apk --target aarch64 armv7 x86_64 --split-per-abi
+#   CLI 会向 Gradle 传 `-PabiList/-ParchList/-PtargetList`，而 Tauri 模板的
+#   buildSrc/.../RustPlugin.kt 正是用 findProperty() 读取这三个属性来决定
+#   生成哪些 rustBuild<Arch><Profile> 任务与 ABI product flavor。
+#   因此**绝对不要**在 app/build.gradle.kts 里手写 ndk.abiFilters 或 splits.abi：
+#   Tauri 模板已用 ABI product flavor 实现 per-ABI，两者同时存在会直接报
+#   "Conflicting configuration: ... in ndk abiFilters cannot be present when splits abi filters are set"。
 
 set -euo pipefail
 
 BUILD_GRADLE="src-tauri/gen/android/app/build.gradle.kts"
-TAURI_BUILD_GRADLE="src-tauri/gen/android/tauri.build.gradle.kts"
-SIGNING_CONFIG_FILE="src-tauri/resources/gradle/signing_config.gradle.kts"
+PROGUARD_SRC="src-tauri/resources/gradle/proguard-rules.pro"
 
 if [ ! -f "$BUILD_GRADLE" ]; then
-    echo "ERROR: $BUILD_GRADLE not found"
+    echo "ERROR: $BUILD_GRADLE not found（tauri android init 未执行？）"
     exit 1
 fi
 
-if [ ! -f "$SIGNING_CONFIG_FILE" ]; then
-    echo "ERROR: $SIGNING_CONFIG_FILE not found"
-    exit 1
-fi
+echo "[fix-android-build-gradle] Patching $BUILD_GRADLE ..."
 
-echo "[fix-android-build-gradle] Patching $BUILD_GRADLE..."
-
-cp "$BUILD_GRADLE" "$BUILD_GRADLE.bak"
-
-# --- NDK version fix (supports NDK_HOME, ANDROID_NDK_HOME, fallback) ---
+# --- 1. NDK 版本对齐（NDK_HOME / ANDROID_NDK_HOME / 最新安装的 NDK） ---
 NDK_PATH="${NDK_HOME:-}"
 if [ -z "$NDK_PATH" ] || [ ! -d "$NDK_PATH" ]; then
     NDK_PATH="${ANDROID_NDK_HOME:-}"
@@ -37,252 +47,116 @@ if [ -n "$NDK_PATH" ] && [ -d "$NDK_PATH" ]; then
     CURRENT_NDK=$(sed -n 's/.*ndkVersion = "\([^"]*\)".*/\1/p' "$BUILD_GRADLE" | head -1)
     if [ -n "$CURRENT_NDK" ] && [ "$CURRENT_NDK" != "$ACTUAL_NDK" ]; then
         sed -i "s/ndkVersion = \"$CURRENT_NDK\"/ndkVersion = \"$ACTUAL_NDK\"/" "$BUILD_GRADLE"
-        echo "[fix-android-build-gradle] Updated ndkVersion: $CURRENT_NDK -> $ACTUAL_NDK"
+        echo "[fix-android-build-gradle] ndkVersion: $CURRENT_NDK -> $ACTUAL_NDK"
     else
-        echo "[fix-android-build-gradle] ndkVersion already correct: ${CURRENT_NDK:-<empty>}"
+        echo "[fix-android-build-gradle] ndkVersion 无需修改: ${CURRENT_NDK:-<empty>}"
     fi
 else
-    echo "[fix-android-build-gradle] NDK path not found, skipping NDK version fix"
+    echo "[fix-android-build-gradle] WARN: 未找到 NDK，跳过 ndkVersion 对齐"
 fi
 
-# 将 keystore 复制到生成的 android 工程内
+# --- 2. keystore 复制到生成的工程内（两种约定路径都覆盖，见下方 keystore.properties） ---
 if [ -f "src-tauri/keystore/release.keystore" ]; then
-    mkdir -p src-tauri/gen/android/keystore
+    mkdir -p src-tauri/gen/android/keystore src-tauri/gen/android/app/keystore
     cp src-tauri/keystore/release.keystore src-tauri/gen/android/keystore/release.keystore
-    echo "[fix-android-build-gradle] Copied keystore to gen/android/keystore/"
+    cp src-tauri/keystore/release.keystore src-tauri/gen/android/app/keystore/release.keystore
+    echo "[fix-android-build-gradle] keystore 已复制到 gen/android/{,app/}keystore/"
 else
     echo "[fix-android-build-gradle] WARN: src-tauri/keystore/release.keystore 不存在，跳过复制"
 fi
 
-# 复制 proguard-rules.pro 到 app 模块目录
-if [ -f "src-tauri/resources/gradle/proguard-rules.pro" ]; then
-    cp src-tauri/resources/gradle/proguard-rules.pro src-tauri/gen/android/app/proguard-rules.pro
-    echo "[fix-android-build-gradle] Copied proguard-rules.pro to gen/android/app/"
+# --- 3. proguard-rules.pro 复制到 app 模块（模板用 fileTree("**/*.pro") 收拢） ---
+if [ -f "$PROGUARD_SRC" ]; then
+    cp "$PROGUARD_SRC" src-tauri/gen/android/app/proguard-rules.pro
+    echo "[fix-android-build-gradle] proguard-rules.pro 已复制到 app/"
 else
-    echo "[fix-android-build-gradle] WARN: proguard-rules.pro 不存在，跳过复制"
+    echo "[fix-android-build-gradle] WARN: $PROGUARD_SRC 不存在，跳过复制"
 fi
 
-# 启用 cleartext traffic
+# --- 4. 启用 cleartext traffic ---
 if grep -q 'manifestPlaceholders\["usesCleartextTraffic"\] = "false"' "$BUILD_GRADLE"; then
     sed -i 's/manifestPlaceholders\["usesCleartextTraffic"\] = "false"/manifestPlaceholders["usesCleartextTraffic"] = "true"/' "$BUILD_GRADLE"
-    echo "[fix-android-build-gradle] Enabled cleartext traffic (usesCleartextTraffic=true)"
+    echo "[fix-android-build-gradle] 已启用 usesCleartextTraffic=true"
 else
-    echo "[fix-android-build-gradle] usesCleartextTraffic placeholder not found or already true"
+    echo "[fix-android-build-gradle] usesCleartextTraffic 已是 true 或未找到 placeholder"
 fi
 
-# --- CRITICAL: REPLACE abiFilters line in tauri.build.gradle.kts BEFORE apply ---
-# NDK 29+ doesn't support i686, so we must prevent Tauri from creating rustBuildX86Release task
-if [ -f "$TAURI_BUILD_GRADLE" ]; then
-    echo "[fix-android-build-gradle] Patching $TAURI_BUILD_GRADLE to replace abiFilters with x86-free list..."
-    echo "=== BEFORE patch ==="
-    cat "$TAURI_BUILD_GRADLE"
-    echo "=== END ==="
-    
-    python3 << 'PYEOF'
-import re
-
-tauri_path = 'src-tauri/gen/android/tauri.build.gradle.kts'
-with open(tauri_path, 'r') as f:
-    content = f.read()
-
-print("=== tauri.build.gradle.kts content (first 3000 chars) ===")
-print(content[:3000])
-print("=== END ===")
-
-# Strategy: Find the line containing abiFilters and REPLACE the entire line
-# with our desired list (no x86). This is the most reliable approach.
-
-# Pattern: any line containing abiFilters = (could be listOf, mutableListOf, array, etc.)
-# We'll replace the entire line
-new_content = re.sub(
-    r'^(\s*abiFilters\s*=\s*).*$',
-    r'\1listOf("arm64-v8a", "armeabi-v7a", "x86_64")',
-    content,
-    flags=re.MULTILINE
-)
-
-if new_content == content:
-    # Fallback: try matching with mutableListOf
-    new_content = re.sub(
-        r'^(\s*abiFilters\s*=\s*mutableListOf\s*\()(.*)(\))\s*$',
-        r'\1"arm64-v8a", "armeabi-v7a", "x86_64"\3',
-        content,
-        flags=re.MULTILINE | re.DOTALL
-    )
-
-if new_content == content:
-    # Fallback 2: array literal
-    new_content = re.sub(
-        r'^(\s*abiFilters\s*=\s*\[)(.*)(\])\s*$',
-        r'\1"arm64-v8a", "armeabi-v7a", "x86_64"\3',
-        content,
-        flags=re.MULTILINE | re.DOTALL
-    )
-
-if new_content == content:
-    # Fallback 3: just remove any "x86" strings from the file
-    # More aggressive: replace "x86" with empty in abiFilters context
-    lines = content.split('\n')
-    new_lines = []
-    for line in lines:
-        if 'abiFilters' in line and 'x86' in line:
-            # Remove x86 from this line
-            line = re.sub(r'"x86"\s*,?\s*', '', line)
-            line = re.sub(r',\s*"x86"', '', line)
-            line = re.sub(r"'x86'\s*,?\s*", '', line)
-            line = re.sub(r",\s*'x86'", '', line)
-            # Clean up double commas
-            line = re.sub(r',,', ',', line)
-            line = re.sub(r',\s*\)', ')', line)
-            line = re.sub(r',\s*\]', ']', line)
-        new_lines.append(line)
-    new_content = '\n'.join(new_lines)
-
-if new_content != content:
-    with open(tauri_path, 'w') as f:
-        f.write(new_content)
-    print("[fix-android-build-gradle] Patched tauri.build.gradle.kts: abiFilters replaced/cleaned")
-else:
-    print("[fix-android-build-gradle] WARNING: No abiFilters pattern matched, file unchanged")
-
-print("=== AFTER patch ===")
-with open(tauri_path, 'r') as f:
-    print(f.read()[:3000])
-print("=== END ===")
-PYEOF
-else
-    echo "[fix-android-build-gradle] WARN: $TAURI_BUILD_GRADLE not found, skipping patch"
-fi
-
-# --- Python structural edits: ML Kit, ABI splits ---
-python3 << 'PYEOF'
-import re
+# --- 5. Python 结构化修改：去掉 x86 flavor / ML Kit 内置模型 / 签名+R8 注入 / keystore.properties ---
+python3 - <<'PYEOF'
 import os
-
-path = 'src-tauri/gen/android/app/build.gradle.kts'
-with open(path, 'r') as f:
-    content = f.read()
-
-# ===== 1. ML Kit: 切换到内置模型 =====
-if 'com.google.mlkit:barcode-scanning' not in content:
-    mlkit_config = '''
-    // --- ML Kit bundled model (no Google Play Services dependency) ---
-    configurations.all {
-        exclude(group = "com.google.android.gms", module = "play-services-mlkit-barcode-scanning")
-    }
-    dependencies {
-        implementation("com.google.mlkit:barcode-scanning:17.2.0")
-    }
-'''
-    dep_match = re.search(r'(dependencies\s*\{[^}]*\})', content, re.DOTALL)
-    if dep_match:
-        old_dep = dep_match.group(1)
-        new_dep = old_dep.replace('dependencies {', 'dependencies {\n' + mlkit_config.strip())
-        content = content.replace(old_dep, new_dep)
-        print('[fix-android-build-gradle] Added ML Kit bundled model to dependencies')
-    else:
-        content += '\n' + mlkit_config + '\n'
-        print('[fix-android-build-gradle] Appended ML Kit bundled model config')
-
-# ===== 2. ABI splits: 插入到现有 android { } 块内部 =====
-if 'splits {' not in content:
-    abi_splits_config = '''
-    // --- ABI splits: 生成 per-ABI APK，避免 universal APK 过大 ---
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a", "armeabi-v7a", "x86_64")
-            isUniversalApk = true  // 保留 universal variant 任务，兼容 Tauri 引用
-        }
-    }
-'''
-    android_start = content.find('android {')
-    if android_start >= 0:
-        brace_count = 0
-        insert_pos = -1
-        for i, ch in enumerate(content[android_start:], start=android_start):
-            if ch == '{':
-                brace_count += 1
-            elif ch == '}':
-                brace_count -= 1
-                if brace_count == 0:
-                    insert_pos = i
-                    break
-        if insert_pos >= 0:
-            content = content[:insert_pos] + '\n' + abi_splits_config + '\n' + content[insert_pos:]
-            print("[fix-android-build-gradle] Added ABI splits inside android block")
-        else:
-            print("[fix-android-build-gradle] WARNING: Could not find android block end")
-    else:
-        print("[fix-android-build-gradle] WARNING: Could not find android block start")
-
-# ===== 3. 创建消费者 ProGuard 规则目录和空文件 =====
-consumer_dir = 'src-tauri/gen/android/app/consumer-proguard-rules'
-os.makedirs(consumer_dir, exist_ok=True)
-for plugin in [
-    'tauri-plugin-clipboard-manager',
-    'tauri-plugin-dialog',
-    'tauri-plugin-notification',
-    'tauri-plugin-shell',
-]:
-    rules_file = os.path.join(consumer_dir, f'{plugin}.pro')
-    if not os.path.exists(rules_file):
-        with open(rules_file, 'w') as f:
-            f.write(f'# Empty consumer ProGuard rules for {plugin}\n')
-        print(f'[fix-android-build-gradle] Created empty consumer rules: {rules_file}')
-
-with open(path, 'w') as f:
-    f.write(content)
-
-print("[fix-android-build-gradle] Python modifications completed")
-PYEOF
-
-# --- Check if signing config already exists ---
-if grep -q "signingConfigs" "$BUILD_GRADLE"; then
-    echo "[fix-android-build-gradle] Signing config already present, skipping"
-    exit 0
-fi
-
-# Read signing config content
-SIGNING_CONFIG=$(cat "$SIGNING_CONFIG_FILE")
-
-# Insert signing config AFTER tauri.apply line
-cat > /tmp/insert_signing.py << 'PYEOF'
+import re
 import sys
 
-with open('src-tauri/gen/android/app/build.gradle.kts', 'r') as f:
+BUILD_GRADLE = "src-tauri/gen/android/app/build.gradle.kts"
+SIGNING_SRC = "src-tauri/resources/gradle/signing_config.gradle.kts"
+MARKER = "// homeTier: injected signing + R8 config"
+
+
+def log(msg):
+    print(f"[fix-android-build-gradle] {msg}")
+
+
+# ---------- 5.1 ML Kit 内置条码模型 ----------
+with open(BUILD_GRADLE, encoding="utf-8") as f:
     content = f.read()
 
-with open('src-tauri/resources/gradle/signing_config.gradle.kts', 'r') as f:
-    signing_config = f.read()
+if "com.google.mlkit:barcode-scanning" in content:
+    log("ML Kit 内置模型已存在，跳过")
+else:
+    mlkit_cfg = (
+        '// --- ML Kit 内置模型（排除依赖 GMS 的 thin model） ---\n'
+        'configurations.all {\n'
+        '    exclude(group = "com.google.android.gms", module = "play-services-mlkit-barcode-scanning")\n'
+        '}\n\n'
+    )
+    m = re.search(r"^dependencies\s*\{", content, flags=re.M)
+    if not m:
+        log("WARN: 未找到 dependencies 块，无法注入 ML Kit")
+    else:
+        content = content[: m.start()] + mlkit_cfg + content[m.start():]
+        m2 = re.search(r"^dependencies\s*\{", content, flags=re.M)
+        ins = m2.end()
+        content = (
+            content[:ins]
+            + '\n    implementation("com.google.mlkit:barcode-scanning:17.2.0")'
+            + content[ins:]
+        )
+        log("已注入 ML Kit 内置模型 (com.google.mlkit:barcode-scanning:17.2.0)")
 
-if 'signingConfigs' in content:
-    print('Signing config already present')
-    sys.exit(0)
+# ---------- 5.2 注入签名 + R8 配置（apply(from=tauri.build.gradle.kts) 之后） ----------
+if MARKER in content:
+    log("签名/R8 配置已注入，跳过")
+elif os.path.exists(SIGNING_SRC):
+    with open(SIGNING_SRC, encoding="utf-8") as f:
+        signing = f.read()
+    target = 'apply(from = "tauri.build.gradle.kts")'
+    if target in content:
+        content = content.replace(target, target + "\n\n" + MARKER + "\n" + signing, 1)
+        log("签名/R8 配置已注入（apply 之后）")
+    else:
+        content += "\n\n" + MARKER + "\n" + signing + "\n"
+        log("WARN: 未找到 apply(from=...) 行，签名配置追加到文件末尾")
+else:
+    log(f"WARN: {SIGNING_SRC} 不存在，跳过签名注入")
 
-# Insert AFTER apply(from = "tauri.build.gradle.kts")
-lines = content.split('\n')
-new_lines = []
-inserted = False
+with open(BUILD_GRADLE, "w", encoding="utf-8") as f:
+    f.write(content)
 
-for line in lines:
-    new_lines.append(line)
-    if 'apply(from = "tauri.build.gradle.kts")' in line and not inserted:
-        new_lines.append('')
-        new_lines.append(signing_config)
-        new_lines.append('')
-        inserted = True
+# ---------- 5.3 keystore.properties（兼容模板自带的 signingConfigs 读取方式） ----------
+ks = "src-tauri/gen/android/keystore/release.keystore"
+if os.path.exists(ks):
+    store_pw = os.environ.get("KEYSTORE_PASSWORD", "")
+    key_pw = os.environ.get("KEY_PASSWORD", "")
+    with open("src-tauri/gen/android/keystore.properties", "w", encoding="utf-8") as f:
+        f.write(
+            "storeFile=keystore/release.keystore\n"
+            f"storePassword={store_pw}\n"
+            "keyAlias=hometier\n"
+            f"keyPassword={key_pw}\n"
+        )
+    log("已写入 gen/android/keystore.properties")
 
-if not inserted:
-    print('WARNING: Could not find apply line, appending at end')
-    new_lines.append('')
-    new_lines.append(signing_config)
-
-with open('src-tauri/gen/android/app/build.gradle.kts', 'w') as f:
-    f.write('\n'.join(new_lines))
-
-print('Successfully patched build.gradle.kts with signing config')
+log("完成")
 PYEOF
 
-python3 /tmp/insert_signing.py
+echo "[fix-android-build-gradle] 完成"
