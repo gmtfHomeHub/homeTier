@@ -1,6 +1,6 @@
 #!/bin/bash
 # Fix Android build.gradle.kts for per-ABI APK splits (robust version)
-# Key: patch tauri.build.gradle.kts BEFORE apply to remove x86 (i686) from abiFilters
+# Key: REPLACE entire abiFilters line in tauri.build.gradle.kts BEFORE apply
 # This prevents Tauri from creating rustBuildX86Release task which fails on NDK 29+
 
 set -euo pipefail
@@ -70,10 +70,10 @@ else
     echo "[fix-android-build-gradle] usesCleartextTraffic placeholder not found or already true"
 fi
 
-# --- CRITICAL: Patch tauri.build.gradle.kts BEFORE apply to remove x86 (i686) ---
+# --- CRITICAL: REPLACE abiFilters line in tauri.build.gradle.kts BEFORE apply ---
 # NDK 29+ doesn't support i686, so we must prevent Tauri from creating rustBuildX86Release task
 if [ -f "$TAURI_BUILD_GRADLE" ]; then
-    echo "[fix-android-build-gradle] Patching $TAURI_BUILD_GRADLE to remove x86 from abiFilters..."
+    echo "[fix-android-build-gradle] Patching $TAURI_BUILD_GRADLE to replace abiFilters with x86-free list..."
     echo "=== BEFORE patch ==="
     cat "$TAURI_BUILD_GRADLE"
     echo "=== END ==="
@@ -89,74 +89,59 @@ print("=== tauri.build.gradle.kts content (first 3000 chars) ===")
 print(content[:3000])
 print("=== END ===")
 
-# Strategy 1: Find abiFilters assignment and remove x86 from the list
-# Match: abiFilters = listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
-# Or: abiFilters = mutableListOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
-# Or: abiFilters = listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86",)
-# Handle various spacing and quote styles
+# Strategy: Find the line containing abiFilters and REPLACE the entire line
+# with our desired list (no x86). This is the most reliable approach.
 
-def remove_x86_from_list(match):
-    """Remove x86 from a listOf/mutableListOf argument list"""
-    prefix = match.group(1)  # abiFilters = listOf(
-    items_str = match.group(2)  # "arm64-v8a", "armeabi-v7a", "x86_64", "x86"
-    
-    # Split by comma, filter out x86
-    items = []
-    current = ""
-    in_quotes = False
-    quote_char = None
-    
-    for char in items_str:
-        if char in ('"', "'") and not in_quotes:
-            in_quotes = True
-            quote_char = char
-            current += char
-        elif char == quote_char and in_quotes:
-            in_quotes = False
-            quote_char = None
-            current += char
-        elif char == ',' and not in_quotes:
-            items.append(current.strip())
-            current = ""
-        else:
-            current += char
-    
-    if current.strip():
-        items.append(current.strip())
-    
-    # Filter out x86
-    filtered = [item for item in items if 'x86' not in item.replace('"', '').replace("'", "")]
-    
-    return prefix + ', '.join(filtered) + ')'
+# Pattern: any line containing abiFilters = (could be listOf, mutableListOf, array, etc.)
+# We'll replace the entire line
+new_content = re.sub(
+    r'^(\s*abiFilters\s*=\s*).*$',
+    r'\1listOf("arm64-v8a", "armeabi-v7a", "x86_64")',
+    content,
+    flags=re.MULTILINE
+)
 
-# Pattern 1: abiFilters = listOf(...) or mutableListOf(...)
-pattern1 = r'(abiFilters\s*=\s*(?:listOf|mutableListOf)\s*\()([^)]+)\)'
-new_content = re.sub(pattern1, remove_x86_from_list, content)
-
-# Pattern 2: abiFilters = ["arm64-v8a", "armeabi-v7a", "x86_64", "x86"] (array literal)
 if new_content == content:
-    pattern2 = r'(abiFilters\s*=\s*\[)([^\]]+)(\])'
-    def remove_x86_from_array(match):
-        prefix = match.group(1)
-        items_str = match.group(2)
-        suffix = match.group(3)
-        items = [item.strip() for item in items_str.split(',')]
-        filtered = [item for item in items if 'x86' not in item.replace('"', '').replace("'", "")]
-        return prefix + ', '.join(filtered) + suffix
-    new_content = re.sub(pattern2, remove_x86_from_array, content)
+    # Fallback: try matching with mutableListOf
+    new_content = re.sub(
+        r'^(\s*abiFilters\s*=\s*mutableListOf\s*\()(.*)(\))\s*$',
+        r'\1"arm64-v8a", "armeabi-v7a", "x86_64"\3',
+        content,
+        flags=re.MULTILINE | re.DOTALL
+    )
 
-# Pattern 3: Simple string replacement as last resort
 if new_content == content:
-    # Replace "x86", "x86", etc. in the whole file
-    new_content = re.sub(r'"x86"\s*,?\s*', '', content)
-    new_content = re.sub(r',\s*"x86"', '', new_content)
-    new_content = re.sub(r"'x86'\s*,?\s*", '', new_content)
-    new_content = re.sub(r",\s*'x86'", '', new_content)
+    # Fallback 2: array literal
+    new_content = re.sub(
+        r'^(\s*abiFilters\s*=\s*\[)(.*)(\])\s*$',
+        r'\1"arm64-v8a", "armeabi-v7a", "x86_64"\3',
+        content,
+        flags=re.MULTILINE | re.DOTALL
+    )
+
+if new_content == content:
+    # Fallback 3: just remove any "x86" strings from the file
+    # More aggressive: replace "x86" with empty in abiFilters context
+    lines = content.split('\n')
+    new_lines = []
+    for line in lines:
+        if 'abiFilters' in line and 'x86' in line:
+            # Remove x86 from this line
+            line = re.sub(r'"x86"\s*,?\s*', '', line)
+            line = re.sub(r',\s*"x86"', '', line)
+            line = re.sub(r"'x86'\s*,?\s*", '', line)
+            line = re.sub(r",\s*'x86'", '', line)
+            # Clean up double commas
+            line = re.sub(r',,', ',', line)
+            line = re.sub(r',\s*\)', ')', line)
+            line = re.sub(r',\s*\]', ']', line)
+        new_lines.append(line)
+    new_content = '\n'.join(new_lines)
 
 if new_content != content:
     with open(tauri_path, 'w') as f:
         f.write(new_content)
-    print("[fix-android-build-gradle] Patched tauri.build.gradle.kts: removed x86 from abiFilters")
+    print("[fix-android-build-gradle] Patched tauri.build.gradle.kts: abiFilters replaced/cleaned")
 else:
     print("[fix-android-build-gradle] WARNING: No abiFilters pattern matched, file unchanged")
 
