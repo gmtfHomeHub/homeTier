@@ -1,10 +1,12 @@
 #!/bin/bash
 # Fix Android build.gradle.kts for per-ABI APK splits (robust version)
-# Key: clear ndk.abiFilters AFTER tauri.apply using abiFilters.clear()
+# Key: patch tauri.build.gradle.kts BEFORE apply to remove x86 (i686) from abiFilters
+# This prevents Tauri from creating rustBuildX86Release task which fails on NDK 29+
 
 set -euo pipefail
 
 BUILD_GRADLE="src-tauri/gen/android/app/build.gradle.kts"
+TAURI_BUILD_GRADLE="src-tauri/gen/android/tauri.build.gradle.kts"
 SIGNING_CONFIG_FILE="src-tauri/resources/gradle/signing_config.gradle.kts"
 
 if [ ! -f "$BUILD_GRADLE" ]; then
@@ -66,6 +68,23 @@ if grep -q 'manifestPlaceholders\["usesCleartextTraffic"\] = "false"' "$BUILD_GR
     echo "[fix-android-build-gradle] Enabled cleartext traffic (usesCleartextTraffic=true)"
 else
     echo "[fix-android-build-gradle] usesCleartextTraffic placeholder not found or already true"
+fi
+
+# --- CRITICAL: Patch tauri.build.gradle.kts BEFORE apply to remove x86 (i686) ---
+# NDK 29+ doesn't support i686, so we must prevent Tauri from creating rustBuildX86Release task
+if [ -f "$TAURI_BUILD_GRADLE" ]; then
+    echo "[fix-android-build-gradle] Patching $TAURI_BUILD_GRADLE to remove x86 from abiFilters..."
+    # Remove "x86" from abiFilters list (handle various formats)
+    sed -i 's/"x86",\?\s*//g' "$TAURI_BUILD_GRADLE"
+    sed -i 's/,\s*"x86"//g' "$TAURI_BUILD_GRADLE"
+    # Also handle space-separated without quotes (just in case)
+    sed -i 's/\bx86\b//g' "$TAURI_BUILD_GRADLE"
+    # Clean up any double commas or trailing commas
+    sed -i 's/,,/,/g' "$TAURI_BUILD_GRADLE"
+    sed -i 's/,\s*)/)/g' "$TAURI_BUILD_GRADLE"
+    echo "[fix-android-build-gradle] Patched tauri.build.gradle.kts: removed x86 from abiFilters"
+else
+    echo "[fix-android-build-gradle] WARN: $TAURI_BUILD_GRADLE not found, skipping patch"
 fi
 
 # --- Python structural edits: ML Kit, ABI splits ---
@@ -161,8 +180,8 @@ fi
 # Read signing config content
 SIGNING_CONFIG=$(cat "$SIGNING_CONFIG_FILE")
 
-# Insert signing config + abiFilters.clear() AFTER tauri.apply line
-cat > /tmp/insert_signing_and_clear.py << 'PYEOF'
+# Insert signing config AFTER tauri.apply line (no abiFilters.clear needed anymore)
+cat > /tmp/insert_signing.py << 'PYEOF'
 import sys
 
 with open('src-tauri/gen/android/app/build.gradle.kts', 'r') as f:
@@ -186,34 +205,17 @@ for line in lines:
         new_lines.append('')
         new_lines.append(signing_config)
         new_lines.append('')
-        # CRITICAL: Clear abiFilters AFTER tauri.apply using abiFilters.clear()
-        # abiFilters is a val MutableSet<String>, cannot reassign, must call clear()
-        new_lines.append('android {')
-        new_lines.append('    defaultConfig {')
-        new_lines.append('        ndk {')
-        new_lines.append('            abiFilters.clear()')
-        new_lines.append('        }')
-        new_lines.append('    }')
-        new_lines.append('}')
         inserted = True
 
 if not inserted:
     print('WARNING: Could not find apply line, appending at end')
     new_lines.append('')
     new_lines.append(signing_config)
-    new_lines.append('')
-    new_lines.append('android {')
-    new_lines.append('    defaultConfig {')
-    new_lines.append('        ndk {')
-    new_lines.append('            abiFilters.clear()')
-    new_lines.append('        }')
-    new_lines.append('    }')
-    new_lines.append('}')
 
 with open('src-tauri/gen/android/app/build.gradle.kts', 'w') as f:
     f.write('\n'.join(new_lines))
 
-print('Successfully patched build.gradle.kts with signing config and abiFilters.clear()')
+print('Successfully patched build.gradle.kts with signing config')
 PYEOF
 
-python3 /tmp/insert_signing_and_clear.py
+python3 /tmp/insert_signing.py
