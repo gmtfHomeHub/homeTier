@@ -70,11 +70,8 @@ with open('src-tauri/gen/android/app/build.gradle.kts', 'r') as f:
 
 # ===== 1. ML Kit: 切换到内置模型 =====
 if 'com.google.mlkit:barcode-scanning' not in content:
-    # 找到 dependencies { } 块，在里面添加
     mlkit_config = '''
     // --- ML Kit bundled model (no Google Play Services dependency) ---
-    // Replaces play-services-mlkit-barcode-scanning (thin model, requires GMS)
-    // with com.google.mlkit:barcode-scanning (bundled model, works on all devices)
     configurations.all {
         exclude(group = "com.google.android.gms", module = "play-services-mlkit-barcode-scanning")
     }
@@ -82,16 +79,13 @@ if 'com.google.mlkit:barcode-scanning' not in content:
         implementation("com.google.mlkit:barcode-scanning:17.2.0")
     }
 '''
-    # 尝试在现有 dependencies { } 块内插入，或在 android { } 后添加
     dep_match = re.search(r'(dependencies\s*\{[^}]*\})', content, re.DOTALL)
     if dep_match:
-        # 在现有 dependencies 块内插入
         old_dep = dep_match.group(1)
         new_dep = old_dep.replace('dependencies {', 'dependencies {\n' + mlkit_config.strip())
         content = content.replace(old_dep, new_dep)
         print("[fix-android-build-gradle] Added ML Kit bundled model to dependencies")
     else:
-        # 没有 dependencies 块，在 android { } 后添加
         android_end = content.rfind('}')
         if android_end >= 0:
             content = content[:android_end] + '\n' + mlkit_config + '\n' + content[android_end:]
@@ -101,7 +95,6 @@ if 'com.google.mlkit:barcode-scanning' not in content:
 
 # ===== 2. ABI splits: 插入到现有 android { } 块内部 =====
 if 'splits {' not in content:
-    # 找到 android { ... } 块，在最后一个 } 前插入 splits 配置
     abi_splits_config = '''
     // --- ABI splits: 生成 per-ABI APK，避免 universal APK 过大 ---
     splits {
@@ -113,7 +106,6 @@ if 'splits {' not in content:
         }
     }
 '''
-    # 找到 android { 的最后一个匹配的 }
     android_start = content.find('android {')
     if android_start >= 0:
         brace_count = 0
@@ -134,7 +126,7 @@ if 'splits {' not in content:
     else:
         print("[fix-android-build-gradle] WARNING: Could not find android block start")
 
-# ===== 3. 创建消费者 ProGuard 规则目录和空文件（仅为了消除警告）=====
+# ===== 3. 创建消费者 ProGuard 规则目录和空文件 =====
 import os
 CONSUMER_RULES_DIR = "src-tauri/gen/android/app/consumer-proguard-rules"
 os.makedirs(CONSUMER_RULES_DIR, exist_ok=True)
@@ -163,7 +155,7 @@ fi
 SIGNING_CONFIG=$(cat "$SIGNING_CONFIG_FILE")
 
 # Use Python to properly insert the signing config before the tauri apply line
-python3 << 'EOF'
+cat > /tmp/insert_signing.py << 'PYEOF'
 import sys
 
 with open('src-tauri/gen/android/app/build.gradle.kts', 'r') as f:
@@ -179,8 +171,7 @@ if 'signingConfigs' in content:
     sys.exit(0)
 
 # Insert signing config before the apply(from = "tauri.build.gradle.kts") line
-lines = content.split('
-')
+lines = content.split('\n')
 new_lines = []
 inserted = False
 
@@ -207,8 +198,9 @@ if not inserted:
     new_lines.append(signing_config)
 
 with open('src-tauri/gen/android/app/build.gradle.kts', 'w') as f:
-    f.write('
-'.join(new_lines))
+    f.write('\n'.join(new_lines))
 
 print("Successfully patched build.gradle.kts")
-EOF
+PYEOF
+
+python3 /tmp/insert_signing.py
