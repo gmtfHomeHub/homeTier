@@ -1,7 +1,6 @@
 #!/bin/bash
-# Final fix: keep stable Android Gradle config for Tauri builds.
-# This version intentionally avoids ABI splits because Tauri's Android task wiring
-# still depends on the default universal variant.
+# Fix Android build.gradle.kts for per-ABI APK splits (stable version)
+# Key: clear ndk.abiFilters AFTER tauri.build.gradle.kts apply
 
 set -euo pipefail
 
@@ -22,7 +21,7 @@ echo "[fix-android-build-gradle] Patching $BUILD_GRADLE..."
 
 cp "$BUILD_GRADLE" "$BUILD_GRADLE.bak"
 
-# --- NDK version fix ---
+# --- NDK version fix (supports NDK_HOME, ANDROID_NDK_HOME, fallback) ---
 NDK_PATH="${NDK_HOME:-}"
 if [ -z "$NDK_PATH" ] || [ ! -d "$NDK_PATH" ]; then
     NDK_PATH="${ANDROID_NDK_HOME:-}"
@@ -64,12 +63,12 @@ fi
 # 启用 cleartext traffic
 if grep -q 'manifestPlaceholders\["usesCleartextTraffic"\] = "false"' "$BUILD_GRADLE"; then
     sed -i 's/manifestPlaceholders\["usesCleartextTraffic"\] = "false"/manifestPlaceholders["usesCleartextTraffic"] = "true"/' "$BUILD_GRADLE"
-    echo "[fix-android-build-gradle] Enabled cleartext traffic for localhost proxy (usesCleartextTraffic=true)"
+    echo "[fix-android-build-gradle] Enabled cleartext traffic (usesCleartextTraffic=true)"
 else
     echo "[fix-android-build-gradle] usesCleartextTraffic placeholder not found or already true"
 fi
 
-# --- Python structural edits ---
+# --- Python structural edits: ML Kit, ABI splits, consumer rules ---
 python3 << 'PYEOF'
 import re
 import os
@@ -78,7 +77,7 @@ path = 'src-tauri/gen/android/app/build.gradle.kts'
 with open(path, 'r') as f:
     content = f.read()
 
-# ML Kit bundled model (no GMS dependency)
+# ===== 1. ML Kit: 切换到内置模型 =====
 if 'com.google.mlkit:barcode-scanning' not in content:
     mlkit_config = '''
     // --- ML Kit bundled model (no Google Play Services dependency) ---
@@ -99,7 +98,41 @@ if 'com.google.mlkit:barcode-scanning' not in content:
         content += '\n' + mlkit_config + '\n'
         print('[fix-android-build-gradle] Appended ML Kit bundled model config')
 
-# Keep consumer-rules.pro placeholders to suppress missing-file warnings.
+# ===== 2. ABI splits: 插入到现有 android { } 块内部 =====
+# 使用 isEnable/isUniversalApk 语法（Kotlin DSL 正确用法）
+if 'splits {' not in content:
+    abi_splits_config = '''
+    // --- ABI splits: 生成 per-ABI APK，避免 universal APK 过大 ---
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = false
+        }
+    }
+'''
+    android_start = content.find('android {')
+    if android_start >= 0:
+        brace_count = 0
+        insert_pos = -1
+        for i, ch in enumerate(content[android_start:], start=android_start):
+            if ch == '{':
+                brace_count += 1
+            elif ch == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    insert_pos = i
+                    break
+        if insert_pos >= 0:
+            content = content[:insert_pos] + '\n' + abi_splits_config + '\n' + content[insert_pos:]
+            print("[fix-android-build-gradle] Added ABI splits inside android block")
+        else:
+            print("[fix-android-build-gradle] WARNING: Could not find android block end")
+    else:
+        print("[fix-android-build-gradle] WARNING: Could not find android block start")
+
+# ===== 3. 创建消费者 ProGuard 规则目录和空文件 =====
 consumer_dir = 'src-tauri/gen/android/app/consumer-proguard-rules'
 os.makedirs(consumer_dir, exist_ok=True)
 for plugin in [
@@ -116,6 +149,8 @@ for plugin in [
 
 with open(path, 'w') as f:
     f.write(content)
+
+print("[fix-android-build-gradle] Python modifications completed")
 PYEOF
 
 # --- Check if signing config already exists ---
@@ -127,8 +162,8 @@ fi
 # Read signing config content
 SIGNING_CONFIG=$(cat "$SIGNING_CONFIG_FILE")
 
-# Insert the signing config before the tauri apply line.
-cat > /tmp/insert_signing.py << 'PYEOF'
+# Insert the signing config AND ndk.abiFilters.clear() AFTER the tauri apply line
+cat > /tmp/insert_signing_and_clear_abi.py << 'PYEOF'
 import sys
 
 with open('src-tauri/gen/android/app/build.gradle.kts', 'r') as f:
@@ -141,27 +176,46 @@ if 'signingConfigs' in content:
     print('Signing config already present')
     sys.exit(0)
 
+# We need to insert BOTH signing config AND ndk.abiFilters.clear() AFTER the apply line
+# The tauri.build.gradle.kts sets ndk.abiFilters, so we must clear it AFTER the apply
 lines = content.split('\n')
 new_lines = []
 inserted = False
 
 for line in lines:
+    new_lines.append(line)
     if 'apply(from = "tauri.build.gradle.kts")' in line and not inserted:
+        # Insert signing config
         new_lines.append('')
         new_lines.append(signing_config)
         new_lines.append('')
+        # CRITICAL: Clear ndk.abiFilters AFTER tauri apply (tauri sets abiFilters)
+        new_lines.append('android {')
+        new_lines.append('    defaultConfig {')
+        new_lines.append('        ndk {')
+        new_lines.append('            abiFilters.clear()')
+        new_lines.append('        }')
+        new_lines.append('    }')
+        new_lines.append('}')
         inserted = True
-    new_lines.append(line)
 
 if not inserted:
     print('WARNING: Could not find apply line, appending at end')
     new_lines.append('')
     new_lines.append(signing_config)
+    new_lines.append('')
+    new_lines.append('android {')
+    new_lines.append('    defaultConfig {')
+    new_lines.append('        ndk {')
+    new_lines.append('            abiFilters.clear()')
+    new_lines.append('        }')
+    new_lines.append('    }')
+    new_lines.append('}')
 
 with open('src-tauri/gen/android/app/build.gradle.kts', 'w') as f:
     f.write('\n'.join(new_lines))
 
-print('Successfully patched build.gradle.kts')
+print('Successfully patched build.gradle.kts with signing config and abiFilters.clear()')
 PYEOF
 
-python3 /tmp/insert_signing.py
+python3 /tmp/insert_signing_and_clear_abi.py
