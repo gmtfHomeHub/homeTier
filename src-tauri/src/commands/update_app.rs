@@ -108,11 +108,14 @@ pub async fn check_app_update() -> CheckAppUpdate {
     }
 }
 
-/// 当前平台对应的 AppImage 资产名关键字（tauri 产物：homeTier_0.1.0_amd64.AppImage）
+/// 当前平台对应的 AppImage 资产名前缀（产物命名：homeTier-linux-{arch}-{version}.AppImage）
+///
+/// 版本号位于文件名末尾且每次发布都变，无法用 ends_with 匹配，故按前缀 + 扩展名定位。
+/// 改产物命名规范时（见 AGENTS.md「产物命名规范」）必须同步此处，否则 Linux 应用内更新失效。
 fn appimage_asset_keyword() -> Option<&'static str> {
     match std::env::consts::ARCH {
-        "x86_64" => Some("_amd64.AppImage"),
-        "aarch64" => Some("_aarch64.AppImage"),
+        "x86_64" => Some("homeTier-linux-x86_64-"),
+        "aarch64" => Some("homeTier-linux-aarch64-"),
         _ => None,
     }
 }
@@ -253,7 +256,7 @@ pub async fn upgrade_app_inner(
     let asset = release
         .assets
         .iter()
-        .find(|a| a.name.ends_with(keyword))
+        .find(|a| a.name.starts_with(keyword) && a.name.ends_with(".AppImage"))
         .ok_or_else(|| format!("最新版本未找到 {} 平台安装包", keyword))?;
 
     on_progress(0.0);
