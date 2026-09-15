@@ -212,8 +212,13 @@ jobs:
       - name: Stage artifact
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist
           find src-tauri/target -maxdepth 5 -name "*.dmg" -exec cp {} dist/ \;
+          MODEL="${{ matrix.target }}"
+          MODEL="${MODEL%%-*}"
+          SUFFIX="${{ inputs.debug_mode && '-debug' || '' }}"
+          bash scripts/normalize-artifact-name.sh dist dmg "$MODEL" "$SUFFIX"
           echo "Staged macOS artifacts:"
           ls -lh dist/
 
@@ -347,8 +352,13 @@ jobs:
       - name: Stage artifact
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist
           find src-tauri/target -maxdepth 5 -name "*.msi" -exec cp {} dist/ \;
+          MODEL="${{ matrix.target }}"
+          MODEL="${MODEL%%-*}"
+          SUFFIX="${{ inputs.debug_mode && '-debug' || '' }}"
+          bash scripts/normalize-artifact-name.sh dist msi "$MODEL" "$SUFFIX"
           echo "Staged Windows artifacts:"
           ls -lh dist/
 
@@ -393,8 +403,13 @@ jobs:
       - name: Stage artifact
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist
           find src-tauri/target -maxdepth 5 -name "*.deb" -exec cp {} dist/ \;
+          MODEL="${{ matrix.target }}"
+          MODEL="${MODEL%%-*}"
+          SUFFIX="${{ inputs.debug_mode && '-debug' || '' }}"
+          bash scripts/normalize-artifact-name.sh dist deb "$MODEL" "$SUFFIX"
           echo "Staged Linux artifacts:"
           ls -lh dist/
 
@@ -425,14 +440,18 @@ jobs:
       - name: Stage artifact
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist
           find src-tauri/target -maxdepth 5 -name "*.AppImage" -exec cp {} dist/ \;
+          SUFFIX="${{ inputs.debug_mode && '-debug' || '' }}"
+          bash scripts/normalize-artifact-name.sh dist AppImage x86_64 "$SUFFIX"
           echo "Staged AppImage artifacts:"
           ls -lh dist/
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
-          name: homeTier.AppImage
+          # 名称必须匹配 release 的 download pattern `homeTier-*`，否则不会进 GitHub Release
+          name: homeTier-x86_64.AppImage
           path: dist/*.AppImage
           if-no-files-found: error
 
@@ -463,7 +482,43 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          ndk: 25.2.9519653
+          # 该 action 的 packages 默认值是 'tools platform-tools'，它按空格 split 后
+          # 对每个包单独调一次 sdkmanager。'tools' 是 Google 早已从 SDK 仓库下架的
+          # 旧 SDK Tools，cmdline-tools 16.0 的 sdkmanager 会把它当致命错误
+          # （sdkmanager exit 1 → @actions/exec 直接抛错）。v4.0.1 仍带同样的默认值，
+          # 升级 action 无效，必须显式覆盖。
+          packages: platform-tools
+      - name: Pin Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          # setup-android **没有 ndk 输入**（只有 cmdline-tools-version / accept-*-licenses /
+          # packages），之前写的 `ndk: 25.2.9519653` 一直是静默无效参数，构建实际用的
+          # 始终是 runner 镜像预装的 NDK。这里显式安装并固定，消除镜像版本漂移。
+          NDK_VERSION=29.0.14206865
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          MGR=""
+          for d in "$SDK_ROOT"/cmdline-tools/latest "$SDK_ROOT"/cmdline-tools/*/; do
+            if [ -x "$d/bin/sdkmanager" ]; then MGR="$d/bin/sdkmanager"; break; fi
+          done
+          if [ -z "$MGR" ]; then
+            if command -v sdkmanager >/dev/null 2>&1; then
+              MGR="$(command -v sdkmanager)"
+            else
+              echo "ERROR: 找不到 sdkmanager（检查上一步 setup-android）"; exit 1
+            fi
+          fi
+          NDK_DIR="$SDK_ROOT/ndk/$NDK_VERSION"
+          if [ -d "$NDK_DIR" ]; then
+            echo "[ndk] 已安装: $NDK_DIR"
+          else
+            echo "[ndk] 安装 ndk;$NDK_VERSION ..."
+            "$MGR" "ndk;$NDK_VERSION"
+          fi
+          test -d "$NDK_DIR" || { echo "ERROR: NDK $NDK_VERSION 安装失败"; exit 1; }
+          echo "ANDROID_NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
+          grep -E 'Pkg.(Desc|Revision)' "$NDK_DIR/source.properties" || echo "[ndk] WARN: source.properties 未含版本信息"
       - name: Set up Android Keystore
         run: |
           mkdir -p src-tauri/keystore
@@ -533,8 +588,11 @@ jobs:
           find "$APK_ROOT" -name '*.apk' -exec ls -lh {} \;
 
           mkdir -p dist
+          APP_NAME="$(node -p "require('./src-tauri/tauri.conf.json').productName")"
+          VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
           FOUND=""
           BT_FILTER="${{ inputs.debug_mode && 'debug' || 'release' }}"
+          SUFFIX="${{ inputs.debug_mode && '-debug' || '' }}"
           while IFS= read -r apk; do
             # 只处理本次请求的构建类型（--split-per-abi 的 assemble 任务可能同时产出 debug/release）
             case "$apk" in */"$BT_FILTER"/*) ;; *) echo "[skip] $apk: build type != $BT_FILTER"; continue;; esac
@@ -543,7 +601,7 @@ jobs:
             BT="$BT_FILTER"
             case "$ABIS" in
               arm64-v8a|armeabi-v7a|x86_64)
-                DEST="dist/app-${ABIS}-${BT}.apk"
+                DEST="dist/${APP_NAME}-${VERSION}-${ABIS}${SUFFIX}.apk"
                 cp "$apk" "$DEST"
                 FOUND="$FOUND $ABIS"
                 echo "[stage] $apk -> $DEST ($(du -h "$apk" | cut -f1))"
@@ -618,12 +676,30 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             build
+      - name: Stage iOS artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          APP_NAME=$(node -p "require('./src-tauri/tauri.conf.json').productName")
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          SUFFIX="${{ inputs.debug_mode && '-debug' || '' }}"
+          APPS=$(find src-tauri/gen/apple/build -type d -name '*.app' | sort)
+          N=$(printf '%s\n' "$APPS" | grep -c .)
+          if [ "$N" -ne 1 ]; then
+            echo "ERROR: .app 产物数量为 $N（期望 1）"; printf '%s\n' "$APPS"; exit 1
+          fi
+          APP=$(echo "$APPS" | head -1)
+          # 必须打 zip：artifact 上传会展开 .app 目录树，release 的 find -type f
+          # 会把 .app 内部散文件当成发布产物
+          zip -qry "dist/${APP_NAME}-${VERSION}-ios${SUFFIX}.zip" "$APP"
+          ls -lh dist/
       - name: Upload iOS app
         uses: actions/upload-artifact@v4
         with:
           name: homeTier-ios
-          path: src-tauri/gen/apple/build/**/*.app
-          if-no-files-found: warn
+          path: dist/*.zip
+          if-no-files-found: error
 
   # ---------------------------------------------------------------
   # 6. Docker 镜像（tag 发布 或 手动触发）
@@ -665,12 +741,28 @@ jobs:
   # 7. 汇总发布到 GitHub Release（仅 tag 触发）
   # ---------------------------------------------------------------
   release:
-    needs: [build-desktop-macos, build-desktop-windows, build-desktop-linux, build-appimage, build-android, build-docker]
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-desktop-macos, build-desktop-windows, build-desktop-linux, build-appimage, build-android, build-docker, build-ios]
+    # build-ios 仅手动触发（inputs.build_ios），tag 发布时为 skipped。needs 含 skipped
+    # job 会让下游被整体跳过，所以这里用 always() + needs.*.result 聚合判定：
+    # 允许 skipped（iOS），拒绝 failure/cancelled/timed_out（真实失败）
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/') && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'timed_out') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+      - name: Assert tag matches tauri.conf.json version
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 产物文件名里的版本号取自 tauri.conf.json（与改名脚本同源），
+          # tag 必须与之一致，否则文件名与发布 tag 对不上
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          CONF_VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          if [ "$TAG_VERSION" != "$CONF_VERSION" ]; then
+            echo "ERROR: git tag $TAG_VERSION 与 tauri.conf.json version $CONF_VERSION 不一致"; exit 1
+          fi
+          echo "tag version == conf version == $CONF_VERSION"
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -680,7 +772,7 @@ jobs:
         run: |
           mkdir -p release_files
           find artifacts -type f \( -name "*.dmg" -o -name "*.msi" -o -name "*.deb" \
-            -o -name "*.AppImage" -o -name "*.apk" \) \
+            -o -name "*.AppImage" -o -name "*.apk" -o -name "homeTier-*-ios.zip" \) \
             -exec cp {} release_files/ \;
           echo "Release files:"
           ls -lh release_files/
