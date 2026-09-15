@@ -482,7 +482,43 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          ndk: 25.2.9519653
+          # 该 action 的 packages 默认值是 'tools platform-tools'，它按空格 split 后
+          # 对每个包单独调一次 sdkmanager。'tools' 是 Google 早已从 SDK 仓库下架的
+          # 旧 SDK Tools，cmdline-tools 16.0 的 sdkmanager 会把它当致命错误
+          # （sdkmanager exit 1 → @actions/exec 直接抛错）。v4.0.1 仍带同样的默认值，
+          # 升级 action 无效，必须显式覆盖。
+          packages: platform-tools
+      - name: Pin Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          # setup-android **没有 ndk 输入**（只有 cmdline-tools-version / accept-*-licenses /
+          # packages），之前写的 `ndk: 25.2.9519653` 一直是静默无效参数，构建实际用的
+          # 始终是 runner 镜像预装的 NDK。这里显式安装并固定，消除镜像版本漂移。
+          NDK_VERSION=29.0.14206865
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          MGR=""
+          for d in "$SDK_ROOT"/cmdline-tools/latest "$SDK_ROOT"/cmdline-tools/*/; do
+            if [ -x "$d/bin/sdkmanager" ]; then MGR="$d/bin/sdkmanager"; break; fi
+          done
+          if [ -z "$MGR" ]; then
+            if command -v sdkmanager >/dev/null 2>&1; then
+              MGR="$(command -v sdkmanager)"
+            else
+              echo "ERROR: 找不到 sdkmanager（检查上一步 setup-android）"; exit 1
+            fi
+          fi
+          NDK_DIR="$SDK_ROOT/ndk/$NDK_VERSION"
+          if [ -d "$NDK_DIR" ]; then
+            echo "[ndk] 已安装: $NDK_DIR"
+          else
+            echo "[ndk] 安装 ndk;$NDK_VERSION ..."
+            "$MGR" "ndk;$NDK_VERSION"
+          fi
+          test -d "$NDK_DIR" || { echo "ERROR: NDK $NDK_VERSION 安装失败"; exit 1; }
+          echo "ANDROID_NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
+          grep -E 'Pkg.(Desc|Revision)' "$NDK_DIR/source.properties" || echo "[ndk] WARN: source.properties 未含版本信息"
       - name: Set up Android Keystore
         run: |
           mkdir -p src-tauri/keystore
