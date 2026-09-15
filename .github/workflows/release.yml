@@ -186,12 +186,12 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             bundle: dmg
-            artifact: homeTier-aarch64.dmg
+            artifact: homeTier-macos-aarch64.dmg
             bin: macos-aarch64
           - os: macos-latest
             target: x86_64-apple-darwin
             bundle: dmg
-            artifact: homeTier-x86_64.dmg
+            artifact: homeTier-macos-x86_64.dmg
             bin: macos-x86_64
     runs-on: ${{ matrix.os }}
     steps:
@@ -215,10 +215,10 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           find src-tauri/target -maxdepth 5 -name "*.dmg" -exec cp {} dist/ \;
-          MODEL="${{ matrix.target }}"
-          MODEL="${MODEL%%-*}"
+          ARCH="${{ matrix.target }}"
+          ARCH="${ARCH%%-*}"
           SUFFIX="${{ inputs.debug_mode && '-debug' || '' }}"
-          bash scripts/normalize-artifact-name.sh dist dmg "$MODEL" "$SUFFIX"
+          bash scripts/normalize-artifact-name.sh dist dmg macos "$ARCH" "$SUFFIX"
           echo "Staged macOS artifacts:"
           ls -lh dist/
 
@@ -239,7 +239,7 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             bundle: msi
-            artifact: homeTier-x86_64.msi
+            artifact: homeTier-windows-x86_64.msi
             bin: windows-x86_64
           # ARM64 Windows (aarch64-pc-windows-msvc) 暂停：vswhom-sys（tauri-winres→
           # embed-resource 链）编译 vswhom.cpp 时，SDK 10.0.26100.0 winnt.h 使用
@@ -355,10 +355,10 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           find src-tauri/target -maxdepth 5 -name "*.msi" -exec cp {} dist/ \;
-          MODEL="${{ matrix.target }}"
-          MODEL="${MODEL%%-*}"
+          ARCH="${{ matrix.target }}"
+          ARCH="${ARCH%%-*}"
           SUFFIX="${{ inputs.debug_mode && '-debug' || '' }}"
-          bash scripts/normalize-artifact-name.sh dist msi "$MODEL" "$SUFFIX"
+          bash scripts/normalize-artifact-name.sh dist msi windows "$ARCH" "$SUFFIX"
           echo "Staged Windows artifacts:"
           ls -lh dist/
 
@@ -379,12 +379,12 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             bundle: deb
-            artifact: homeTier-x86_64.deb
+            artifact: homeTier-linux-x86_64.deb
             bin: linux-x86_64
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             bundle: deb
-            artifact: homeTier-aarch64.deb
+            artifact: homeTier-linux-aarch64.deb
             bin: linux-aarch64
     runs-on: ${{ matrix.os }}
     steps:
@@ -406,10 +406,10 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           find src-tauri/target -maxdepth 5 -name "*.deb" -exec cp {} dist/ \;
-          MODEL="${{ matrix.target }}"
-          MODEL="${MODEL%%-*}"
+          ARCH="${{ matrix.target }}"
+          ARCH="${ARCH%%-*}"
           SUFFIX="${{ inputs.debug_mode && '-debug' || '' }}"
-          bash scripts/normalize-artifact-name.sh dist deb "$MODEL" "$SUFFIX"
+          bash scripts/normalize-artifact-name.sh dist deb linux "$ARCH" "$SUFFIX"
           echo "Staged Linux artifacts:"
           ls -lh dist/
 
@@ -444,14 +444,14 @@ jobs:
           mkdir -p dist
           find src-tauri/target -maxdepth 5 -name "*.AppImage" -exec cp {} dist/ \;
           SUFFIX="${{ inputs.debug_mode && '-debug' || '' }}"
-          bash scripts/normalize-artifact-name.sh dist AppImage x86_64 "$SUFFIX"
+          bash scripts/normalize-artifact-name.sh dist AppImage linux x86_64 "$SUFFIX"
           echo "Staged AppImage artifacts:"
           ls -lh dist/
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
           # 名称必须匹配 release 的 download pattern `homeTier-*`，否则不会进 GitHub Release
-          name: homeTier-x86_64.AppImage
+          name: homeTier-linux-x86_64.AppImage
           path: dist/*.AppImage
           if-no-files-found: error
 
@@ -601,7 +601,7 @@ jobs:
             BT="$BT_FILTER"
             case "$ABIS" in
               arm64-v8a|armeabi-v7a|x86_64)
-                DEST="dist/${APP_NAME}-${VERSION}-${ABIS}${SUFFIX}.apk"
+                DEST="dist/${APP_NAME}-android-${ABIS}-${VERSION}${SUFFIX}.apk"
                 cp "$apk" "$DEST"
                 FOUND="$FOUND $ABIS"
                 echo "[stage] $apk -> $DEST ($(du -h "$apk" | cut -f1))"
@@ -692,7 +692,7 @@ jobs:
           APP=$(echo "$APPS" | head -1)
           # 必须打 zip：artifact 上传会展开 .app 目录树，release 的 find -type f
           # 会把 .app 内部散文件当成发布产物
-          zip -qry "dist/${APP_NAME}-${VERSION}-ios${SUFFIX}.zip" "$APP"
+          zip -qry "dist/${APP_NAME}-ios-arm64-${VERSION}${SUFFIX}.zip" "$APP"
           ls -lh dist/
       - name: Upload iOS app
         uses: actions/upload-artifact@v4
@@ -772,7 +772,7 @@ jobs:
         run: |
           mkdir -p release_files
           find artifacts -type f \( -name "*.dmg" -o -name "*.msi" -o -name "*.deb" \
-            -o -name "*.AppImage" -o -name "*.apk" -o -name "homeTier-*-ios.zip" \) \
+            -o -name "*.AppImage" -o -name "*.apk" -o -name "homeTier-ios-*.zip" \) \
             -exec cp {} release_files/ \;
           echo "Release files:"
           ls -lh release_files/
